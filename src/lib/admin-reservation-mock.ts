@@ -1,0 +1,121 @@
+import { format } from "date-fns";
+import {
+  ReservationType,
+  ReservationStatus,
+  SeatType,
+  ServicePeriod,
+  type Reservation,
+} from "@prisma/client";
+
+export function buildMockReservations(monthStart: Date, monthDays: number): Reservation[] {
+  const buildDate = (day: number) =>
+    format(
+      new Date(
+        monthStart.getFullYear(),
+        monthStart.getMonth(),
+        Math.min(Math.max(day, 1), monthDays)
+      ),
+      "yyyy-MM-dd"
+    );
+
+  const createdAt = new Date(`${buildDate(1)}T09:00:00+09:00`);
+
+  return [
+    {
+      id: "sample-1",
+      date: buildDate(3),
+      servicePeriod: ServicePeriod.LUNCH,
+      reservationType: ReservationType.NORMAL,
+      seatType: SeatType.MAIN,
+      partySize: 2,
+      arrivalTime: "11:30",
+      name: "山田 花子",
+      phone: "090-1111-2222",
+      note: "コース: ランチコース\n備考: 窓側希望",
+      status: ReservationStatus.CONFIRMED,
+      lineUserId: null,
+      createdAt,
+      updatedAt: createdAt,
+    },
+    {
+      id: "sample-2",
+      date: buildDate(7),
+      servicePeriod: ServicePeriod.DINNER,
+      reservationType: ReservationType.NORMAL,
+      seatType: SeatType.MAIN,
+      partySize: 4,
+      arrivalTime: "18:00",
+      name: "佐藤 恒一",
+      phone: "090-3333-4444",
+      note: "コース: シェフおまかせ",
+      status: ReservationStatus.CONFIRMED,
+      lineUserId: null,
+      createdAt: new Date(createdAt.getTime() + 60 * 60 * 1000),
+      updatedAt: new Date(createdAt.getTime() + 60 * 60 * 1000),
+    },
+    {
+      id: "sample-3",
+      date: buildDate(7),
+      servicePeriod: ServicePeriod.DINNER,
+      reservationType: ReservationType.NORMAL,
+      seatType: SeatType.MAIN,
+      partySize: 2,
+      arrivalTime: "19:00",
+      name: "高橋 由美",
+      phone: "090-5555-6666",
+      note: "備考: 記念日プレート希望",
+      status: ReservationStatus.CONFIRMED,
+      lineUserId: null,
+      createdAt: new Date(createdAt.getTime() + 2 * 60 * 60 * 1000),
+      updatedAt: new Date(createdAt.getTime() + 2 * 60 * 60 * 1000),
+    },
+    {
+      id: "sample-4",
+      date: buildDate(12),
+      servicePeriod: ServicePeriod.LUNCH,
+      reservationType: ReservationType.NORMAL,
+      seatType: SeatType.MAIN,
+      partySize: 6,
+      arrivalTime: "12:30",
+      name: "伊藤 誠",
+      phone: "090-7777-8888",
+      note: null,
+      status: ReservationStatus.CONFIRMED,
+      lineUserId: null,
+      createdAt: new Date(createdAt.getTime() + 3 * 60 * 60 * 1000),
+      updatedAt: new Date(createdAt.getTime() + 3 * 60 * 60 * 1000),
+    },
+    {
+      id: "sample-5",
+      date: buildDate(18),
+      servicePeriod: ServicePeriod.DINNER,
+      reservationType: ReservationType.NORMAL,
+      seatType: SeatType.MAIN,
+      partySize: 3,
+      arrivalTime: "18:30",
+      name: "中村 彩",
+      phone: "090-9999-0000",
+      note: "コース: ディナーB",
+      status: ReservationStatus.CONFIRMED,
+      lineUserId: null,
+      createdAt: new Date(createdAt.getTime() + 4 * 60 * 60 * 1000),
+      updatedAt: new Date(createdAt.getTime() + 4 * 60 * 60 * 1000),
+    },
+    {
+      id: "sample-6",
+      date: buildDate(24),
+      servicePeriod: ServicePeriod.DINNER,
+      reservationType: ReservationType.PRIVATE_BLOCK,
+      seatType: SeatType.MAIN,
+      partySize: 1,
+      arrivalTime: null,
+      name: "貸切",
+      phone: "-",
+      note: "社内会食 18名",
+      status: ReservationStatus.CONFIRMED,
+      lineUserId: null,
+      createdAt: new Date(createdAt.getTime() + 5 * 60 * 60 * 1000),
+      updatedAt: new Date(createdAt.getTime() + 5 * 60 * 60 * 1000),
+    },
+  ];
+}

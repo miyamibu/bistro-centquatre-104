@@ -1,0 +1,188 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  font-family: "Noto Sans JP", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #ffffff;
+  color: #1a1a1a;
+}body {
+  font-family: "Noto Sans JP", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #ffffff;
+  color: #1a1a1a;
+}
+
+a {
+  color: #4d4b2d;
+}
+
+a:hover {
+  color: #33321e;
+}
+
+.btn-primary {
+  @apply bg-brand-700 text-white px-4 py-2 rounded-md shadow hover:bg-brand-800 transition;
+}
+
+.card {
+  @apply rounded-xl border border-gray-200 bg-white shadow-sm;
+}
+@keyframes heroLeftFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+    filter: blur(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+.hero-left-fade {
+  opacity: 0;
+  animation: heroLeftFadeIn 1.6s ease-out 0.25s forwards;
+}
+.menu-no-select,
+.menu-no-select * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-user-drag: none;
+}
+.menu-no-select {
+  cursor: default;
+}
+.menu-no-select a,
+.menu-no-select button {
+  cursor: pointer;
+}
+.menu-card,
+.menu-card * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-user-drag: none;
+}
+.menu-card {
+  display: block;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.menu-card * {
+  cursor: inherit;
+}
+@layer utilities {
+  .cursor-utensils {
+    cursor:
+      url("/photos/icons/utensils-cursor-64.png") 32 32,
+      url("/photos/icons/utensils-cursor-32.png") 16 16,
+      pointer;
+  }
+}
+
+.menu-sub-en{
+  letter-spacing: normal !important;
+  text-transform: none !important;
+}
+
+@keyframes storeFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.store-fade-up {
+  opacity: 0;
+  animation: storeFadeUp 0.8s ease-out both;
+}
+
+.menu-course-title {
+  font-size: var(--course-title-size, 28px);
+  line-height: 1.1;
+}
+
+@media (min-width: 768px) {
+  .menu-course-title {
+    font-size: var(--course-title-size-md, 36px);
+  }
+}
+
+.menu-heading-title {
+  font-size: var(--menu-heading-size, 32px);
+}
+
+@media (min-width: 768px) {
+  .menu-heading-title {
+    font-size: var(--menu-heading-size-md, 40px);
+  }
+}
+
+.select-menu-solid {
+  background-color: #ffffff !important;
+  opacity: 1 !important;
+}
+
+.select-menu-solid [data-lk-material-sublayer="bgColor"] {
+  background-color: #ffffff !important;
+  opacity: 1 !important;
+}
+
+.menu-tab-heading .menu-tab-badge,
+.menu-tab-heading .menu-tab-pill {
+  position: absolute;
+  left: calc(50% + 5.15em);
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.82rem;
+  letter-spacing: 0.16em;
+  color: #d7b06c;
+  white-space: nowrap;
+}
+
+.menu-tab-heading .menu-tab-badge {
+  left: calc(50% + 4.95em);
+}
+
+.menu-tab-heading .menu-tab-or {
+  margin: 0 0.5em;
+  font-size: 0.92rem;
+  letter-spacing: 0.16em;
+  color: #cfbeab;
+}
+
+.menu-tab-linklike {
+  color: #e2ba78;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media (max-width: 767px) {
+  .menu-tab-heading--mobile-main-center .menu-tab-main {
+    position: relative;
+    display: inline-block;
+  }
+
+  .menu-tab-heading--mobile-main-center .menu-tab-badge,
+  .menu-tab-heading--mobile-main-center .menu-tab-pill {
+    left: calc(100% + 0.35em);
+    top: 50%;
+    transform: translateY(-50%);
+    margin-left: 0;
+    font-size: 0.62rem;
+    white-space: nowrap;
+  }
+
+  .menu-tab-heading .menu-tab-or {
+    font-size: 0.72rem;
+  }
+}

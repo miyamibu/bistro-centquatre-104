@@ -1,0 +1,62 @@
+name: Reservation Hardening CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  reservation-hardening:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bistro_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d bistro_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bistro_test?schema=public
+      BASE_URL: http://localhost:3000
+      ADMIN_BASIC_USER: admin
+      ADMIN_BASIC_PASS: pass
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
+      SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
+      CRON_SECRET: test-cron-secret
+      BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY: ci-placeholder-bank-history-key
+      NODE_ENV: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply Prisma migrations
+        run: npx prisma migrate deploy
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Run test suite
+        run: npm run test
+
+      - name: Run production build
+        run: npm run build

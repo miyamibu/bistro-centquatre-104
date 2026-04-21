@@ -1,0 +1,25 @@
+{
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "french-restaurant-site.vercel.app"
+        }
+      ],
+      "destination": "https://bistro-centquatre-104.vercel.app/$1",
+      "permanent": true
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/crons/cancel-expired-orders",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/crons/delete-old-histories",
+      "schedule": "0 1 * * *"
+    }
+  ]
+}

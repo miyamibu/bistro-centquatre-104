@@ -1,0 +1,44 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Node modules
+node_modules/
+/.pnp
+.pnp.js
+
+# Next.js build outputs
+/.next
+/out
+*.rar
+
+# Production
+/build
+
+# Testing
+/coverage
+
+# Misc
+.DS_Store
+*.pem
+.vscode/
+.idea/
+/.vercel
+backups/
+tmp-*.png
+
+# Debug
+npm-debug.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.tsbuildinfo
+tmpclaude-*
+_tmp*
+
+# Local environment file example
+# .env.example
+docs/recovery/*.csv
+docs/recovery/manual-restore-*.sql
+docs/recovery/RESERVATION_DATA_RECOVERY_*.md

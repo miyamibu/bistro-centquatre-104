@@ -1,0 +1,15 @@
+{
+  "startTime": "2026-02-19T13:45:56.585Z",
+  "endTime": "2026-02-19T13:46:01.390Z",
+  "totalFiles": 1,
+  "successCount": 1,
+  "failedCount": 0,
+  "results": [
+    {
+      "originalPath": "online store\\12.pdf",
+      "outputPath": "/converted-images/1771508759143-online store-12.png",
+      "status": "success",
+      "timestamp": "2026-02-19T13:46:00.597Z"
+    }
+  ]
+}
