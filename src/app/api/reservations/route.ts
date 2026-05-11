@@ -29,6 +29,7 @@ import { createReservationSchema, zodFields } from "@/lib/validation";
 import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
 import { getContactPayload } from "@/lib/contact";
 import { env } from "@/lib/env";
+import { canPushToLineUser, verifyLineIdToken } from "@/lib/line";
 import { getRequestId, logError, logInfo } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -147,11 +148,46 @@ export async function POST(request: NextRequest) {
     name,
     phone,
     note,
-    lineUserId,
+    lineIdToken,
     course,
   } = parsed.data;
   const reservationNote =
     [course ? `コース: ${course}` : null, note].filter(Boolean).join("\n") || null;
+
+  // クライアントから lineUserId が来ても保存しない。LIFF ID token のみ信用する。
+  let verifiedLineUserId: string | null = null;
+  if (typeof lineIdToken === "string" && lineIdToken.length > 0) {
+    try {
+      const sub = await verifyLineIdToken(lineIdToken);
+      if (sub) {
+        const pushable = await canPushToLineUser(sub);
+        if (pushable) {
+          verifiedLineUserId = sub;
+        } else {
+          logInfo("reservation.line.not_pushable", {
+            requestId,
+            route: "/api/reservations",
+          });
+        }
+      } else {
+        logInfo("reservation.line.verify_failed", {
+          requestId,
+          route: "/api/reservations",
+        });
+      }
+    } catch (lineError) {
+      // LINE 通知の失敗で予約作成全体を落とさない。
+      logError("reservation.line.unexpected_error", {
+        requestId,
+        route: "/api/reservations",
+        errorCode: "LINE_VERIFY_UNEXPECTED",
+        context: {
+          message:
+            lineError instanceof Error ? lineError.message : String(lineError),
+        },
+      });
+    }
+  }
 
   if (!isArrivalTimeValid(arrivalTime, servicePeriod)) {
     return apiError(400, {
@@ -261,7 +297,7 @@ export async function POST(request: NextRequest) {
             phone,
             note: reservationNote,
             status: ReservationStatus.CONFIRMED,
-            lineUserId: lineUserId ?? null,
+            lineUserId: verifiedLineUserId,
           });
 
           return {
@@ -305,6 +341,9 @@ export async function POST(request: NextRequest) {
         summary: `${reservation.date} ${reservation.servicePeriod === "LUNCH" ? "ランチ" : "ディナー"} ${reservation.partySize}名で承りました。`,
         adminLink: adminLink || undefined,
         deduplicated,
+        lineNotification: {
+          enabled: verifiedLineUserId !== null,
+        },
         requestId,
       });
     } catch (error: unknown) {

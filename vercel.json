@@ -20,6 +20,10 @@
     {
       "path": "/api/crons/delete-old-histories",
       "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/crons/remind",
+      "schedule": "0 1 * * *"
     }
   ]
 }

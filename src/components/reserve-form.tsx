@@ -137,6 +137,14 @@ export function ReserveForm({
   const [error, setError] = useState<string | null>(null);
   const [submittedReservation, setSubmittedReservation] =
     useState<SubmittedReservationSummary | null>(null);
+  // LIFF ID token は予約送信時にだけ使う。localStorage 等には保存しない。
+  const lineIdTokenRef = useRef<string | null>(null);
+  const [lineLinkStatus, setLineLinkStatus] = useState<
+    "idle" | "connecting" | "linked" | "error"
+  >("idle");
+  const [lineLinkMessage, setLineLinkMessage] = useState<string | null>(null);
+  const liffIdFromEnv =
+    typeof process !== "undefined" ? process.env.NEXT_PUBLIC_LIFF_ID : undefined;
   const [calendarMonth, setCalendarMonth] = useState<Date>(() =>
     startOfJstMonth(jstDateFromString(initialResolvedDate))
   );
@@ -402,6 +410,56 @@ export function ReserveForm({
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  async function handleLineLink() {
+    if (!liffIdFromEnv) return;
+    setLineLinkStatus("connecting");
+    setLineLinkMessage(null);
+    try {
+      const liffModule = await import("@line/liff");
+      const liff = liffModule.default;
+      await liff.init({ liffId: liffIdFromEnv });
+      if (!liff.isLoggedIn()) {
+        // login() triggers a navigation; nothing after will run on this load.
+        liff.login();
+        return;
+      }
+      if (typeof liff.requestFriendship === "function") {
+        try {
+          await liff.requestFriendship();
+        } catch {
+          // some clients/contexts disallow this; continue and rely on getFriendship check below.
+        }
+      }
+      const friendship = await liff.getFriendship();
+      if (!friendship?.friendFlag) {
+        setLineLinkStatus("error");
+        setLineLinkMessage(
+          "LINE公式アカウントの友だち追加が必要です。通常予約はそのまま続行できます。"
+        );
+        lineIdTokenRef.current = null;
+        return;
+      }
+      const idToken = liff.getIDToken();
+      if (!idToken) {
+        setLineLinkStatus("error");
+        setLineLinkMessage(
+          "LINE連携に失敗しました。通常予約はそのまま続行できます。"
+        );
+        lineIdTokenRef.current = null;
+        return;
+      }
+      lineIdTokenRef.current = idToken;
+      setLineLinkStatus("linked");
+      setLineLinkMessage("LINE前日通知を受け取ります。");
+    } catch {
+      setLineLinkStatus("error");
+      setLineLinkMessage(
+        "LINE連携に失敗しました。通常予約はそのまま続行できます。"
+      );
+      lineIdTokenRef.current = null;
+    }
+  }
+
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (submittingRef.current) return;
@@ -419,7 +477,9 @@ export function ReserveForm({
     try {
       const fullName = `${form.lastName} ${form.firstName}`.trim();
       const submittedServicePeriod = currentServicePeriod;
-      const payload = {
+      const linkedLineIdToken =
+        lineLinkStatus === "linked" ? lineIdTokenRef.current : null;
+      const payload: Record<string, unknown> = {
         date: form.date,
         servicePeriod: submittedServicePeriod,
         course: form.course,
@@ -431,6 +491,9 @@ export function ReserveForm({
         partySize: Number(form.partySize),
         arrivalTime: form.arrivalTime,
       };
+      if (linkedLineIdToken) {
+        payload.lineIdToken = linkedLineIdToken;
+      }
       const res = await fetch("/api/reservations", {
         method: "POST",
         headers: {
@@ -907,7 +970,62 @@ export function ReserveForm({
 
             <div className="hidden md:-mt-[1cm] md:block">
               <div className="space-y-3">
-                <div className="flex w-full justify-end">
+                <div className="flex w-full items-center justify-end gap-3">
+                  {liffIdFromEnv ? (
+                    <p className="-translate-y-[0.2cm] text-right text-xs leading-snug text-[#2f6b3b] md:text-sm">
+                      連携すると
+                      <br />
+                      前日にLINE通知
+                    </p>
+                  ) : null}
+                  {liffIdFromEnv ? (
+                    <div className="flex flex-col items-end gap-1 -translate-y-[0.2cm]">
+                      <button
+                        type="button"
+                        onClick={handleLineLink}
+                        disabled={
+                          lineLinkStatus === "connecting" ||
+                          lineLinkStatus === "linked"
+                        }
+                        className="relative inline-flex shrink-0 items-center justify-center rounded-full border-0 bg-transparent p-0 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1ec55a]/40 disabled:cursor-not-allowed disabled:opacity-60"
+                        style={{
+                          width: `${reserveButtonKnobWidth}px`,
+                          height: `${reserveButtonKnobHeight}px`,
+                        }}
+                        aria-label="LINEで前日通知を受け取る"
+                      >
+                        <span
+                          className="inline-flex items-center justify-center rounded-[26px] bg-gradient-to-b from-[#fffdfa] via-[#f4fbf5] to-[#e8f7ec]"
+                          style={{
+                            width: `${reserveButtonKnobWidth}px`,
+                            height: `${reserveButtonKnobHeight}px`,
+                            border: `${reserveButtonBorderWidth}px solid #1ec55a`,
+                          }}
+                        >
+                          <span className="text-base font-semibold tracking-wide text-[#1a8a3f] md:text-lg">
+                            {lineLinkStatus === "linked"
+                              ? "連携済"
+                              : lineLinkStatus === "connecting"
+                                ? "連携中"
+                                : "LINE"}
+                          </span>
+                        </span>
+                      </button>
+                      {lineLinkMessage ? (
+                        <p
+                          role="status"
+                          aria-live="polite"
+                          className={
+                            lineLinkStatus === "linked"
+                              ? "text-xs text-[#2f6b3b]"
+                              : "text-xs text-[#8f2a2a]"
+                          }
+                        >
+                          {lineLinkMessage}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <button
                     type="submit"
                     className="relative inline-flex shrink-0 -translate-y-[0.2cm] items-center justify-center rounded-full border-0 bg-transparent p-0 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7a5a31]/35 disabled:cursor-not-allowed disabled:opacity-50"
@@ -950,7 +1068,61 @@ export function ReserveForm({
       ) : null}
 
       <div className="mx-auto w-full max-w-[20.5rem] space-y-3 pt-2 md:hidden">
-        <div className="flex w-full justify-end">
+        <div className="flex w-full items-center justify-end gap-2">
+          {liffIdFromEnv ? (
+            <p className="translate-y-[-0.5cm] text-right text-[10px] leading-snug text-[#2f6b3b]">
+              連携すると
+              <br />
+              前日にLINE通知
+            </p>
+          ) : null}
+          {liffIdFromEnv ? (
+            <div className="flex flex-col items-end gap-1 translate-y-[-0.5cm]">
+              <button
+                type="button"
+                onClick={handleLineLink}
+                disabled={
+                  lineLinkStatus === "connecting" || lineLinkStatus === "linked"
+                }
+                className="relative inline-flex shrink-0 items-center justify-center rounded-full border-0 bg-transparent p-0 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1ec55a]/40 disabled:cursor-not-allowed disabled:opacity-60"
+                style={{
+                  width: `${reserveButtonKnobWidth}px`,
+                  height: `${reserveButtonKnobHeight}px`,
+                }}
+                aria-label="LINEで前日通知を受け取る"
+              >
+                <span
+                  className="inline-flex items-center justify-center rounded-[26px] bg-gradient-to-b from-[#fffdfa] via-[#f4fbf5] to-[#e8f7ec]"
+                  style={{
+                    width: `${reserveButtonKnobWidth}px`,
+                    height: `${reserveButtonKnobHeight}px`,
+                    border: `${reserveButtonBorderWidth}px solid #1ec55a`,
+                  }}
+                >
+                  <span className="text-base font-semibold tracking-wide text-[#1a8a3f] md:text-lg">
+                    {lineLinkStatus === "linked"
+                      ? "連携済"
+                      : lineLinkStatus === "connecting"
+                        ? "連携中"
+                        : "LINE"}
+                  </span>
+                </span>
+              </button>
+              {lineLinkMessage ? (
+                <p
+                  role="status"
+                  aria-live="polite"
+                  className={
+                    lineLinkStatus === "linked"
+                      ? "text-[10px] text-[#2f6b3b]"
+                      : "text-[10px] text-[#8f2a2a]"
+                  }
+                >
+                  {lineLinkMessage}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           <button
             type="submit"
             className="relative inline-flex shrink-0 translate-y-[-0.5cm] items-center justify-center rounded-full border-0 bg-transparent p-0 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7a5a31]/35 disabled:cursor-not-allowed disabled:opacity-50"
