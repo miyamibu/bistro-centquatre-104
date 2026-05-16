@@ -29,7 +29,12 @@ import { createReservationSchema, zodFields } from "@/lib/validation";
 import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
 import { getContactPayload } from "@/lib/contact";
 import { env } from "@/lib/env";
-import { canPushToLineUser, verifyLineIdToken } from "@/lib/line";
+import {
+  LINE_CLAIM_TOKEN_TTL_MS,
+  canPushToLineUser,
+  generateLineClaimToken,
+  verifyLineIdToken,
+} from "@/lib/line";
 import { getRequestId, logError, logInfo } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -286,6 +291,11 @@ export async function POST(request: NextRequest) {
             throw new Error(availability.reason);
           }
 
+          // Only issue a post-booking LINE claim token when LINE was NOT linked at creation time.
+          // The plain token is returned to the client; the DB stores only the SHA-256 hash.
+          const claimTokenPair =
+            verifiedLineUserId === null ? generateLineClaimToken() : null;
+
           const createdReservation = await createReservationCompat(tx, {
             date,
             servicePeriod,
@@ -298,16 +308,22 @@ export async function POST(request: NextRequest) {
             note: reservationNote,
             status: ReservationStatus.CONFIRMED,
             lineUserId: verifiedLineUserId,
+            lineClaimTokenHash: claimTokenPair?.hash ?? null,
+            lineClaimExpiresAt: claimTokenPair
+              ? new Date(now.getTime() + LINE_CLAIM_TOKEN_TTL_MS)
+              : null,
           });
 
           return {
             reservation: createdReservation,
             deduplicated: false,
+            // Plain token returned only to the client. Never logged.
+            lineClaimToken: claimTokenPair?.plain ?? null,
           };
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
       );
-      const { reservation, deduplicated } = result;
+      const { reservation, deduplicated, lineClaimToken } = result;
 
       const adminLink = env.BASE_URL ? `${env.BASE_URL}/admin/reservations/${reservation.id}` : "";
       if (!deduplicated) {
@@ -336,6 +352,16 @@ export async function POST(request: NextRequest) {
         },
       });
 
+      // lineClaimToken is sent ONLY when:
+      //   - we just created a new reservation (not a duplicate),
+      //   - and LINE was NOT linked at creation time.
+      // This token is the only proof allowing post-booking LINE linking
+      // (`POST /api/reservations/[id]/line-link`). It is opaque and never logged.
+      const responseLineClaimToken =
+        !deduplicated && verifiedLineUserId === null && typeof lineClaimToken === "string"
+          ? lineClaimToken
+          : undefined;
+
       return NextResponse.json({
         reservationId: reservation.id,
         summary: `${reservation.date} ${reservation.servicePeriod === "LUNCH" ? "ランチ" : "ディナー"} ${reservation.partySize}名で承りました。`,
@@ -344,6 +370,10 @@ export async function POST(request: NextRequest) {
         lineNotification: {
           enabled: verifiedLineUserId !== null,
         },
+        // Optional: post-booking LINE link claim token. Only present when LINE was
+        // not linked at creation time. Client should treat as sensitive and use only
+        // for POST /api/reservations/<id>/line-link.
+        lineClaimToken: responseLineClaimToken,
         requestId,
       });
     } catch (error: unknown) {

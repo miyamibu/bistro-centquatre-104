@@ -60,14 +60,17 @@ model Reservation {
   name                  String
   phone                 String
   note                  String?
-  status                ReservationStatus      @default(CONFIRMED)
-  lineUserId            String?
-  lineReminderSentAt    DateTime?
-  lineReminderStatus    String?
-  lineReminderError     String?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  privateBlockAuditLogs PrivateBlockAuditLog[]
+  status                  ReservationStatus      @default(CONFIRMED)
+  lineUserId              String?
+  lineReminderSentAt      DateTime?
+  lineReminderStatus      String?
+  lineReminderError       String?
+  lineClaimTokenHash      String?
+  lineClaimExpiresAt      DateTime?
+  lineConfirmationSentAt  DateTime?
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+  privateBlockAuditLogs   PrivateBlockAuditLog[]
 
   @@index([date, servicePeriod])
   @@index([date, servicePeriod, reservationType])

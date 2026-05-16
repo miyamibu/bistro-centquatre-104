@@ -69,7 +69,9 @@
 - `src/lib/line.ts`
 - `src/app/api/cron/remind/route.ts`（既存 alias の維持確認用、もし新規扱いなら含める）
 - `src/app/api/line/webhook/route.ts`
-- `prisma/migrations/20260511120000_add_line_reminder_fields/migration.sql`（ディレクトリごと）
+- `prisma/migrations/20260511120000_add_line_reminder_fields/migration.sql`（ディレクトリごと、本番適用済）
+- `prisma/migrations/20260514120000_add_line_post_booking_link_fields/migration.sql`（**新規**、本番未適用）
+- `src/app/api/reservations/[id]/line-link/route.ts`（**新規**、post-booking LINE 連携）
 
 ### 依存
 

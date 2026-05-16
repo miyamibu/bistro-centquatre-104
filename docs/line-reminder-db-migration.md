@@ -19,6 +19,13 @@
 
 ## 1. 今回の migration の内容
 
+本ドキュメントは 2 件の additive migration を扱う:
+
+1. `prisma/migrations/20260511120000_add_line_reminder_fields/migration.sql`（前日リマインド bookkeeping、適用済）
+2. `prisma/migrations/20260514120000_add_line_post_booking_link_fields/migration.sql`（**新規**: 予約後 LINE 連携用 claim token + 確認送信 marker、本番未適用）
+
+### 1.1 既存: `20260511120000_add_line_reminder_fields`
+
 ファイル: `prisma/migrations/20260511120000_add_line_reminder_fields/migration.sql`
 
 ```sql
@@ -35,6 +42,26 @@ CREATE INDEX "Reservation_lineReminderSentAt_idx" ON "Reservation" ("lineReminde
 | `lineReminderStatus TEXT NULL` | `"SENT"` / `"FAILED"` / `"SKIPPED_QUOTA"` のいずれか。NULL は未送信。 |
 | `lineReminderError TEXT NULL` | 失敗時の丸めたエラー文。secret/token は含めない。 |
 | `Reservation_lineReminderSentAt_idx` | 月次カウント `prisma.reservation.count({ where: { lineReminderSentAt: { gte: monthStart } } })` を高速化。 |
+
+### 1.2 新規: `20260514120000_add_line_post_booking_link_fields`
+
+ファイル: `prisma/migrations/20260514120000_add_line_post_booking_link_fields/migration.sql`
+
+```sql
+ALTER TABLE "Reservation" ADD COLUMN "lineClaimTokenHash" TEXT;
+ALTER TABLE "Reservation" ADD COLUMN "lineClaimExpiresAt" TIMESTAMP(3);
+ALTER TABLE "Reservation" ADD COLUMN "lineConfirmationSentAt" TIMESTAMP(3);
+```
+
+| 変更 | 用途 |
+|---|---|
+| `lineClaimTokenHash TEXT NULL` | 予約後 LINE 連携用 claim token の SHA-256 hex (64 chars)。plain は API 応答にのみ含まれ、DB は hash のみ保持。 |
+| `lineClaimExpiresAt TIMESTAMP(3) NULL` | 同 claim の有効期限（予約作成から 1h）。期限後の linking は 410。 |
+| `lineConfirmationSentAt TIMESTAMP(3) NULL` | 予約後 LINE 連携時に送る確認メッセージの idempotency marker。pre-mark で double-send 防止。 |
+
+**index 追加なし**。
+
+**本番未適用**。production migrate deploy は別承認が必要。
 
 ---
 
@@ -225,7 +252,8 @@ WHERE migration_name = '20260511120000_add_line_reminder_fields';
 migration 適用＋本番デプロイ＋実機テストまで完了した時点で:
 
 - [ ] `prisma migrate status` で「up to date」表示
-- [ ] `information_schema.columns` で 3 カラム存在を確認
+- [ ] `information_schema.columns` で `lineReminder*` 3 カラム存在を確認
+- [ ] **post-booking link migration (`20260514120000_add_line_post_booking_link_fields`) を本番に適用するまで `/api/reservations/[id]/line-link` は機能しない**。同 migration 適用後は `information_schema.columns` で `lineClaimTokenHash` / `lineClaimExpiresAt` / `lineConfirmationSentAt` 3 カラム存在を確認
 - [ ] index `Reservation_lineReminderSentAt_idx` の存在を確認（`pg_indexes` で見られる）
 - [ ] 本番予約作成（LINE なし）が通常通り通る
 - [ ] 本番予約作成（LIFF 連携あり）で `Reservation.lineUserId` が保存される

@@ -24,6 +24,8 @@ type ReservationCreateCompatInput = {
   note: string | null;
   status: ReservationStatus;
   lineUserId: string | null;
+  lineClaimTokenHash?: string | null;
+  lineClaimExpiresAt?: Date | null;
 };
 
 export const RESERVATION_SCHEMA_NOT_READY_CODE = "RESERVATION_SCHEMA_NOT_READY";

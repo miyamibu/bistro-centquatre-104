@@ -1,4 +1,9 @@
-import { randomUUID, createHash } from "node:crypto";
+import {
+  randomBytes,
+  randomUUID,
+  createHash,
+  timingSafeEqual,
+} from "node:crypto";
 import {
   getLineChannelAccessToken,
   getLineLoginChannelId,
@@ -263,6 +268,78 @@ export function buildReminderText(args: {
     "ご変更・キャンセルはお電話でご連絡ください。",
   ];
   return lines.join("\n");
+}
+
+/**
+ * Build the reservation-completion text. Intentionally omits name, phone, allergies, and notes.
+ * Used by the post-booking LINE linking flow.
+ */
+export function buildReservationCreatedText(args: {
+  date: string;
+  arrivalTime: string | null;
+  partySize: number;
+}): string {
+  const lines = [
+    "【bistro centquatre 104】ご予約を承りました",
+    "",
+    `${args.date}${args.arrivalTime ? ` ${args.arrivalTime}` : ""}、${args.partySize}名様でご予約を承っています。`,
+    "ご変更・キャンセルはお電話でご連絡ください。",
+  ];
+  return lines.join("\n");
+}
+
+export const LINE_CLAIM_TOKEN_BYTES = 32;
+// Post-booking LINE link window is intentionally short. After this window the
+// claim token expires and post-booking linking returns 410. The day-before
+// reminder cron is independent and only depends on lineUserId being set during
+// this window (or at original booking time).
+export const LINE_CLAIM_TOKEN_TTL_MS = 60 * 60 * 1000; // 1h
+
+/**
+ * Generate an unguessable claim token for post-booking LINE linking.
+ * Returns the plain token (only returned to the client) and its SHA-256 hex digest
+ * (only the digest should be stored in DB).
+ */
+export function generateLineClaimToken(): { plain: string; hash: string } {
+  const buf = randomBytes(LINE_CLAIM_TOKEN_BYTES);
+  // base64url, no padding, URL-safe
+  const plain = buf
+    .toString("base64")
+    .replace(/=+$/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+  const hash = createHash("sha256").update(plain).digest("hex");
+  return { plain, hash };
+}
+
+/**
+ * Compute the SHA-256 hex digest of a claim token for comparison.
+ */
+export function hashLineClaimToken(plain: string): string {
+  return createHash("sha256").update(plain).digest("hex");
+}
+
+/**
+ * Constant-time comparison of two SHA-256 hex digests.
+ * Returns false on any malformed input.
+ */
+export function verifyLineClaimTokenHash(
+  plain: string,
+  storedHash: string | null | undefined
+): boolean {
+  if (!plain || !storedHash) return false;
+  if (storedHash.length !== 64) return false;
+  let computed: string;
+  try {
+    computed = hashLineClaimToken(plain);
+  } catch {
+    return false;
+  }
+  if (computed.length !== storedHash.length) return false;
+  const a = Buffer.from(computed, "hex");
+  const b = Buffer.from(storedHash, "hex");
+  if (a.length === 0 || a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
 }
 
 /**
