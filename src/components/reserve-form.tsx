@@ -40,6 +40,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  clearPostBookingLink,
+  restorePostBookingLink,
+  storePostBookingLink,
+} from "@/lib/post-booking-link-storage";
 
 interface Props {
   defaultDate: string;
@@ -146,7 +151,9 @@ export function ReserveForm({
   const liffIdFromEnv =
     typeof process !== "undefined" ? process.env.NEXT_PUBLIC_LIFF_ID : undefined;
   // Post-booking LINE linking state. Server-issued claim token is kept only
-  // in component state; never stored in localStorage and never logged.
+  // in component state plus a short-lived sessionStorage record so the linking
+  // flow can resume after a LIFF login redirect. The plain claim token is
+  // never written to localStorage and never logged.
   const [postBookingReservationId, setPostBookingReservationId] = useState<string | null>(
     null
   );
@@ -157,6 +164,31 @@ export function ReserveForm({
   const [postBookingLineLinkMessage, setPostBookingLineLinkMessage] = useState<
     string | null
   >(null);
+  // Mirrors the server-side LINE_CLAIM_TOKEN_TTL_MS (1h). Stored client-side
+  // only as a UX hint; server is the authoritative gate (returns 410 if expired).
+  const POST_BOOKING_LINK_TTL_MS = 60 * 60 * 1000;
+
+  // On mount, restore any post-booking link record left over from a prior page
+  // load (typically after a LIFF login redirect). state-only restore; do NOT
+  // auto-retrigger the link flow.
+  useEffect(() => {
+    if (!liffIdFromEnv) return;
+    const restored = restorePostBookingLink();
+    if (!restored) return;
+    postBookingClaimTokenRef.current = restored.claimToken;
+    setPostBookingReservationId(restored.reservationId);
+    setPostBookingLineLinkStatus("idle");
+    setPostBookingLineLinkMessage(
+      "ログインが完了しました。もう一度「LINEで通知を受け取る」を押して連携を完了してください。"
+    );
+    // Note: we render the success card via `result && submittedReservation`
+    // gates, so the post-booking UI only appears when those are also present.
+    // After a hard reload `submittedReservation` is null; in that case the
+    // restored state is held in memory for any in-tab navigation, but the UI
+    // won't show the button. That is acceptable: server-side claim TTL caps
+    // the exposure to 1h and the user can retry the booking flow.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [calendarMonth, setCalendarMonth] = useState<Date>(() =>
     startOfJstMonth(jstDateFromString(initialResolvedDate))
   );
@@ -485,6 +517,7 @@ export function ReserveForm({
       setPostBookingLineLinkMessage(
         "LINE連携の有効期限が切れているか、トークンが見つかりません。"
       );
+      clearPostBookingLink();
       return;
     }
     setPostBookingLineLinkStatus("connecting");
@@ -549,6 +582,7 @@ export function ReserveForm({
       if (res.ok) {
         // Consume the claim token client-side so it cannot be re-used from this UI.
         postBookingClaimTokenRef.current = null;
+        clearPostBookingLink();
         setPostBookingLineLinkStatus("linked");
         setPostBookingLineLinkMessage(
           data?.lineNotification?.confirmationSent === false
@@ -557,22 +591,28 @@ export function ReserveForm({
         );
       } else if (res.status === 410 || res.status === 403) {
         postBookingClaimTokenRef.current = null;
+        clearPostBookingLink();
         setPostBookingLineLinkStatus("error");
         setPostBookingLineLinkMessage(
           "LINE連携の有効期限が切れたか、トークンが無効です。予約自体は受付済みです。"
         );
       } else if (res.status === 422) {
+        // Pushable check failed: friend-not-added or blocked. Token still valid;
+        // keep storage so user can retry after adding the official account.
         setPostBookingLineLinkStatus("error");
         setPostBookingLineLinkMessage(
           "LINE公式アカウントに通知を送れません。友だち追加とブロック状態をご確認ください。"
         );
       } else {
+        // Generic non-OK. Token may still be valid; leave storage in place so
+        // the user can retry the button without losing the claim.
         setPostBookingLineLinkStatus("error");
         setPostBookingLineLinkMessage(
           "LINE連携に失敗しました。予約自体は受付済みです。"
         );
       }
     } catch {
+      // Network error before reaching the server. Token still valid; keep storage.
       setPostBookingLineLinkStatus("error");
       setPostBookingLineLinkMessage(
         "通信エラーが発生しました。予約自体は受付済みです。"
@@ -639,6 +679,8 @@ export function ReserveForm({
         // Reset post-booking LINE link UI state.
         setPostBookingLineLinkMessage(null);
         postBookingClaimTokenRef.current = null;
+        // A fresh submit always supersedes any prior unfinished link attempt.
+        clearPostBookingLink();
         const wasLinkedAtSubmit =
           data?.lineNotification && data.lineNotification.enabled === true;
         const issuedClaimToken =
@@ -655,6 +697,12 @@ export function ReserveForm({
           postBookingClaimTokenRef.current = issuedClaimToken;
           setPostBookingReservationId(newReservationId);
           setPostBookingLineLinkStatus("idle");
+          // Persist so the link flow can resume after a LIFF login redirect.
+          storePostBookingLink({
+            reservationId: newReservationId,
+            claimToken: issuedClaimToken,
+            expiresAtMs: Date.now() + POST_BOOKING_LINK_TTL_MS,
+          });
         } else {
           setPostBookingReservationId(null);
           setPostBookingLineLinkStatus("idle");
@@ -1317,54 +1365,60 @@ export function ReserveForm({
               </a>
             </p>
           </div>
-          {liffIdFromEnv &&
-          postBookingReservationId &&
-          postBookingLineLinkStatus !== "linked" ? (
-            <div className="space-y-2 rounded-md border border-[#1ec55a]/40 bg-[#f4fbf5] px-4 py-3">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div className="text-sm text-[#2f6b3b]">
-                  <p>LINEで予約完了通知と前日通知を受け取る（任意）</p>
-                  <p className="text-xs text-[#6b5644]">
-                    予約自体はすでに受付済みです。LINE連携は失敗しても予約に影響しません。
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handlePostBookingLineLink}
-                  disabled={postBookingLineLinkStatus === "connecting"}
-                  className="inline-flex shrink-0 items-center justify-center rounded-md border border-[#1ec55a] bg-white px-3 py-1.5 text-sm font-medium text-[#1a8a3f] transition hover:bg-[#e8f7ec] disabled:cursor-not-allowed disabled:opacity-60"
-                  aria-label="予約にLINE連携を追加"
-                >
-                  {postBookingLineLinkStatus === "connecting"
-                    ? "連携中..."
-                    : "LINEで通知を受け取る"}
-                </button>
-              </div>
-              {postBookingLineLinkMessage ? (
-                <p
-                  role="status"
-                  aria-live="polite"
-                  className={
-                    postBookingLineLinkStatus === "error"
-                      ? "text-xs text-[#8f2a2a]"
-                      : "text-xs text-[#2f6b3b]"
-                  }
-                >
-                  {postBookingLineLinkMessage}
-                </p>
-              ) : null}
+        </div>
+      ) : null}
+      {/*
+        Post-booking LINE link block. Rendered OUTSIDE the success card so that
+        it can also appear when the user returns from a LIFF login redirect
+        (in which case `submittedReservation` is null but the claim token was
+        restored from sessionStorage).
+      */}
+      {liffIdFromEnv &&
+      postBookingReservationId &&
+      postBookingLineLinkStatus !== "linked" ? (
+        <div className="space-y-2 rounded-md border border-[#1ec55a]/40 bg-[#f4fbf5] px-4 py-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm text-[#2f6b3b]">
+              <p>LINEで予約完了通知と前日通知を受け取る（任意）</p>
+              <p className="text-xs text-[#6b5644]">
+                予約自体はすでに受付済みです。LINE連携は失敗しても予約に影響しません。
+              </p>
             </div>
-          ) : null}
-          {liffIdFromEnv && postBookingLineLinkStatus === "linked" ? (
+            <button
+              type="button"
+              onClick={handlePostBookingLineLink}
+              disabled={postBookingLineLinkStatus === "connecting"}
+              className="inline-flex shrink-0 items-center justify-center rounded-md border border-[#1ec55a] bg-white px-3 py-1.5 text-sm font-medium text-[#1a8a3f] transition hover:bg-[#e8f7ec] disabled:cursor-not-allowed disabled:opacity-60"
+              aria-label="予約にLINE連携を追加"
+            >
+              {postBookingLineLinkStatus === "connecting"
+                ? "連携中..."
+                : "LINEで通知を受け取る"}
+            </button>
+          </div>
+          {postBookingLineLinkMessage ? (
             <p
               role="status"
               aria-live="polite"
-              className="rounded-md bg-[#f4fbf5] px-4 py-2 text-xs text-[#2f6b3b]"
+              className={
+                postBookingLineLinkStatus === "error"
+                  ? "text-xs text-[#8f2a2a]"
+                  : "text-xs text-[#2f6b3b]"
+              }
             >
-              {postBookingLineLinkMessage ?? "LINE連携が完了しました。"}
+              {postBookingLineLinkMessage}
             </p>
           ) : null}
         </div>
+      ) : null}
+      {liffIdFromEnv && postBookingLineLinkStatus === "linked" ? (
+        <p
+          role="status"
+          aria-live="polite"
+          className="rounded-md bg-[#f4fbf5] px-4 py-2 text-xs text-[#2f6b3b]"
+        >
+          {postBookingLineLinkMessage ?? "LINE連携が完了しました。"}
+        </p>
       ) : null}
       {error ? (
         <p role="alert" aria-live="assertive" className="text-red-700 text-sm">

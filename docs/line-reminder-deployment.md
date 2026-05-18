@@ -72,6 +72,14 @@
 - `prisma/migrations/20260511120000_add_line_reminder_fields/migration.sql`（ディレクトリごと、本番適用済）
 - `prisma/migrations/20260514120000_add_line_post_booking_link_fields/migration.sql`（**新規**、本番未適用）
 - `src/app/api/reservations/[id]/line-link/route.ts`（**新規**、post-booking LINE 連携）
+- `src/lib/post-booking-link-storage.ts`（**新規**、post-booking link 用 sessionStorage helper。LIFF login redirect 後の claim 復元に使う）
+
+**post-booking link storage 修正のデプロイ**:
+
+- DB schema / migration 変更なし → **production migration 不要**
+- Vercel production redeploy のみ
+- claim token は依然 1h TTL（server 側 `LINE_CLAIM_TOKEN_TTL_MS` が authoritative gate）
+- sessionStorage 行 key: `bistro:post-booking-link`、タブを閉じれば自動消滅
 
 ### 依存
 
