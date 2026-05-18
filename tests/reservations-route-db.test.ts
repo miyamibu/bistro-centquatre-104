@@ -76,7 +76,7 @@ describeIfDatabase("reservations route duplicate guard (db)", () => {
 
   afterAll(async () => {
     await clearReservationArtifacts();
-    await prisma.$disconnect();
+    await prisma!.$disconnect();
   });
 
   it("returns the existing reservation for duplicate submissions within 1 minute", async () => {
@@ -101,7 +101,7 @@ describeIfDatabase("reservations route duplicate guard (db)", () => {
     expect(secondBody.deduplicated).toBe(true);
     expect(secondBody.reservationId).toBe(firstBody.reservationId);
 
-    const reservations = await prisma.reservation.findMany({
+    const reservations = await prisma!.reservation.findMany({
       where: {
         date: payload.date as string,
         servicePeriod: payload.servicePeriod as "LUNCH" | "DINNER",
@@ -128,7 +128,7 @@ describeIfDatabase("reservations route duplicate guard (db)", () => {
     expect(response.status).toBe(200);
     expect(body.deduplicated).toBe(false);
 
-    const reservations = await prisma.reservation.findMany({
+    const reservations = await prisma!.reservation.findMany({
       where: {
         date: payload.date as string,
         servicePeriod: payload.servicePeriod as "LUNCH" | "DINNER",
@@ -148,7 +148,7 @@ describeIfDatabase("reservations route duplicate guard (db)", () => {
     const firstResponse = await POST(buildRequest(payload));
     const firstBody = await firstResponse.json();
 
-    await prisma.$executeRawUnsafe(
+    await prisma!.$executeRawUnsafe(
       `UPDATE "Reservation" SET "createdAt" = NOW() - INTERVAL '2 minutes' WHERE "id" = $1`,
       firstBody.reservationId
     );
@@ -160,7 +160,7 @@ describeIfDatabase("reservations route duplicate guard (db)", () => {
     expect(secondBody.deduplicated).toBe(false);
     expect(secondBody.reservationId).not.toBe(firstBody.reservationId);
 
-    const reservations = await prisma.reservation.findMany({
+    const reservations = await prisma!.reservation.findMany({
       where: {
         date: payload.date as string,
         servicePeriod: payload.servicePeriod as "LUNCH" | "DINNER",

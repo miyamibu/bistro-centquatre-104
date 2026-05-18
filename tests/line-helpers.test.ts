@@ -52,7 +52,11 @@ describe("line helpers", () => {
     const { plain, hash } = generateLineClaimToken();
     expect(verifyLineClaimTokenHash(plain, hash)).toBe(true);
     expect(verifyLineClaimTokenHash(plain + "x", hash)).toBe(false);
-    expect(verifyLineClaimTokenHash(plain, hash.replace(/.$/u, "0"))).toBe(false);
+    const lastChar = hash.slice(-1);
+    const mutatedLastChar = lastChar === "0" ? "1" : "0";
+    const mutatedHash = hash.slice(0, -1) + mutatedLastChar;
+    expect(mutatedHash).not.toBe(hash);
+    expect(verifyLineClaimTokenHash(plain, mutatedHash)).toBe(false);
     expect(verifyLineClaimTokenHash("", hash)).toBe(false);
     expect(verifyLineClaimTokenHash(plain, null)).toBe(false);
     expect(verifyLineClaimTokenHash(plain, "")).toBe(false);
