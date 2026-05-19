@@ -19,7 +19,7 @@
     "prisma:seed": "tsx prisma/seed.ts",
     "backup:reservations:pull": "tsx scripts/pull-reservation-backups.ts",
     "backup:reservations:cleanup": "tsx scripts/cleanup-reservation-backups.ts",
-    "backup:reservations:run": "npm run backup:reservations:pull && npm run backup:reservations:cleanup",
+    "backup:reservations:run": "node scripts/run-local-reservation-backup.mjs",
     "backup:workspace:snapshot": "node scripts/run-local-safety-backups.mjs",
     "add": "liftkit add",
     "convert:pdf": "tsx batch-convert-pdf.mts"
