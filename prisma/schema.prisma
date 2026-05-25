@@ -43,6 +43,11 @@ enum PrivateBlockAuditSource {
   ADMIN_SHARED_BASIC
 }
 
+enum DailyJournalStatus {
+  DRAFT
+  PUBLISHED
+}
+
 model Reservation {
   id                    String                 @id @default(cuid())
   date                  String
@@ -118,4 +123,19 @@ model Photo {
   category    String  @default("food")
   sortOrder   Int     @default(0)
   isPublished Boolean @default(true)
+}
+
+model DailyJournalEntry {
+  id        String             @id @default(cuid())
+  date      String
+  title     String
+  category  String
+  body      String
+  photoUrl  String?
+  status    DailyJournalStatus @default(DRAFT)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  @@index([status, date, updatedAt])
+  @@index([date, updatedAt])
 }

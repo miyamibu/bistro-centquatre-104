@@ -10,6 +10,7 @@ const links = [
   { href: "/booking", label: "予約" },
   { href: "/menu", label: "メニュー" },
   { href: "/picture", label: "写真" },
+  { href: "/daily-journal", label: "日々の出来事" },
   { href: "/access", label: "アクセス" },
   { href: "/faq", label: "FAQ" },
   { href: "/contact", label: "お問い合わせ" },

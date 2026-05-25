@@ -626,7 +626,7 @@ return (
 >
   <div className="mx-auto hidden w-full max-w-5xl justify-center md:flex">
     <Link
-      href="/menu"
+      href="/daily-journal"
       style={{
         ...readMoreButtonStyle,
         transform: `translate(${readMoreBtnPos.x}px, ${readMoreBtnPos.y}px)`,
@@ -726,7 +726,7 @@ return (
         </div>
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
           <Link
-            href="/menu"
+            href="/daily-journal"
             style={readMoreButtonStyle}
             className={readMoreButtonClassName}
           >
