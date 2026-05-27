@@ -30,7 +30,8 @@ const envSchema = z
     STORE_NAME: z.string().min(1).default("Bistro 104"),
     LINE_CHANNEL_ACCESS_TOKEN: optionalString,
     LINE_CHANNEL_SECRET: optionalString,
-    LIFF_ID: optionalString,
+    LINE_LOGIN_CHANNEL_ID: optionalString,
+    NEXT_PUBLIC_LIFF_ID: optionalString,
     NEXT_PUBLIC_SUPABASE_URL: optionalUrl,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: optionalString,
     SUPABASE_SERVICE_ROLE_KEY: optionalString,
@@ -85,5 +86,25 @@ if (!parsedEnv.success) {
 export const env = parsedEnv.data;
 
 export function hasLineMessagingEnv(): boolean {
-  return !!(env.LINE_CHANNEL_ACCESS_TOKEN && env.LINE_CHANNEL_SECRET && env.LIFF_ID);
+  return !!env.LINE_CHANNEL_ACCESS_TOKEN;
+}
+
+export function hasLineLoginEnv(): boolean {
+  return !!env.LINE_LOGIN_CHANNEL_ID;
+}
+
+export function hasLineWebhookEnv(): boolean {
+  return !!env.LINE_CHANNEL_SECRET;
+}
+
+export function getLineLoginChannelId(): string | undefined {
+  return env.LINE_LOGIN_CHANNEL_ID;
+}
+
+export function getLineChannelAccessToken(): string | undefined {
+  return env.LINE_CHANNEL_ACCESS_TOKEN;
+}
+
+export function getLineChannelSecret(): string | undefined {
+  return env.LINE_CHANNEL_SECRET;
 }

@@ -103,7 +103,7 @@ describeIfDatabase("private block route contract (db)", () => {
 
   afterAll(async () => {
     await clearReservationArtifacts();
-    await prisma.$disconnect();
+    await prisma!.$disconnect();
   });
 
   it("returns CREATED then NO_OP and persists audit logs", async () => {
@@ -121,7 +121,7 @@ describeIfDatabase("private block route contract (db)", () => {
     expect(noop.status).toBe(200);
     expect(noop.body?.result).toBe("NO_OP");
 
-    const auditRows = await prisma.$queryRaw<Array<{ result: string }>>`
+    const auditRows = await prisma!.$queryRaw<Array<{ result: string }>>`
       SELECT "result"
       FROM "PrivateBlockAuditLog"
       WHERE "date" = ${payload.date}
@@ -139,7 +139,7 @@ describeIfDatabase("private block route contract (db)", () => {
       note: "監査テスト: 競合",
     };
 
-    await prisma.reservation.create({
+    await prisma!.reservation.create({
       data: {
         date: payload.date,
         servicePeriod: payload.servicePeriod,
@@ -174,7 +174,7 @@ describeIfDatabase("private block route contract (db)", () => {
     expect(statuses).toEqual([200, 201]);
     expect(results).toEqual(["CREATED", "NO_OP"]);
 
-    const activePrivateBlocks = await prisma.reservation.count({
+    const activePrivateBlocks = await prisma!.reservation.count({
       where: {
         date: payload.date,
         servicePeriod: payload.servicePeriod,
@@ -216,7 +216,7 @@ describeIfDatabase("private block route contract (db)", () => {
 
     expect(releasedResponse.status).toBe(200);
 
-    const auditRows = await prisma.$queryRaw<Array<{ result: string; actorName: string | null }>>`
+    const auditRows = await prisma!.$queryRaw<Array<{ result: string; actorName: string | null }>>`
       SELECT "result", "actorName"
       FROM "PrivateBlockAuditLog"
       WHERE "reservationId" = ${reservationId}

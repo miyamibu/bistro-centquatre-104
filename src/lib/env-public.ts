@@ -8,6 +8,7 @@ const publicEnvSchema = z.object({
     .preprocess(emptyToUndefined, z.string().url().optional())
     .catch(undefined),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+  NEXT_PUBLIC_LIFF_ID: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
 });
 
 const parsedPublicEnv = publicEnvSchema.safeParse(process.env);

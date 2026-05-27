@@ -40,6 +40,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  clearPostBookingLink,
+  restorePostBookingLink,
+  storePostBookingLink,
+} from "@/lib/post-booking-link-storage";
 
 interface Props {
   defaultDate: string;
@@ -137,6 +142,53 @@ export function ReserveForm({
   const [error, setError] = useState<string | null>(null);
   const [submittedReservation, setSubmittedReservation] =
     useState<SubmittedReservationSummary | null>(null);
+  // LIFF ID token は予約送信時にだけ使う。localStorage 等には保存しない。
+  const lineIdTokenRef = useRef<string | null>(null);
+  const [lineLinkStatus, setLineLinkStatus] = useState<
+    "idle" | "connecting" | "linked" | "error"
+  >("idle");
+  const [lineLinkMessage, setLineLinkMessage] = useState<string | null>(null);
+  const liffIdFromEnv =
+    typeof process !== "undefined" ? process.env.NEXT_PUBLIC_LIFF_ID : undefined;
+  // Post-booking LINE linking state. Server-issued claim token is kept only
+  // in component state plus a short-lived sessionStorage record so the linking
+  // flow can resume after a LIFF login redirect. The plain claim token is
+  // never written to localStorage and never logged.
+  const [postBookingReservationId, setPostBookingReservationId] = useState<string | null>(
+    null
+  );
+  const postBookingClaimTokenRef = useRef<string | null>(null);
+  const [postBookingLineLinkStatus, setPostBookingLineLinkStatus] = useState<
+    "idle" | "connecting" | "linked" | "skipped" | "error"
+  >("idle");
+  const [postBookingLineLinkMessage, setPostBookingLineLinkMessage] = useState<
+    string | null
+  >(null);
+  // Mirrors the server-side LINE_CLAIM_TOKEN_TTL_MS (1h). Stored client-side
+  // only as a UX hint; server is the authoritative gate (returns 410 if expired).
+  const POST_BOOKING_LINK_TTL_MS = 60 * 60 * 1000;
+
+  // On mount, restore any post-booking link record left over from a prior page
+  // load (typically after a LIFF login redirect). state-only restore; do NOT
+  // auto-retrigger the link flow.
+  useEffect(() => {
+    if (!liffIdFromEnv) return;
+    const restored = restorePostBookingLink();
+    if (!restored) return;
+    postBookingClaimTokenRef.current = restored.claimToken;
+    setPostBookingReservationId(restored.reservationId);
+    setPostBookingLineLinkStatus("idle");
+    setPostBookingLineLinkMessage(
+      "ログインが完了しました。もう一度「LINEで通知を受け取る」を押して連携を完了してください。"
+    );
+    // Note: we render the success card via `result && submittedReservation`
+    // gates, so the post-booking UI only appears when those are also present.
+    // After a hard reload `submittedReservation` is null; in that case the
+    // restored state is held in memory for any in-tab navigation, but the UI
+    // won't show the button. That is acceptable: server-side claim TTL caps
+    // the exposure to 1h and the user can retry the booking flow.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [calendarMonth, setCalendarMonth] = useState<Date>(() =>
     startOfJstMonth(jstDateFromString(initialResolvedDate))
   );
@@ -402,6 +454,172 @@ export function ReserveForm({
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  async function handleLineLink() {
+    if (!liffIdFromEnv) return;
+    setLineLinkStatus("connecting");
+    setLineLinkMessage(null);
+    try {
+      const liffModule = await import("@line/liff");
+      const liff = liffModule.default;
+      await liff.init({ liffId: liffIdFromEnv });
+      if (!liff.isLoggedIn()) {
+        // login() triggers a navigation; nothing after will run on this load.
+        liff.login();
+        return;
+      }
+      if (typeof liff.requestFriendship === "function") {
+        try {
+          await liff.requestFriendship();
+        } catch {
+          // some clients/contexts disallow this; continue and rely on getFriendship check below.
+        }
+      }
+      const friendship = await liff.getFriendship();
+      if (!friendship?.friendFlag) {
+        setLineLinkStatus("error");
+        setLineLinkMessage(
+          "LINE公式アカウントの友だち追加が必要です。通常予約はそのまま続行できます。"
+        );
+        lineIdTokenRef.current = null;
+        return;
+      }
+      const idToken = liff.getIDToken();
+      if (!idToken) {
+        setLineLinkStatus("error");
+        setLineLinkMessage(
+          "LINE連携に失敗しました。通常予約はそのまま続行できます。"
+        );
+        lineIdTokenRef.current = null;
+        return;
+      }
+      lineIdTokenRef.current = idToken;
+      setLineLinkStatus("linked");
+      setLineLinkMessage("LINE前日通知を受け取ります。");
+    } catch {
+      setLineLinkStatus("error");
+      setLineLinkMessage(
+        "LINE連携に失敗しました。通常予約はそのまま続行できます。"
+      );
+      lineIdTokenRef.current = null;
+    }
+  }
+
+  // Post-booking LINE linking: invoked from the success card AFTER a
+  // reservation has been created without LINE. Uses the server-issued
+  // claim token (only present in component state) plus a fresh LIFF ID
+  // token to authorize attaching LINE to the existing reservation.
+  async function handlePostBookingLineLink() {
+    if (!liffIdFromEnv) return;
+    const reservationId = postBookingReservationId;
+    const claimToken = postBookingClaimTokenRef.current;
+    if (!reservationId || !claimToken) {
+      setPostBookingLineLinkStatus("error");
+      setPostBookingLineLinkMessage(
+        "LINE連携の有効期限が切れているか、トークンが見つかりません。"
+      );
+      clearPostBookingLink();
+      return;
+    }
+    setPostBookingLineLinkStatus("connecting");
+    setPostBookingLineLinkMessage(null);
+
+    let idToken: string | null = null;
+    try {
+      const liffModule = await import("@line/liff");
+      const liff = liffModule.default;
+      await liff.init({ liffId: liffIdFromEnv });
+      if (!liff.isLoggedIn()) {
+        liff.login();
+        return;
+      }
+      if (typeof liff.requestFriendship === "function") {
+        try {
+          await liff.requestFriendship();
+        } catch {
+          // ignore; rely on friendship check below
+        }
+      }
+      const friendship = await liff.getFriendship();
+      if (!friendship?.friendFlag) {
+        setPostBookingLineLinkStatus("error");
+        setPostBookingLineLinkMessage(
+          "LINE公式アカウントの友だち追加が必要です。予約自体は受付済みです。"
+        );
+        return;
+      }
+      idToken = liff.getIDToken();
+      if (!idToken) {
+        setPostBookingLineLinkStatus("error");
+        setPostBookingLineLinkMessage(
+          "LINE連携に失敗しました。予約自体は受付済みです。"
+        );
+        return;
+      }
+    } catch {
+      setPostBookingLineLinkStatus("error");
+      setPostBookingLineLinkMessage(
+        "LINE連携に失敗しました。予約自体は受付済みです。"
+      );
+      return;
+    }
+
+    try {
+      const res = await fetch(
+        `/api/reservations/${encodeURIComponent(reservationId)}/line-link`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+          },
+          body: JSON.stringify({
+            claimToken,
+            lineIdToken: idToken,
+          }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        // Consume the claim token client-side so it cannot be re-used from this UI.
+        postBookingClaimTokenRef.current = null;
+        clearPostBookingLink();
+        setPostBookingLineLinkStatus("linked");
+        setPostBookingLineLinkMessage(
+          data?.lineNotification?.confirmationSent === false
+            ? "LINE連携を完了しました。確認メッセージの送信は後ほど再試行されます。"
+            : "LINE連携が完了しました。LINEで予約確認と前日通知をお届けします。"
+        );
+      } else if (res.status === 410 || res.status === 403) {
+        postBookingClaimTokenRef.current = null;
+        clearPostBookingLink();
+        setPostBookingLineLinkStatus("error");
+        setPostBookingLineLinkMessage(
+          "LINE連携の有効期限が切れたか、トークンが無効です。予約自体は受付済みです。"
+        );
+      } else if (res.status === 422) {
+        // Pushable check failed: friend-not-added or blocked. Token still valid;
+        // keep storage so user can retry after adding the official account.
+        setPostBookingLineLinkStatus("error");
+        setPostBookingLineLinkMessage(
+          "LINE公式アカウントに通知を送れません。友だち追加とブロック状態をご確認ください。"
+        );
+      } else {
+        // Generic non-OK. Token may still be valid; leave storage in place so
+        // the user can retry the button without losing the claim.
+        setPostBookingLineLinkStatus("error");
+        setPostBookingLineLinkMessage(
+          "LINE連携に失敗しました。予約自体は受付済みです。"
+        );
+      }
+    } catch {
+      // Network error before reaching the server. Token still valid; keep storage.
+      setPostBookingLineLinkStatus("error");
+      setPostBookingLineLinkMessage(
+        "通信エラーが発生しました。予約自体は受付済みです。"
+      );
+    }
+  }
+
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (submittingRef.current) return;
@@ -419,7 +637,9 @@ export function ReserveForm({
     try {
       const fullName = `${form.lastName} ${form.firstName}`.trim();
       const submittedServicePeriod = currentServicePeriod;
-      const payload = {
+      const linkedLineIdToken =
+        lineLinkStatus === "linked" ? lineIdTokenRef.current : null;
+      const payload: Record<string, unknown> = {
         date: form.date,
         servicePeriod: submittedServicePeriod,
         course: form.course,
@@ -431,6 +651,9 @@ export function ReserveForm({
         partySize: Number(form.partySize),
         arrivalTime: form.arrivalTime,
       };
+      if (linkedLineIdToken) {
+        payload.lineIdToken = linkedLineIdToken;
+      }
       const res = await fetch("/api/reservations", {
         method: "POST",
         headers: {
@@ -453,6 +676,37 @@ export function ReserveForm({
           name: fullName,
           phone: form.phone,
         });
+        // Reset post-booking LINE link UI state.
+        setPostBookingLineLinkMessage(null);
+        postBookingClaimTokenRef.current = null;
+        // A fresh submit always supersedes any prior unfinished link attempt.
+        clearPostBookingLink();
+        const wasLinkedAtSubmit =
+          data?.lineNotification && data.lineNotification.enabled === true;
+        const issuedClaimToken =
+          typeof data?.lineClaimToken === "string" && data.lineClaimToken.length > 0
+            ? data.lineClaimToken
+            : null;
+        const newReservationId =
+          typeof data?.reservationId === "string" ? data.reservationId : null;
+        if (wasLinkedAtSubmit) {
+          // Linked at the time of submit. No post-booking UI needed.
+          setPostBookingReservationId(null);
+          setPostBookingLineLinkStatus("linked");
+        } else if (issuedClaimToken && newReservationId && liffIdFromEnv) {
+          postBookingClaimTokenRef.current = issuedClaimToken;
+          setPostBookingReservationId(newReservationId);
+          setPostBookingLineLinkStatus("idle");
+          // Persist so the link flow can resume after a LIFF login redirect.
+          storePostBookingLink({
+            reservationId: newReservationId,
+            claimToken: issuedClaimToken,
+            expiresAtMs: Date.now() + POST_BOOKING_LINK_TTL_MS,
+          });
+        } else {
+          setPostBookingReservationId(null);
+          setPostBookingLineLinkStatus("idle");
+        }
         const [nextDaily, nextMonthly] = await Promise.all([
           loadDailyAvailability(form.date, submittedServicePeriod, form.partySize).catch(
             () => checkingAvailability
@@ -907,7 +1161,62 @@ export function ReserveForm({
 
             <div className="hidden md:-mt-[1cm] md:block">
               <div className="space-y-3">
-                <div className="flex w-full justify-end">
+                <div className="flex w-full items-center justify-end gap-3">
+                  {liffIdFromEnv ? (
+                    <p className="-translate-y-[0.2cm] text-right text-xs leading-snug text-[#2f6b3b] md:text-sm">
+                      連携すると
+                      <br />
+                      前日にLINE通知
+                    </p>
+                  ) : null}
+                  {liffIdFromEnv ? (
+                    <div className="flex flex-col items-end gap-1 -translate-y-[0.2cm]">
+                      <button
+                        type="button"
+                        onClick={handleLineLink}
+                        disabled={
+                          lineLinkStatus === "connecting" ||
+                          lineLinkStatus === "linked"
+                        }
+                        className="relative inline-flex shrink-0 items-center justify-center rounded-full border-0 bg-transparent p-0 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1ec55a]/40 disabled:cursor-not-allowed disabled:opacity-60"
+                        style={{
+                          width: `${reserveButtonKnobWidth}px`,
+                          height: `${reserveButtonKnobHeight}px`,
+                        }}
+                        aria-label="LINEで前日通知を受け取る"
+                      >
+                        <span
+                          className="inline-flex items-center justify-center rounded-[26px] bg-gradient-to-b from-[#fffdfa] via-[#f4fbf5] to-[#e8f7ec]"
+                          style={{
+                            width: `${reserveButtonKnobWidth}px`,
+                            height: `${reserveButtonKnobHeight}px`,
+                            border: `${reserveButtonBorderWidth}px solid #1ec55a`,
+                          }}
+                        >
+                          <span className="text-base font-semibold tracking-wide text-[#1a8a3f] md:text-lg">
+                            {lineLinkStatus === "linked"
+                              ? "連携済"
+                              : lineLinkStatus === "connecting"
+                                ? "連携中"
+                                : "LINE"}
+                          </span>
+                        </span>
+                      </button>
+                      {lineLinkMessage ? (
+                        <p
+                          role="status"
+                          aria-live="polite"
+                          className={
+                            lineLinkStatus === "linked"
+                              ? "text-xs text-[#2f6b3b]"
+                              : "text-xs text-[#8f2a2a]"
+                          }
+                        >
+                          {lineLinkMessage}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <button
                     type="submit"
                     className="relative inline-flex shrink-0 -translate-y-[0.2cm] items-center justify-center rounded-full border-0 bg-transparent p-0 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7a5a31]/35 disabled:cursor-not-allowed disabled:opacity-50"
@@ -950,7 +1259,61 @@ export function ReserveForm({
       ) : null}
 
       <div className="mx-auto w-full max-w-[20.5rem] space-y-3 pt-2 md:hidden">
-        <div className="flex w-full justify-end">
+        <div className="flex w-full items-center justify-end gap-2">
+          {liffIdFromEnv ? (
+            <p className="translate-y-[-0.5cm] text-right text-[10px] leading-snug text-[#2f6b3b]">
+              連携すると
+              <br />
+              前日にLINE通知
+            </p>
+          ) : null}
+          {liffIdFromEnv ? (
+            <div className="flex flex-col items-end gap-1 translate-y-[-0.5cm]">
+              <button
+                type="button"
+                onClick={handleLineLink}
+                disabled={
+                  lineLinkStatus === "connecting" || lineLinkStatus === "linked"
+                }
+                className="relative inline-flex shrink-0 items-center justify-center rounded-full border-0 bg-transparent p-0 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1ec55a]/40 disabled:cursor-not-allowed disabled:opacity-60"
+                style={{
+                  width: `${reserveButtonKnobWidth}px`,
+                  height: `${reserveButtonKnobHeight}px`,
+                }}
+                aria-label="LINEで前日通知を受け取る"
+              >
+                <span
+                  className="inline-flex items-center justify-center rounded-[26px] bg-gradient-to-b from-[#fffdfa] via-[#f4fbf5] to-[#e8f7ec]"
+                  style={{
+                    width: `${reserveButtonKnobWidth}px`,
+                    height: `${reserveButtonKnobHeight}px`,
+                    border: `${reserveButtonBorderWidth}px solid #1ec55a`,
+                  }}
+                >
+                  <span className="text-base font-semibold tracking-wide text-[#1a8a3f] md:text-lg">
+                    {lineLinkStatus === "linked"
+                      ? "連携済"
+                      : lineLinkStatus === "connecting"
+                        ? "連携中"
+                        : "LINE"}
+                  </span>
+                </span>
+              </button>
+              {lineLinkMessage ? (
+                <p
+                  role="status"
+                  aria-live="polite"
+                  className={
+                    lineLinkStatus === "linked"
+                      ? "text-[10px] text-[#2f6b3b]"
+                      : "text-[10px] text-[#8f2a2a]"
+                  }
+                >
+                  {lineLinkMessage}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           <button
             type="submit"
             className="relative inline-flex shrink-0 translate-y-[-0.5cm] items-center justify-center rounded-full border-0 bg-transparent p-0 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7a5a31]/35 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1003,6 +1366,59 @@ export function ReserveForm({
             </p>
           </div>
         </div>
+      ) : null}
+      {/*
+        Post-booking LINE link block. Rendered OUTSIDE the success card so that
+        it can also appear when the user returns from a LIFF login redirect
+        (in which case `submittedReservation` is null but the claim token was
+        restored from sessionStorage).
+      */}
+      {liffIdFromEnv &&
+      postBookingReservationId &&
+      postBookingLineLinkStatus !== "linked" ? (
+        <div className="space-y-2 rounded-md border border-[#1ec55a]/40 bg-[#f4fbf5] px-4 py-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm text-[#2f6b3b]">
+              <p>LINEで予約完了通知と前日通知を受け取る（任意）</p>
+              <p className="text-xs text-[#6b5644]">
+                予約自体はすでに受付済みです。LINE連携は失敗しても予約に影響しません。
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handlePostBookingLineLink}
+              disabled={postBookingLineLinkStatus === "connecting"}
+              className="inline-flex shrink-0 items-center justify-center rounded-md border border-[#1ec55a] bg-white px-3 py-1.5 text-sm font-medium text-[#1a8a3f] transition hover:bg-[#e8f7ec] disabled:cursor-not-allowed disabled:opacity-60"
+              aria-label="予約にLINE連携を追加"
+            >
+              {postBookingLineLinkStatus === "connecting"
+                ? "連携中..."
+                : "LINEで通知を受け取る"}
+            </button>
+          </div>
+          {postBookingLineLinkMessage ? (
+            <p
+              role="status"
+              aria-live="polite"
+              className={
+                postBookingLineLinkStatus === "error"
+                  ? "text-xs text-[#8f2a2a]"
+                  : "text-xs text-[#2f6b3b]"
+              }
+            >
+              {postBookingLineLinkMessage}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {liffIdFromEnv && postBookingLineLinkStatus === "linked" ? (
+        <p
+          role="status"
+          aria-live="polite"
+          className="rounded-md bg-[#f4fbf5] px-4 py-2 text-xs text-[#2f6b3b]"
+        >
+          {postBookingLineLinkMessage ?? "LINE連携が完了しました。"}
+        </p>
       ) : null}
       {error ? (
         <p role="alert" aria-live="assertive" className="text-red-700 text-sm">

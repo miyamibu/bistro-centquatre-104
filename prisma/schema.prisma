@@ -5,8 +5,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum SeatType {
@@ -59,14 +60,21 @@ model Reservation {
   name                  String
   phone                 String
   note                  String?
-  status                ReservationStatus      @default(CONFIRMED)
-  lineUserId            String?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  privateBlockAuditLogs PrivateBlockAuditLog[]
+  status                  ReservationStatus      @default(CONFIRMED)
+  lineUserId              String?
+  lineReminderSentAt      DateTime?
+  lineReminderStatus      String?
+  lineReminderError       String?
+  lineClaimTokenHash      String?
+  lineClaimExpiresAt      DateTime?
+  lineConfirmationSentAt  DateTime?
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+  privateBlockAuditLogs   PrivateBlockAuditLog[]
 
   @@index([date, servicePeriod])
   @@index([date, servicePeriod, reservationType])
+  @@index([lineReminderSentAt])
 }
 
 model PrivateBlockAuditLog {
