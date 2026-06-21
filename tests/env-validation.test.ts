@@ -18,6 +18,8 @@ describe("Production env validation", () => {
       NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
       SUPABASE_SERVICE_ROLE_KEY: "service-role",
       CRON_SECRET: "cron-secret",
+      IDEMPOTENCY_HASH_SECRET: "idempotency-secret",
+      RATE_LIMIT_HASH_SECRET: "rate-limit-secret",
     };
     delete process.env.BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY;
 

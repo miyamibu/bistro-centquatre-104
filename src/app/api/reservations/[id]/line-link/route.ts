@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma, ReservationStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
+import { apiError, readLimitedJson } from "@/lib/api-security";
 import { getContactPayload } from "@/lib/contact";
 import { getRequestId, logError, logInfo, logWarn } from "@/lib/logger";
 import {
@@ -50,11 +50,12 @@ export async function POST(request: NextRequest, ctx: RouteContext) {
   const contact = getContactPayload();
   const { id: reservationId } = await ctx.params;
 
-  const securityError = enforceWriteRequestSecurity(request, {
+  const json = await readLimitedJson(request, {
     requestId,
     requireRequestedWith: false,
+    maxBytes: 16 * 1024,
   });
-  if (securityError) return securityError;
+  if (!json.ok) return json.response;
 
   if (typeof reservationId !== "string" || reservationId.length < 1 || reservationId.length > 64) {
     return apiError(400, {
@@ -65,8 +66,7 @@ export async function POST(request: NextRequest, ctx: RouteContext) {
     });
   }
 
-  const body = await request.json().catch(() => null);
-  const parsed = linkLineToReservationSchema.safeParse(body);
+  const parsed = linkLineToReservationSchema.safeParse(json.body);
   if (!parsed.success) {
     return apiError(400, {
       error: "入力内容が不正です",

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { supabaseServer } from "@/lib/supabase-server";
-import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
+import { ORDER_JSON_BODY_LIMIT_BYTES, apiError, readLimitedJson } from "@/lib/api-security";
+import { buildHmacActorKey, validateIdempotencyKey } from "@/lib/idempotency";
 import { createOrderSchema, zodFields } from "@/lib/validation";
 import {
   buildIdempotencyHash,
@@ -24,22 +25,28 @@ export async function POST(request: NextRequest) {
   const requestId = getRequestId(request);
   const route = "/api/orders";
 
-  const securityError = enforceWriteRequestSecurity(request, { requestId });
-  if (securityError) return securityError;
+  const json = await readLimitedJson(request, {
+    requestId,
+    maxBytes: ORDER_JSON_BODY_LIMIT_BYTES,
+  });
+  if (!json.ok) return json.response;
 
-  const idempotencyKey = getIdempotencyKey(request);
-  if (!idempotencyKey) {
+  const idempotency = validateIdempotencyKey(getIdempotencyKey(request));
+  if (!idempotency.ok) {
     return apiError(400, {
       ok: false,
-      error: "Idempotency-Key が必要です",
-      code: "MISSING_IDEMPOTENCY_KEY",
+      error:
+        idempotency.code === "MISSING_IDEMPOTENCY_KEY"
+          ? "Idempotency-Key が必要です"
+          : "Idempotency-Key の形式が不正です",
+      code: idempotency.code,
       requestId,
     });
   }
+  const idempotencyKey = idempotency.key;
 
   try {
-    const body = await request.json().catch(() => null);
-    const parsed = createOrderSchema.safeParse(body);
+    const parsed = createOrderSchema.safeParse(json.body);
     if (!parsed.success) {
       return apiError(400, {
         ok: false,
@@ -66,7 +73,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const actorKey = `order-create:${input.customerInfo.email.toLowerCase()}:${input.customerInfo.phone}`;
+    const actorKey = buildHmacActorKey("order-create", [
+      input.customerInfo.email,
+      input.customerInfo.phone,
+    ]);
     const requestHash = buildIdempotencyHash({
       items: input.items,
       customerInfo: input.customerInfo,

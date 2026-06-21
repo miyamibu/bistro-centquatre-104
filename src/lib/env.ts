@@ -27,11 +27,14 @@ const envSchema = z
     EMAIL_FROM: optionalEmail,
     RESEND_API_KEY: optionalString,
     ADMIN_EMAIL: optionalEmail,
-    STORE_NAME: z.string().min(1).default("Bistro 104"),
+    STORE_NAME: z.string().min(1).default("bistro centquatre 104"),
     LINE_CHANNEL_ACCESS_TOKEN: optionalString,
     LINE_CHANNEL_SECRET: optionalString,
     LINE_LOGIN_CHANNEL_ID: optionalString,
     NEXT_PUBLIC_LIFF_ID: optionalString,
+    IDEMPOTENCY_HASH_SECRET: optionalString,
+    RATE_LIMIT_HASH_SECRET: optionalString,
+    PDF_TO_IMAGE_ENABLED: z.preprocess(emptyToUndefined, z.enum(["true", "false"]).optional()),
     NEXT_PUBLIC_SUPABASE_URL: optionalUrl,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: optionalString,
     SUPABASE_SERVICE_ROLE_KEY: optionalString,
@@ -61,6 +64,8 @@ const envSchema = z
       "SUPABASE_SERVICE_ROLE_KEY",
       "CRON_SECRET",
       "BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY",
+      "IDEMPOTENCY_HASH_SECRET",
+      "RATE_LIMIT_HASH_SECRET",
     ];
 
     for (const key of requiredInProduction) {

@@ -7,9 +7,6 @@ import {
   summarizeDatabaseUrl,
 } from "./test-database";
 
-const PRIVATE_BLOCK_TEST_CODE = "test-private-block-code";
-process.env.PRIVATE_BLOCK_ACCESS_CODE ??= PRIVATE_BLOCK_TEST_CODE;
-
 const hasSafeDatabase = Boolean(safeTestDatabaseUrl);
 const describeIfDatabase = hasSafeDatabase ? describe : describe.skip;
 const prisma = hasSafeDatabase ? createTestPrismaClient() : null;
@@ -27,11 +24,17 @@ if (!process.env.TEST_DATABASE_URL) {
   console.warn("[tests] Skipping destructive DB tests because TEST_DATABASE_URL is not set");
 }
 
-function buildReservationRequest(body: unknown) {
-  return new NextRequest("http://localhost:3000/api/reservations", {
+function buildAdminPrivateBlockRequest(body: unknown) {
+  const basicToken = Buffer.from(
+    `${process.env.ADMIN_BASIC_USER}:${process.env.ADMIN_BASIC_PASS}`
+  ).toString("base64");
+
+  return new NextRequest("http://localhost:3000/api/admin/private-block", {
     method: "POST",
     headers: {
+      authorization: `Basic ${basicToken}`,
       "content-type": "application/json",
+      "x-requested-with": "XMLHttpRequest",
       origin: "http://localhost:3000",
     },
     body: JSON.stringify(body),
@@ -43,20 +46,8 @@ async function postPrivateBlock(body: {
   servicePeriod: "LUNCH" | "DINNER";
   note?: string;
 }) {
-  const { POST: postReservation } = await import("@/app/api/reservations/route");
-  const arrivalTime = body.servicePeriod === "LUNCH" ? "11:30" : "18:00";
-  const response = await postReservation(
-    buildReservationRequest({
-      reservationType: "PRIVATE_BLOCK",
-      privateBlockAccessCode: process.env.PRIVATE_BLOCK_ACCESS_CODE ?? PRIVATE_BLOCK_TEST_CODE,
-      date: body.date,
-      arrivalTime,
-      lastName: "貸切",
-      firstName: "テスト",
-      phone: "09000000000",
-      note: body.note,
-    })
-  );
+  const { POST: postAdminPrivateBlock } = await import("@/app/api/admin/private-block/route");
+  const response = await postAdminPrivateBlock(buildAdminPrivateBlockRequest(body));
 
   const json = await response.json().catch(() => null);
   return {
@@ -115,7 +106,7 @@ describeIfDatabase("private block route contract (db)", () => {
 
     const created = await postPrivateBlock(payload);
     expect(created.status).toBe(201);
-    expect(created.body?.result).toBe("CREATED");
+    expect(created.body?.result).toBe("CREATE");
 
     const noop = await postPrivateBlock(payload);
     expect(noop.status).toBe(200);
@@ -172,7 +163,7 @@ describeIfDatabase("private block route contract (db)", () => {
     const results = [left.body?.result, right.body?.result].sort();
 
     expect(statuses).toEqual([200, 201]);
-    expect(results).toEqual(["CREATED", "NO_OP"]);
+    expect(results).toEqual(["CREATE", "NO_OP"]);
 
     const activePrivateBlocks = await prisma!.reservation.count({
       where: {

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
-import { enforceWriteRequestSecurity } from "@/lib/api-security";
+import {
+  enforceWriteRequestSecurity,
+  readLimitedJson,
+} from "@/lib/api-security";
 
 function buildRequest(headers: Record<string, string>) {
   return new NextRequest("http://localhost:3000/api/orders", {
@@ -52,6 +55,58 @@ describe("API Security", () => {
     });
     const result = enforceWriteRequestSecurity(request, { requestId: "test-id" });
     expect(result?.status).toBe(415);
+  });
+
+  it("blocks oversized content-length before reading body", async () => {
+    const request = buildRequest({
+      "content-type": "application/json",
+      origin: "http://localhost:3000",
+      "x-requested-with": "XMLHttpRequest",
+      "content-length": "1025",
+    });
+    const result = await readLimitedJson(request, { maxBytes: 1024, requestId: "test-id" });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(413);
+      const body = await result.response.json();
+      expect(body.code).toBe("BODY_TOO_LARGE");
+    }
+  });
+
+  it("blocks oversized streamed body", async () => {
+    const request = new NextRequest("http://localhost:3000/api/orders", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "http://localhost:3000",
+        "x-requested-with": "XMLHttpRequest",
+      },
+      body: JSON.stringify({ value: "x".repeat(64) }),
+    });
+    const result = await readLimitedJson(request, { maxBytes: 16, requestId: "test-id" });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(413);
+    }
+  });
+
+  it("returns malformed JSON before route validation", async () => {
+    const request = new NextRequest("http://localhost:3000/api/orders", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "http://localhost:3000",
+        "x-requested-with": "XMLHttpRequest",
+      },
+      body: "{not-json",
+    });
+    const result = await readLimitedJson(request, { requestId: "test-id" });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(400);
+      const body = await result.response.json();
+      expect(body.code).toBe("MALFORMED_JSON");
+    }
   });
 });
 

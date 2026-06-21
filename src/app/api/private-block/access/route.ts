@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
+import { apiError, readLimitedJson } from "@/lib/api-security";
 import { getRequestId } from "@/lib/logger";
 import {
   hasPrivateBlockAccessCode,
@@ -12,8 +12,8 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   const requestId = getRequestId(request);
-  const securityError = enforceWriteRequestSecurity(request, { requestId });
-  if (securityError) return securityError;
+  const json = await readLimitedJson(request, { requestId, maxBytes: 4 * 1024 });
+  if (!json.ok) return json.response;
 
   if (!hasPrivateBlockAccessCode()) {
     return apiError(503, {
@@ -23,8 +23,14 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const body = await request.json().catch(() => null);
-  const accessCode = typeof body?.accessCode === "string" ? body.accessCode : null;
+  const body = json.body;
+  const accessCode =
+    typeof body === "object" &&
+    body !== null &&
+    "accessCode" in body &&
+    typeof body.accessCode === "string"
+      ? body.accessCode
+      : null;
 
   if (!verifyPrivateBlockAccessCode(accessCode)) {
     return apiError(401, {

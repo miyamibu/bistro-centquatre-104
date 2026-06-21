@@ -26,7 +26,7 @@ import {
   isDuplicateReservationCandidate,
 } from "@/lib/reservation-dedup";
 import { createReservationSchema, zodFields } from "@/lib/validation";
-import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
+import { apiError, readLimitedJson } from "@/lib/api-security";
 import { getContactPayload } from "@/lib/contact";
 import { env } from "@/lib/env";
 import {
@@ -56,15 +56,22 @@ async function acquireReservationAdvisoryLock(
 export async function POST(request: NextRequest) {
   const requestId = getRequestId(request);
   const contact = getContactPayload();
-  const body = await request.json().catch(() => null);
-
-  const securityError = enforceWriteRequestSecurity(request, {
+  const json = await readLimitedJson(request, {
     requestId,
     requireRequestedWith: false,
   });
-  if (securityError) return securityError;
+  if (!json.ok) return json.response;
+  const body = json.body;
 
-  if (body?.reservationType === ReservationType.PRIVATE_BLOCK) {
+  const requestedReservationType =
+    typeof body === "object" &&
+    body !== null &&
+    "reservationType" in body &&
+    typeof body.reservationType === "string"
+      ? body.reservationType
+      : null;
+
+  if (requestedReservationType === ReservationType.PRIVATE_BLOCK) {
     return apiError(403, {
       error: "貸切設定は公開予約フォームからは行えません",
       code: "PRIVATE_BLOCK_PUBLIC_DISABLED",

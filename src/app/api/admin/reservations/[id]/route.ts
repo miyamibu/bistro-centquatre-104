@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma, ReservationStatus, ReservationType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isAuthorized } from "@/lib/basic-auth";
-import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
+import { apiError, readLimitedJson } from "@/lib/api-security";
 import { updateReservationStatusSchema, zodFields } from "@/lib/validation";
 import { getRequestId, logError } from "@/lib/logger";
 import { createPrivateBlockAuditLog } from "@/lib/private-block-audit";
@@ -68,8 +68,8 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     return apiError(401, { error: "Unauthorized", code: "UNAUTHORIZED", requestId });
   }
 
-  const securityError = enforceWriteRequestSecurity(request, { requestId });
-  if (securityError) return securityError;
+  const json = await readLimitedJson(request, { requestId, maxBytes: 16 * 1024 });
+  if (!json.ok) return json.response;
 
   const ipAddress = getClientIp(request);
   const userAgent = getUserAgent(request);
@@ -77,8 +77,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
   try {
     await ensureReservationSchemaReady(prisma);
 
-    const body = await request.json().catch(() => null);
-    const parsed = updateReservationStatusSchema.safeParse(body);
+    const parsed = updateReservationStatusSchema.safeParse(json.body);
     if (!parsed.success) {
       return apiError(400, {
         error: "入力内容が不正です",
@@ -89,7 +88,9 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     }
 
     const operatorName = parsed.data.operatorName?.trim() || null;
+    const reason = parsed.data.reason?.trim() || null;
     const updated = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Reservation" WHERE id = ${id} FOR UPDATE`;
       const current = await findReservationByIdCompat(tx, id);
       if (!current) {
         return null;
@@ -107,6 +108,19 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       if (!next) {
         return null;
       }
+
+      await tx.reservationStatusAuditLog.create({
+        data: {
+          reservationId: next.id,
+          actorName: operatorName,
+          requestId,
+          ipAddress,
+          userAgent,
+          previousStatus: current.status,
+          nextStatus: next.status,
+          reason,
+        },
+      });
 
       if (privateBlockReleaseRequested) {
         await createPrivateBlockAuditLog(tx, {

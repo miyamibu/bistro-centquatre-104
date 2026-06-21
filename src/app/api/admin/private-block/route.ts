@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma, ReservationStatus, ReservationType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isAuthorized } from "@/lib/basic-auth";
-import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
+import { apiError, readLimitedJson } from "@/lib/api-security";
 import { getRequestId, logError, logInfo } from "@/lib/logger";
 import { createPrivateBlockAuditLog } from "@/lib/private-block-audit";
 import {
@@ -19,6 +19,7 @@ import {
 import { createAdminPrivateBlockSchema, zodFields } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
+const RETRIES = 3;
 
 export async function POST(request: NextRequest) {
   const requestId = getRequestId(request);
@@ -28,8 +29,8 @@ export async function POST(request: NextRequest) {
     return apiError(401, { error: "Unauthorized", code: "UNAUTHORIZED", requestId });
   }
 
-  const securityError = enforceWriteRequestSecurity(request, { requestId });
-  if (securityError) return securityError;
+  const json = await readLimitedJson(request, { requestId, maxBytes: 8 * 1024 });
+  if (!json.ok) return json.response;
 
   try {
     await ensureReservationSchemaReady(prisma);
@@ -55,8 +56,7 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const body = await request.json().catch(() => null);
-  const parsed = createAdminPrivateBlockSchema.safeParse(body);
+  const parsed = createAdminPrivateBlockSchema.safeParse(json.body);
   if (!parsed.success) {
     return apiError(400, {
       error: "入力内容が不正です",
@@ -69,9 +69,10 @@ export async function POST(request: NextRequest) {
   const { date, servicePeriod, note } = parsed.data;
   const normalizedNote = note?.trim() || undefined;
 
-  try {
-    const result = await prisma.$transaction(
-      async (tx) => {
+  for (let attempt = 1; attempt <= RETRIES; attempt += 1) {
+    try {
+      const result = await prisma.$transaction(
+        async (tx) => {
         const confirmed = await findReservationsCompat(tx, {
           where: {
             date,
@@ -139,75 +140,86 @@ export async function POST(request: NextRequest) {
           result: "CREATE" as const,
           reservationId: created.id,
         };
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
-    );
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+      );
 
-    logInfo("admin.private_block.saved", {
-      requestId,
-      route,
-      context: {
-        date,
-        servicePeriod,
-        result: result.result,
-        reservationId: result.reservationId,
-      },
-    });
-
-    return NextResponse.json(
-      {
-        result: result.result,
-        reservationId: result.reservationId,
-        summary:
-          result.result === "CREATE"
-            ? `${servicePeriod === "LUNCH" ? "ランチ" : "ディナー"}の貸切営業を設定しました。`
-            : "この時間帯は既に貸切営業です。",
+      logInfo("admin.private_block.saved", {
         requestId,
-      },
-      { status: result.result === "CREATE" ? 201 : 200 }
-    );
-  } catch (error) {
-    if (isReservationSchemaNotReadyError(error)) {
-      return apiError(503, {
-        error: "Reservation schema is not ready",
-        code: RESERVATION_SCHEMA_NOT_READY_CODE,
+        route,
+        context: {
+          date,
+          servicePeriod,
+          result: result.result,
+          reservationId: result.reservationId,
+        },
+      });
+
+      return NextResponse.json(
+        {
+          result: result.result,
+          reservationId: result.reservationId,
+          summary:
+            result.result === "CREATE"
+              ? `${servicePeriod === "LUNCH" ? "ランチ" : "ディナー"}の貸切営業を設定しました。`
+              : "この時間帯は既に貸切営業です。",
+          requestId,
+        },
+        { status: result.result === "CREATE" ? 201 : 200 }
+      );
+    } catch (error) {
+      if (isReservationSchemaNotReadyError(error)) {
+        return apiError(503, {
+          error: "Reservation schema is not ready",
+          code: RESERVATION_SCHEMA_NOT_READY_CODE,
+          requestId,
+        });
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      if (message === "PRIVATE_BLOCK_CONFLICT") {
+        return apiError(409, {
+          result: "CONFLICT",
+          error: "通常予約が存在するため貸切設定できません",
+          code: "CONFLICT",
+          requestId,
+        });
+      }
+
+      const isRetryable =
+        (error instanceof Prisma.PrismaClientKnownRequestError &&
+          (error.code === "P2034" || error.code === "P2002")) ||
+        message.includes("could not serialize");
+
+      if (isRetryable && attempt < RETRIES) {
+        continue;
+      }
+
+      if (isRetryable) {
+        return apiError(409, {
+          error: "予約処理が競合しました。時間をおいて再度お試しください。",
+          code: "RESERVATION_CONFLICT",
+          requestId,
+        });
+      }
+
+      logError("admin.private_block.save.failed", {
+        requestId,
+        route,
+        errorCode: "ADMIN_PRIVATE_BLOCK_SAVE_FAILED",
+        context: { date, servicePeriod, message },
+      });
+      return apiError(500, {
+        error: "貸切設定に失敗しました",
+        code: "ADMIN_PRIVATE_BLOCK_SAVE_FAILED",
         requestId,
       });
     }
-
-    const message = error instanceof Error ? error.message : String(error);
-    if (message === "PRIVATE_BLOCK_CONFLICT") {
-      return apiError(409, {
-        result: "CONFLICT",
-        error: "通常予約が存在するため貸切設定できません",
-        code: "CONFLICT",
-        requestId,
-      });
-    }
-
-    const isRetryable =
-      (error instanceof Prisma.PrismaClientKnownRequestError &&
-        (error.code === "P2034" || error.code === "P2002")) ||
-      message.includes("could not serialize");
-
-    if (isRetryable) {
-      return apiError(409, {
-        error: "予約処理が競合しました。時間をおいて再度お試しください。",
-        code: "RESERVATION_CONFLICT",
-        requestId,
-      });
-    }
-
-    logError("admin.private_block.save.failed", {
-      requestId,
-      route,
-      errorCode: "ADMIN_PRIVATE_BLOCK_SAVE_FAILED",
-      context: { date, servicePeriod, message },
-    });
-    return apiError(500, {
-      error: "貸切設定に失敗しました",
-      code: "ADMIN_PRIVATE_BLOCK_SAVE_FAILED",
-      requestId,
-    });
   }
+
+  return apiError(409, {
+    error: "予約処理が競合しました。時間をおいて再度お試しください。",
+    code: "RESERVATION_CONFLICT",
+    requestId,
+  });
 }

@@ -33,6 +33,7 @@ export const upsertBusinessDaySchema = z.object({
 export const updateReservationStatusSchema = z.object({
   status: z.nativeEnum(ReservationStatus),
   operatorName: z.string().trim().max(80).optional(),
+  reason: z.string().trim().max(500).optional(),
 });
 
 export const createAdminPrivateBlockSchema = z.object({

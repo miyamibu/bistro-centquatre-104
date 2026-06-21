@@ -159,6 +159,7 @@ function PayContent() {
             <div className="space-y-4">
               <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-[#d7b98a] bg-[#fffaf1] px-4 py-3">
                 <input
+                  id="pay-bank-transfer"
                   type="radio"
                   name="paymentMethod"
                   checked={paymentMethod === "BANK_TRANSFER"}
@@ -168,6 +169,7 @@ function PayContent() {
               </label>
               <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-[#d7b98a] bg-[#fffaf1] px-4 py-3">
                 <input
+                  id="pay-in-store"
                   type="radio"
                   name="paymentMethod"
                   checked={paymentMethod === "PAY_IN_STORE"}
@@ -179,24 +181,27 @@ function PayContent() {
 
             {paymentMethod === "PAY_IN_STORE" ? (
               <div className="space-y-2">
-                <label htmlFor="storeVisitDate" className="block text-sm font-semibold text-[#2f1b0f]">
+                <label htmlFor="pay-store-visit-date" className="block text-sm font-semibold text-[#2f1b0f]">
                   来店予定日
                 </label>
                 <input
-                  id="storeVisitDate"
+                  id="pay-store-visit-date"
                   type="date"
                   min={minDate}
                   max={maxDate}
                   value={storeVisitDate}
                   onChange={(event) => setStoreVisitDate(event.target.value)}
+                  aria-describedby="pay-store-visit-date-help"
                   className="w-full rounded-2xl border border-[#cfa96d]/50 bg-white px-4 py-3 text-[#2f1b0f] focus:border-[#8a6233] focus:outline-none"
                 />
-                <p className="text-xs text-[#6b4b2d]">来店日は14日後から30日後の営業日を選択してください。</p>
+                <p id="pay-store-visit-date-help" className="text-xs text-[#6b4b2d]">来店日は14日後から30日後の営業日を選択してください。</p>
               </div>
             ) : null}
 
             {message ? (
               <div
+                role={isError ? "alert" : "status"}
+                aria-live={isError ? "assertive" : "polite"}
                 className={`rounded-2xl px-4 py-3 text-sm ${
                   isError ? "bg-[#f8d7da] text-[#842029]" : "bg-[#e9f7ef] text-[#14532d]"
                 }`}

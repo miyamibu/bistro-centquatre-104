@@ -159,6 +159,26 @@ create table if not exists public.api_idempotency (
   unique (scope, actor_key, idempotency_key)
 );
 
+create table if not exists public.order_notification_outbox (
+  id uuid primary key default gen_random_uuid(),
+  order_id uuid not null references public.orders(id) on delete restrict,
+  notification_type text not null check (notification_type in ('ORDER_CONFIRMATION')),
+  status text not null default 'PENDING' check (status in ('PENDING', 'PROCESSING', 'SENT', 'DEAD_LETTER')),
+  attempts integer not null default 0 check (attempts >= 0),
+  max_attempts integer not null default 5 check (max_attempts > 0),
+  claimed_at timestamptz,
+  locked_until timestamptz,
+  next_attempt_at timestamptz not null default now(),
+  sent_at timestamptz,
+  provider_message_id text,
+  last_error text,
+  request_id text,
+  idempotency_key text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (order_id, notification_type, idempotency_key)
+);
+
 create table if not exists public.bank_account_history (
   id uuid primary key default gen_random_uuid(),
   bank_account_id uuid,
@@ -200,6 +220,10 @@ create index if not exists idx_human_tokens_order_active
   on public.human_tokens (order_id, expires_at)
   where used_at is null;
 create index if not exists idx_api_idempotency_created_at on public.api_idempotency (created_at);
+create index if not exists idx_order_notification_outbox_due
+  on public.order_notification_outbox (status, next_attempt_at, locked_until);
+create index if not exists idx_order_notification_outbox_order_created
+  on public.order_notification_outbox (order_id, created_at desc);
 create index if not exists idx_bank_account_history_changed_at on public.bank_account_history (changed_at desc);
 
 create or replace function public.set_updated_at()
@@ -221,6 +245,12 @@ execute function public.set_updated_at();
 drop trigger if exists trg_bank_account_set_updated_at on public.bank_account;
 create trigger trg_bank_account_set_updated_at
 before update on public.bank_account
+for each row
+execute function public.set_updated_at();
+
+drop trigger if exists trg_order_notification_outbox_set_updated_at on public.order_notification_outbox;
+create trigger trg_order_notification_outbox_set_updated_at
+before update on public.order_notification_outbox
 for each row
 execute function public.set_updated_at();
 

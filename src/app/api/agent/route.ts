@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 
 export function GET(request: Request) {
   const manifest = {
-    site: "Bistro Joa",
+    site: "bistro centquatre 104",
     agent_entry: "/agents",
     legacy_alias: "/ai",
     discovery: {
@@ -13,48 +13,24 @@ export function GET(request: Request) {
     },
     routes: {
       reserve: "/booking",
-      reservations_api: "/api/reservations",
       store: "/on-line-store",
       store_apron: "/on-line-store/apron",
       store_cart: "/on-line-store/cart",
       info: "/access",
     },
     reservation: {
-      supports_direct_completion: true,
+      supports_direct_completion: false,
       closed_weekdays: ["Monday", "Tuesday", "Wednesday"],
-      direct_completion: {
-        method: "POST",
-        endpoint: "/api/reservations",
-        required_fields: [
-          "date",
-          "servicePeriod",
-          "partySize",
-          "arrivalTime",
-          "name",
-          "phone",
-        ],
-        optional_fields: ["note", "lineUserId", "course"],
-        required_headers: {
-          "Content-Type": "application/json",
-        },
-        optional_headers: {
-          "X-Requested-With": "XMLHttpRequest",
-        },
-        notes: [
-          "servicePeriod must be LUNCH or DINNER and must match arrivalTime.",
-          "Lunch web reservations accept 11:30-12:30 and dinner accepts 17:30-19:30.",
-          "Web reservations close at 17:00 JST on the previous day.",
-          "Availability APIs require date/month plus servicePeriod and partySize.",
-          "Parties of 9 or more are always phone-only.",
-          "Put course preference inside course or note when needed.",
-          "Send personal data in the JSON body, not in query strings.",
-          "Reservations are rejected on Mondays, Tuesdays, and Wednesdays.",
-        ],
-      },
+      direct_completion: null,
       handoff: {
         template:
           "/booking?mode=agent&date={YYYY-MM-DD}&servicePeriod={LUNCH|DINNER}&partySize={1-12}&arrivalTime={HH:MM}&course={URL_ENCODED_COURSE}",
-        purpose: "Optional review bridge",
+        purpose: "Required human review and submit bridge",
+        notes: [
+          "AI direct reservation completion is launch-disabled until dedicated AI authentication exists.",
+          "Do not send personal data through query strings.",
+          "Use the handoff URL for non-sensitive booking preferences only.",
+        ],
       },
     },
     store: {
@@ -65,7 +41,7 @@ export function GET(request: Request) {
       },
     },
     boundaries: [
-      "Seat reservations may be completed directly through /api/reservations.",
+      "Seat reservations must be handed off to /booking for human review and final submission.",
       "Store checkout must stop before customer details, payment selection, and final order submission.",
       "Avoid putting personal data in query strings.",
     ],

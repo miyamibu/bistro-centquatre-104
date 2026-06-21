@@ -6,7 +6,6 @@ async function main() {
   await prisma.$transaction([
     prisma.menuItem.deleteMany({}),
     prisma.photo.deleteMany({}),
-    prisma.businessDay.deleteMany({}),
   ]);
 
   await prisma.menuItem.createMany({
@@ -73,10 +72,10 @@ async function main() {
     ],
   });
 
-  await prisma.businessDay.createMany({
-    data: [
-      { date: "2026-01-01", isClosed: true, note: "年始休業" },
-    ],
+  await prisma.businessDay.upsert({
+    where: { date: "2026-01-01" },
+    update: { isClosed: true, note: "年始休業" },
+    create: { date: "2026-01-01", isClosed: true, note: "年始休業" },
   });
 
   console.log("Seed completed.");

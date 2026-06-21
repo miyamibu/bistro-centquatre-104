@@ -23,6 +23,8 @@ const requiredKeys = [
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
   "CRON_SECRET",
+  "IDEMPOTENCY_HASH_SECRET",
+  "RATE_LIMIT_HASH_SECRET",
   "BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY",
 ];
 
@@ -42,7 +44,7 @@ const recommendedKeys = [
   "STORE_NAME",
   "LINE_CHANNEL_ACCESS_TOKEN",
   "LINE_CHANNEL_SECRET",
-  "LIFF_ID",
+  "NEXT_PUBLIC_LIFF_ID",
 ];
 
 const placeholderMarkers = [

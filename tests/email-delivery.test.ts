@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const baseEnv = {
   NODE_ENV: "test",
-  STORE_NAME: "Bistro 104",
+  STORE_NAME: "bistro centquatre 104",
 };
 
 function mockEnv(overrides: Record<string, string | undefined>) {
@@ -48,11 +48,13 @@ describe("Email delivery hardening", () => {
   it("delivers contact mail through Resend branch", async () => {
     const resendSend = vi.fn().mockResolvedValue({ data: { id: "mail_1" }, error: null });
     vi.doMock("resend", () => ({
-      Resend: vi.fn().mockImplementation(() => ({
+      Resend: vi.fn().mockImplementation(function ResendMock() {
+        return {
         emails: {
           send: resendSend,
         },
-      })),
+        };
+      }),
     }));
 
     mockEnv({
@@ -114,11 +116,13 @@ describe("Email delivery hardening", () => {
       error: { message: "provider failed" },
     });
     vi.doMock("resend", () => ({
-      Resend: vi.fn().mockImplementation(() => ({
+      Resend: vi.fn().mockImplementation(function ResendMock() {
+        return {
         emails: {
           send: resendSend,
         },
-      })),
+        };
+      }),
     }));
 
     mockEnv({

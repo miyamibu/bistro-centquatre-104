@@ -71,10 +71,28 @@ model Reservation {
   createdAt               DateTime               @default(now())
   updatedAt               DateTime               @updatedAt
   privateBlockAuditLogs   PrivateBlockAuditLog[]
+  statusAuditLogs         ReservationStatusAuditLog[]
 
   @@index([date, servicePeriod])
   @@index([date, servicePeriod, reservationType])
   @@index([lineReminderSentAt])
+}
+
+model ReservationStatusAuditLog {
+  id             String            @id @default(cuid())
+  reservationId  String
+  reservation    Reservation       @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  actorName      String?
+  requestId      String
+  ipAddress      String?
+  userAgent      String?
+  previousStatus ReservationStatus
+  nextStatus     ReservationStatus
+  reason         String?
+  createdAt      DateTime          @default(now())
+
+  @@index([reservationId, createdAt])
+  @@index([createdAt])
 }
 
 model PrivateBlockAuditLog {

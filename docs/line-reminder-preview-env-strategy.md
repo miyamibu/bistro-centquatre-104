@@ -126,7 +126,7 @@ A. 起動必須:
 
 B. 表示・予約動作:
    BASE_URL                              ← Preview deployment URL (例: https://bistro-...-preview.vercel.app)
-   STORE_NAME                            ← Bistro 104 でも検証用名でも可
+   STORE_NAME                            ← bistro centquatre 104 でも検証用名でも可
    CONTACT_PHONE_E164 / CONTACT_PHONE_DISPLAY / CONTACT_MESSAGE
    NEXT_PUBLIC_CONTACT_PHONE_E164 / NEXT_PUBLIC_CONTACT_PHONE_DISPLAY / NEXT_PUBLIC_CONTACT_MESSAGE
 

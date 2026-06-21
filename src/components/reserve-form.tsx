@@ -754,8 +754,8 @@ export function ReserveForm({
   const monthStart = startOfJstMonth(calendarMonth);
   const monthDays = getDaysInJstMonth(monthStart);
   const firstWeekday = getJstWeekday(monthStart);
-  const calendarDayCircleSize = 28;
-  const calendarDayCellWidth = 40;
+  const calendarDayCircleSize = 44;
+  const calendarDayCellWidth = 48;
   const calendarDayMarkerNormalFontSize = 13;
   const calendarDayCallMarkerFontSize = 13;
   const calendarDayMarkerNormalFontWeight = 900;
@@ -967,6 +967,17 @@ export function ReserveForm({
                     markerText === "終日貸切"
                       ? "#b32626"
                       : "#7a5528";
+                  const availabilityLabel = privateBlockMarkerText
+                    ? `貸切 ${privateBlockMarkerText}`
+                    : hasBookablePeriod
+                    ? "Web予約可"
+                    : hasPhoneOnlyPeriod
+                    ? "電話のみ"
+                    : isClosedDay
+                    ? "休業"
+                    : isDateDisabled
+                    ? "選択不可"
+                    : "空席状況未取得";
 
                   return (
                     <div
@@ -994,7 +1005,8 @@ export function ReserveForm({
                           width: `${calendarDayCircleSize}px`,
                           height: `${calendarDayCircleSize}px`,
                         }}
-                        aria-label={formatJstMonthDay(cell.dateObj)}
+                        aria-label={`${formatJstMonthDay(cell.dateObj)} ${availabilityLabel}`}
+                        aria-pressed={isSelected}
                       >
                         {getJstDayOfMonth(cell.dateObj)}
                       </button>

@@ -1,4 +1,4 @@
-# Bistro Joa 予約システム
+# bistro centquatre 104 予約システム
 
 Next.js App Router で構成した、レストラン予約 + オンラインストア + 管理画面のアプリです。  
 データストアは以下の二系統を維持しています。
@@ -112,7 +112,7 @@ cron API は `Authorization: Bearer $CRON_SECRET` で保護されます。
 - `Origin` が同一オリジン（`request.nextUrl.origin` / `BASE_URL`）であること
 - `Sec-Fetch-Site: cross-site` を拒否
 - `X-Requested-With: XMLHttpRequest` は既定で必須
-- 例外: `POST /api/reservations` は AI エージェント互換のため未指定でも受け付ける
+- 例外: `POST /api/reservations` は公開予約フォーム互換のため未指定でも受け付ける。AIエージェントの直接予約完了はlaunch-disabledで、`/booking?mode=agent` のhandoffのみを公開する
 
 対象（主な書き込み API）:
 

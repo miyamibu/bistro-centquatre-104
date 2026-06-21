@@ -148,10 +148,10 @@ describeIfDatabase("reservations route duplicate guard (db)", () => {
     const firstResponse = await POST(buildRequest(payload));
     const firstBody = await firstResponse.json();
 
-    await prisma!.$executeRawUnsafe(
-      `UPDATE "Reservation" SET "createdAt" = NOW() - INTERVAL '2 minutes' WHERE "id" = $1`,
-      firstBody.reservationId
-    );
+    await prisma!.reservation.update({
+      where: { id: firstBody.reservationId },
+      data: { createdAt: new Date(Date.now() - 2 * 60 * 1000) },
+    });
 
     const secondResponse = await POST(buildRequest(payload));
     const secondBody = await secondResponse.json();

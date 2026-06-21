@@ -3,7 +3,8 @@ import puppeteer from "puppeteer";
 import * as path from "path";
 import * as fs from "fs";
 import { isAuthorized } from "@/lib/basic-auth";
-import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
+import { PDF_JSON_BODY_LIMIT_BYTES, apiError, readLimitedJson } from "@/lib/api-security";
+import { env } from "@/lib/env";
 import { getRequestId, logError, logWarn } from "@/lib/logger";
 import { pdfToImageSchema, zodFields } from "@/lib/validation";
 
@@ -94,8 +95,28 @@ export async function POST(request: NextRequest) {
   let browser;
   let slotAcquired = false;
   try {
-    const securityError = enforceWriteRequestSecurity(request, { requestId });
-    if (securityError) return securityError;
+    if (env.NODE_ENV === "production" && env.PDF_TO_IMAGE_ENABLED !== "true") {
+      return apiError(404, {
+        error: "Not found",
+        code: "PDF_TO_IMAGE_DISABLED",
+        requestId,
+      });
+    }
+
+    const json = await readLimitedJson(request, {
+      requestId,
+      maxBytes: PDF_JSON_BODY_LIMIT_BYTES,
+    });
+    if (!json.ok) return json.response;
+
+    // Authentication is checked before rate-limit or concurrency slots are consumed.
+    if (!isAuthorized(request)) {
+      return apiError(401, {
+        error: "Unauthorized - authentication required",
+        code: "UNAUTHORIZED",
+        requestId,
+      });
+    }
 
     const rateLimit = applyRateLimit(request);
     if (rateLimit.limited) {
@@ -123,17 +144,7 @@ export async function POST(request: NextRequest) {
     }
     slotAcquired = true;
 
-    // ⚠️ CRITICAL: Require authentication
-    if (!isAuthorized(request)) {
-      return apiError(401, {
-        error: "Unauthorized - authentication required",
-        code: "UNAUTHORIZED",
-        requestId,
-      });
-    }
-
-    const body = await request.json().catch(() => null);
-    const parsed = pdfToImageSchema.safeParse(body);
+    const parsed = pdfToImageSchema.safeParse(json.body);
     if (!parsed.success) {
       return apiError(400, {
         error: "入力内容が不正です",

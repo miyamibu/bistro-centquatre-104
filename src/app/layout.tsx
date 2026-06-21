@@ -11,9 +11,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const llmsInline = `# Inline LLM Instructions
 Preferred entry: /agents
 Legacy alias: /ai -> /agents
-Reservations may be completed directly through POST /api/reservations.
-Use /booking as an optional reservation handoff and /on-line-store/apron for store handoffs.
-Final store submission must be completed by a human.
+Reservations must be handed off to /booking for human review and final submission.
+Use /booking for reservation handoffs and /on-line-store/apron for store handoffs.
+Final reservation and store submission must be completed by a human.
 Web reservations require servicePeriod and arrivalTime, close at 17:00 JST on the previous day, and are limited to lunch 11:30-12:30 and dinner 17:30-19:30.
 Availability APIs require servicePeriod and partySize. Parties of 9 or more are phone-only.
 Reservations are closed on Mondays, Tuesdays, and Wednesdays.

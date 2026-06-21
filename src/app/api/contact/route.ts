@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
+import { apiError, readLimitedJson } from "@/lib/api-security";
 import { sendContactEmail } from "@/lib/email";
 import { logError, logInfo, getRequestId } from "@/lib/logger";
 import { createContactSchema, zodFields } from "@/lib/validation";
@@ -15,11 +15,10 @@ function hashLogValue(value: string) {
 
 export async function POST(request: NextRequest) {
   const requestId = getRequestId(request);
-  const securityError = enforceWriteRequestSecurity(request);
-  if (securityError) return securityError;
+  const json = await readLimitedJson(request, { requestId });
+  if (!json.ok) return json.response;
 
-  const body = await request.json().catch(() => null);
-  const parsed = createContactSchema.safeParse(body);
+  const parsed = createContactSchema.safeParse(json.body);
 
   if (!parsed.success) {
     return apiError(400, {

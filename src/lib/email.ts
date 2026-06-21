@@ -287,7 +287,7 @@ export async function sendOrderConfirmationEmail(
   storeVisitDate?: string,
   bankAccount?: BankAccount
 ): Promise<OrderEmailResult> {
-  const storeName = env.STORE_NAME || "Bistro 104";
+  const storeName = env.STORE_NAME || "bistro centquatre 104";
   const fromAddress = formatFromAddress(
     storeName,
     env.EMAIL_FROM ?? env.STORE_NOTIFY_EMAIL ?? "no-reply@example.com"
