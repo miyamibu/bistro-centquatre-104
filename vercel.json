@@ -27,7 +27,7 @@
     },
     {
       "path": "/api/crons/process-order-notifications",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 2 * * *"
     }
   ]
 }
