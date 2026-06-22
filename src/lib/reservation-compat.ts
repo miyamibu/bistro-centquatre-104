@@ -24,6 +24,10 @@ type ReservationCreateCompatInput = {
   note: string | null;
   status: ReservationStatus;
   lineUserId: string | null;
+  lineLinkedAt?: Date | null;
+  lineLinkSource?: string | null;
+  linePushStatus?: string | null;
+  linePushCheckedAt?: Date | null;
 };
 
 export const RESERVATION_SCHEMA_NOT_READY_CODE = "RESERVATION_SCHEMA_NOT_READY";
@@ -42,7 +46,7 @@ export class ReservationSchemaNotReadyError extends Error {
 function isMissingReservationInfrastructureError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   const hasReservationSchemaHint =
-    /(serviceperiod|reservationtype|privateblockauditlog|reservationratelimitevent)/i.test(
+    /(serviceperiod|reservationtype|privateblockauditlog|reservationratelimitevent|lineuserid|linereminder|linelinkedat|linelinksource|linepushstatus|linepushcheckedat|reservationlinelinktoken|notificationevent|linefriend|linecustomerlink)/i.test(
       message
     );
   const hasMissingHint = /(does not exist|not found|unknown|invalid|missing|undefined column)/i.test(
@@ -50,7 +54,7 @@ function isMissingReservationInfrastructureError(error: unknown) {
   );
 
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    if (error.code === "P2021" || error.code === "P2022") {
+    if (error.code === "P2021" || error.code === "P2022" || error.code === "P2010") {
       return true;
     }
 
@@ -74,27 +78,55 @@ export function isReservationSchemaNotReadyError(
 
 async function runReservationSchemaReadyCheck(client: ReservationClient) {
   try {
+    // Core reservation schema (original migrations)
     await client.$queryRaw`
-      SELECT
-        "servicePeriod",
-        "reservationType"
-      FROM "Reservation"
-      LIMIT 0
+      SELECT "servicePeriod", "reservationType" FROM "Reservation" LIMIT 0
     `;
+    await client.$queryRaw`SELECT "id" FROM "PrivateBlockAuditLog" LIMIT 0`;
+    await client.$queryRaw`SELECT "id" FROM "ReservationRateLimitEvent" LIMIT 0`;
+
+    // LINE columns introduced in 20260511120000_add_line_reminder_fields
     await client.$queryRaw`
-      SELECT
-        "id"
-      FROM "PrivateBlockAuditLog"
-      LIMIT 0
+      SELECT "lineUserId", "lineReminderSentAt", "lineReminderStatus",
+             "lineReminderError", "lineLinkedAt", "lineLinkSource",
+             "linePushStatus", "linePushCheckedAt"
+      FROM "Reservation" LIMIT 0
     `;
-    await client.$queryRaw`
-      SELECT
-        "id"
-      FROM "ReservationRateLimitEvent"
-      LIMIT 0
-    `;
+
+    // LINE link tables introduced in 20260529150000_line_link_and_notification_ledger
+    await client.$queryRaw`SELECT "id" FROM "ReservationLineLinkToken" LIMIT 0`;
+    await client.$queryRaw`SELECT "id" FROM "NotificationEvent" LIMIT 0`;
+    await client.$queryRaw`SELECT "lineUserId" FROM "LineFriend" LIMIT 0`;
+    await client.$queryRaw`SELECT "id" FROM "LineCustomerLink" LIMIT 0`;
   } catch (error) {
     throwIfReservationSchemaNotReady(error);
+    throw error;
+  }
+}
+
+/**
+ * Check that the LINE link tables introduced in migration
+ * 20260529150000_line_link_and_notification_ledger exist.
+ * Call this from routes that depend on those tables so that
+ * a missing migration produces a safe 503 rather than a raw Prisma error.
+ */
+export async function ensureLineLinkSchemaReady(client: ReservationClient): Promise<void> {
+  try {
+    await client.$queryRaw`SELECT "id" FROM "ReservationLineLinkToken" LIMIT 0`;
+    await client.$queryRaw`SELECT "id" FROM "NotificationEvent" LIMIT 0`;
+    await client.$queryRaw`SELECT "lineUserId" FROM "LineFriend" LIMIT 0`;
+    await client.$queryRaw`SELECT "id" FROM "LineCustomerLink" LIMIT 0`;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const isMissing =
+      (error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === "P2021" || error.code === "P2022")) ||
+      /(does not exist|not found|unknown|invalid|missing)/i.test(message);
+    if (isMissing) {
+      throw new ReservationSchemaNotReadyError(
+        "LINE link tables not found — apply migration 20260529150000_line_link_and_notification_ledger first."
+      );
+    }
     throw error;
   }
 }

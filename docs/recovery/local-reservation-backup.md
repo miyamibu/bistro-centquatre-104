@@ -1,80 +1,96 @@
-# Local Reservation Backup (Free)
+# Local Reservation Backup
 
 ## Goal
 
-`/api/admin/backups/reservations/export` から予約データをローカルへ日次保存し、30日より古い営業日のデータを自動削除します。
-既定の保存先はリポジトリ内ではなく、OSごとのユーザーデータ領域です。
+予約データを `bistro-reservation/backups` 配下に集約し、保存場所を一本化します。
+予約フォームと管理画面のUXは変更せず、裏側でバックアップ運用を強化します。
 
 ## Required env
 
-- `BACKUP_EXPORT_SECRET`
-  - バックアップAPIの Bearer トークンです。
-  - API側は `BACKUP_EXPORT_SECRET` が未設定の場合 `CRON_SECRET` を使用します。
-- `ADMIN_BASIC_USER` / `ADMIN_BASIC_PASS`
-  - `/api/admin/...` のバックアップAPIへアクセスするために必要です。
-- `BACKUP_BASE_URL` (推奨)
+- `BACKUP_BASE_URL` または `BASE_URL`
   - 例: `https://bistro-centquatre-104.vercel.app`
-  - リダイレクト元ドメインを使うと認証ヘッダーが引き継がれない場合があるため、正規ドメインを指定します。
-- `BACKUP_OUTPUT_DIR` (任意)
-  - 未指定時の macOS 既定値: `~/Library/Application Support/bistro-reservation/backups/reservation-status`
-  - 個人情報を含むため、リポジトリ外の保存先を推奨します。
+- `BACKUP_EXPORT_SECRET` (専用secret。`CRON_SECRET` へのフォールバックは禁止)
+- `ADMIN_BASIC_USER` / `ADMIN_BASIC_PASS` (`/api/admin/...` 経由のため必須)
+- `BISTRO_BACKUP_DIR` (任意)
+  - 未指定時の標準保存先は `bistro-reservation/backups/reservation-daily-backups`
 
-## Run manually
+## Manual run
 
 ```bash
 cd /Users/mimac/Desktop/レストラン予約サイト_本体とバックアップ/bistro-reservation
-npm run backup:reservations:pull
-npm run backup:reservations:cleanup
+npm run backup:reservations
 ```
 
-一括実行:
+オプション例:
 
 ```bash
-npm run backup:reservations:run
+npm run backup:reservations -- --date=2026-04-22
+npm run backup:reservations -- --from=2026-04-01 --to=2026-04-22
+npm run backup:reservations -- --out-dir=backups/manual-export-backups
+npm run backup:reservations -- --dry-run=true
 ```
 
-ワークスペースの Git 履歴 bundle も外部保存する場合:
+## Canonical storage layout
+
+- 日次同期バックアップ: `backups/reservation-daily-backups`
+- 単発エクスポート: `backups/manual-export-backups`
+- プロジェクトスナップショット: `backups/project-snapshots`
+- ワークスペース bundle: `backups/workspace-snapshots`
+
+`backups/reservation-daily-backups` を正本として扱い、日常確認はこのフォルダだけ見れば十分です。
+
+## launchd (macOS daily)
+
+1. `~/Library/LaunchAgents/com.bistro.reservation-backup.plist` を作成
+2. 例 (毎日 02:20):
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key><string>com.bistro.reservation-backup</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/zsh</string>
+      <string>-lc</string>
+      <string>cd /Users/mimac/Desktop/レストラン予約サイト_本体とバックアップ/bistro-reservation && npm run backup:reservations:run >> /tmp/bistro-reservation-backup.log 2>&1</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+      <key>Hour</key><integer>2</integer>
+      <key>Minute</key><integer>20</integer>
+    </dict>
+    <key>RunAtLoad</key><true/>
+  </dict>
+</plist>
+```
+
+3. 反映:
 
 ```bash
-npm run backup:workspace:snapshot
+launchctl unload ~/Library/LaunchAgents/com.bistro.reservation-backup.plist 2>/dev/null || true
+launchctl load ~/Library/LaunchAgents/com.bistro.reservation-backup.plist
 ```
 
-## Main options
-
-`backup:reservations:pull`:
-
-- `--base-url=https://your-production-domain`
-- `--secret=...`
-- `--from=YYYY-MM-DD --to=YYYY-MM-DD`
-- `--lookback-days=30 --lookahead-days=60`
-- `--chunk-days=30`
-- `--out-dir=backups/reservation-status`
-  - 未指定ならOS既定の安全な外部ディレクトリを使用
-
-`backup:reservations:cleanup`:
-
-- `--retention-days=30` (30日未満は拒否)
-- `--today=YYYY-MM-DD`
-- `--out-dir=backups/reservation-status`
-  - 未指定ならOS既定の安全な外部ディレクトリを使用
-
-## Output
-
-- `<BACKUP_OUTPUT_DIR>/days/YYYY-MM-DD.json`
-- `<BACKUP_OUTPUT_DIR>/runs/pull-*.json`
-- `<BACKUP_OUTPUT_DIR>/latest-run.json`
-- `<BACKUP_OUTPUT_DIR>/../../workspace-snapshots/workspace-*.bundle`
-- `<BACKUP_OUTPUT_DIR>/../../workspace-snapshots/latest.bundle`
-
-各 `days/*.json` には次が含まれます:
-
-- `businessDay`
-- `reservations` (全ステータス)
-- `privateBlockAuditLogs`
-- `checksumSha256` と `requestId`
-
-## Suggested automation (macOS cron example)
+## cron (daily)
 
 ```cron
 20 2 * * * cd /Users/mimac/Desktop/レストラン予約サイト_本体とバックアップ/bistro-reservation && npm run backup:reservations:run >> /tmp/bistro-reservation-backup.log 2>&1
 ```
+
+## Project snapshot (folder recovery)
+
+`.env.local` を除外した世代スナップショット:
+
+```bash
+npm run backup:project-snapshot
+npm run backup:project-snapshot -- --dry-run
+```
+
+## Recovery notes
+
+- 復旧前に、現在フォルダのフルコピーを必ず取得する
+- バックアップJSONと本番DBを突き合わせ、二重登録/欠損を確認してから反映する
+- `latest-run.json` の時刻と件数を見て、欠損期間がないか確認する
+- DBへの直接書き戻しは必ず別承認フローで実施する

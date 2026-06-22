@@ -2,6 +2,19 @@
 
 This runbook is the release path for `bistro-reservation`.
 
+## P0 release blockers as of 2026-04-22
+
+Do not treat the older 2026-03-03 local verification alone as launch approval. The current release remains blocked until the following reservation-safety controls are complete or explicitly accepted by the operator.
+
+1. Reservation, private-block, and business-day destructive-operation guards are documented and enforced in the repo.
+2. Ordinary reservation state changes (`CANCELLED`, `DONE`, `NOSHOW`) are tracked by application audit logs, and private-block release continues to write DB audit rows.
+3. `npm run security:destructive-reservations` passes in CI and on the release candidate branch.
+4. Production DB permission hardening is applied or scheduled so the runtime app user does not have `DELETE` / `TRUNCATE` on `Reservation`, `PrivateBlockAuditLog`, or `BusinessDay`.
+5. Cleanup and cron behavior is reviewed as non-destructive for reservation business data, recovery evidence, and backups.
+6. Backup retention keeps reservation backups and recovery evidence preserved via archive or documented retention flow, not hard delete.
+
+See also `docs/recovery/production-db-permissions.md` for the DB role split and SQL examples.
+
 ## What has been verified locally
 
 As of 2026-03-03, the following checks passed from the repo root:
@@ -31,7 +44,9 @@ Set these values in your hosting provider before the production deploy:
 6. `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 7. `SUPABASE_SERVICE_ROLE_KEY`
 8. `CRON_SECRET`
-9. `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY`
+9. `BACKUP_EXPORT_SECRET`
+10. `RATE_LIMIT_HASH_SECRET`
+11. `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY`
 
 Recommended operational values:
 
@@ -49,7 +64,13 @@ Recommended operational values:
 12. `NEXT_PUBLIC_CONTACT_MESSAGE`
 13. `LINE_CHANNEL_ACCESS_TOKEN`
 14. `LINE_CHANNEL_SECRET`
-15. `LIFF_ID`
+15. `LINE_LOGIN_CHANNEL_ID`
+16. `NEXT_PUBLIC_LIFF_BOOKING_ID` — Booking LIFF endpoint: `https://本番ドメイン/booking` (size=Full, scopes=openid profile)
+17. `NEXT_PUBLIC_LIFF_LINK_ID`    — Link LIFF endpoint: `https://本番ドメイン/line/link` (size=Full, scopes=openid profile)
+18. `LINE_LINK_TOKEN_PEPPER`      — 32 文字以上のランダム文字列 (必須)
+19. `LINE_MONTHLY_REMINDER_LIMIT` — 月間通知上限 (省略時 200)
+20. `LINE_MONTHLY_REMINDER_WARN_THRESHOLD` — 警告閾値 (省略時 180)
+    ※ `LIFF_ID` (旧名) は廃止。設定不要。
 
 Email provider notes:
 
@@ -70,8 +91,7 @@ Supabase notes:
 
 ## Preview environment
 
-Preview build also evaluates the production-only env validation during Vercel build.  
-That means `Preview` needs the same required keys as `Production`, even when the values point at staging resources instead of live ones.
+Preview smoke and runtime verification need the same required key structure as `Production`, even when the values point at staging resources instead of live ones.
 
 Set these keys in Vercel Preview before relying on preview deploys:
 
@@ -83,7 +103,9 @@ Set these keys in Vercel Preview before relying on preview deploys:
 6. `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 7. `SUPABASE_SERVICE_ROLE_KEY`
 8. `CRON_SECRET`
-9. `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY`
+9. `BACKUP_EXPORT_SECRET`
+10. `RATE_LIMIT_HASH_SECRET`
+11. `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY`
 
 Safe default:
 
@@ -135,10 +157,12 @@ This script validates:
 1. Required env keys are present and not obvious placeholders
 2. Values can come from `.env`, `.env.local`, or the current shell environment
 3. `npm run lint`
-4. `npm run test`
-5. `npm run build`
-6. `next start` smoke checks for `/agents`, `/ai`, `/?ai=1`, `/api/agent`, and Basic auth
-7. `POST /api/reservations` accepts `Content-Type: application/json` without requiring `X-Requested-With`
+4. `npm run typecheck`
+5. `npm run test`
+6. `npm run build`
+7. `npm run security:destructive-reservations`
+8. `next start` smoke checks for `/agents`, `/ai`, `/?ai=1`, `/api/agent`, and Basic auth
+9. `POST /api/reservations` accepts `Content-Type: application/json` without requiring `X-Requested-With`
 
 For a faster cross-platform env check before the full preflight, run:
 
@@ -157,7 +181,7 @@ npm run check:release:preview
 This repo already includes `vercel.json` cron definitions.
 
 For the exact production env paste order, use `docs/vercel-production-env.md`.
-To print the current local values in that order, run `.\scripts\print-vercel-env.ps1`.
+To check which local values are present without printing secrets, run `.\scripts\print-vercel-env.ps1`.
 
 Use these production settings:
 

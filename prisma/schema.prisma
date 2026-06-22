@@ -49,24 +49,90 @@ enum DailyJournalStatus {
 }
 
 model Reservation {
-  id                    String                 @id @default(cuid())
+  id                    String                       @id @default(cuid())
   date                  String
   servicePeriod         ServicePeriod
-  reservationType       ReservationType        @default(NORMAL)
+  reservationType       ReservationType              @default(NORMAL)
   seatType              SeatType
   partySize             Int
   arrivalTime           String?
   name                  String
   phone                 String
   note                  String?
-  status                ReservationStatus      @default(CONFIRMED)
+  status                ReservationStatus            @default(CONFIRMED)
   lineUserId            String?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
+  lineReminderSentAt    DateTime?
+  lineReminderStatus    String?
+  lineReminderError     String?
+  lineLinkedAt          DateTime?
+  lineLinkSource        String?
+  linePushStatus        String?
+  linePushCheckedAt     DateTime?
+  createdAt             DateTime                     @default(now())
+  updatedAt             DateTime                     @updatedAt
   privateBlockAuditLogs PrivateBlockAuditLog[]
+  lineLinkTokens        ReservationLineLinkToken[]
+  notificationEvents    NotificationEvent[]
 
   @@index([date, servicePeriod])
   @@index([date, servicePeriod, reservationType])
+  @@index([lineReminderSentAt])
+}
+
+model ReservationLineLinkToken {
+  id            String      @id @default(cuid())
+  reservationId String
+  tokenHash     String      @unique
+  expiresAt     DateTime
+  usedAt        DateTime?
+  createdAt     DateTime    @default(now())
+  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  @@index([reservationId])
+  @@index([expiresAt])
+}
+
+model LineFriend {
+  lineUserId       String    @id
+  friendshipStatus String
+  followedAt       DateTime?
+  unfollowedAt     DateTime?
+  lastEventAt      DateTime  @default(now())
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+model NotificationEvent {
+  id            String      @id @default(cuid())
+  reservationId String
+  channel       String
+  type          String
+  targetDate    String
+  status        String      @default("PENDING")
+  retryKey      String      @unique
+  claimedAt     DateTime?
+  sentAt        DateTime?
+  error         String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  @@unique([reservationId, channel, type, targetDate])
+  @@index([status, targetDate])
+}
+
+model LineCustomerLink {
+  id                  String   @id @default(cuid())
+  lineUserId          String
+  normalizedPhoneHash String
+  consentedAt         DateTime
+  lastLinkedAt        DateTime
+  status              String   @default("ACTIVE")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([lineUserId, normalizedPhoneHash])
+  @@index([normalizedPhoneHash])
 }
 
 model PrivateBlockAuditLog {

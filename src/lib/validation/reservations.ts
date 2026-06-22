@@ -15,7 +15,10 @@ export const createReservationSchema = z.object({
   name: z.string().trim().min(1, "氏名は必須です").max(80),
   phone: z.string().trim().min(6, "電話番号は必須です").max(32),
   note: z.string().max(2000).optional(),
-  lineUserId: z.string().max(128).optional().nullable(),
+  // クライアントから lineUserId を直接保存しない。後方互換のため受け取っても無視する。
+  lineUserId: z.unknown().optional(),
+  // LIFF で取得した ID token のみ受け取り、サーバーで verify して sub を保存する。
+  lineIdToken: z.string().min(1).max(4096).optional(),
   course: z.string().max(200).optional(),
 });
 

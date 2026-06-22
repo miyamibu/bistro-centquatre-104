@@ -23,6 +23,8 @@ const requiredKeys = [
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
   "CRON_SECRET",
+  "BACKUP_EXPORT_SECRET",
+  "RATE_LIMIT_HASH_SECRET",
   "BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY",
 ];
 
@@ -31,7 +33,6 @@ const recommendedKeys = [
   "CONTACT_PHONE_E164",
   "CONTACT_PHONE_DISPLAY",
   "CONTACT_MESSAGE",
-  "BACKUP_EXPORT_SECRET",
   "NEXT_PUBLIC_CONTACT_PHONE_E164",
   "NEXT_PUBLIC_CONTACT_PHONE_DISPLAY",
   "NEXT_PUBLIC_CONTACT_MESSAGE",
@@ -42,7 +43,10 @@ const recommendedKeys = [
   "STORE_NAME",
   "LINE_CHANNEL_ACCESS_TOKEN",
   "LINE_CHANNEL_SECRET",
-  "LIFF_ID",
+  // LIFF_ID (旧名) は廃止。NEXT_PUBLIC_LIFF_BOOKING_ID / NEXT_PUBLIC_LIFF_LINK_ID を使う。
+  "NEXT_PUBLIC_LIFF_BOOKING_ID",
+  "NEXT_PUBLIC_LIFF_LINK_ID",
+  "LINE_LINK_TOKEN_PEPPER",
 ];
 
 const placeholderMarkers = [
@@ -112,6 +116,14 @@ function isPlaceholder(value) {
   return placeholderMarkers.some((marker) => normalized.includes(marker));
 }
 
+function isValidRateLimitHashSecret(value) {
+  return (
+    typeof value === "string" &&
+    value.length >= 32 &&
+    !/^(change-?me|dummy|test|placeholder|replace-with)/i.test(value)
+  );
+}
+
 function getGitAuthorEmail() {
   try {
     return execSync("git config user.email", {
@@ -134,6 +146,10 @@ const enforceRealSecrets = mode !== "local-build";
 const placeholderRequired = enforceRealSecrets
   ? requiredKeys.filter((key) => envMap[key] && isPlaceholder(envMap[key]))
   : [];
+const invalidRequired = [];
+if (enforceRealSecrets && envMap.RATE_LIMIT_HASH_SECRET && !isValidRateLimitHashSecret(envMap.RATE_LIMIT_HASH_SECRET)) {
+  invalidRequired.push("RATE_LIMIT_HASH_SECRET must be a non-placeholder value of at least 32 characters");
+}
 const missingRecommended = recommendedKeys.filter((key) => !envMap[key] || envMap[key].trim() === "");
 
 printSection(`Release safety check (${mode})`);
@@ -147,6 +163,10 @@ if (placeholderRequired.length > 0) {
   console.error(`Required env keys still look like placeholders: ${placeholderRequired.join(", ")}`);
 } else if (!enforceRealSecrets) {
   console.log("Local-build mode allows placeholder-like values as long as required keys are present.");
+}
+
+if (invalidRequired.length > 0) {
+  console.error(`Invalid required env values: ${invalidRequired.join(", ")}`);
 }
 
 if (missingRecommended.length > 0) {
@@ -174,7 +194,7 @@ if (mode === "production") {
   );
 }
 
-if (missingRequired.length > 0 || placeholderRequired.length > 0) {
+if (missingRequired.length > 0 || placeholderRequired.length > 0 || invalidRequired.length > 0) {
   process.exit(1);
 }
 

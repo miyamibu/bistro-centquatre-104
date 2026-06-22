@@ -207,6 +207,8 @@ $requiredEnvKeys = @(
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
   "CRON_SECRET",
+  "BACKUP_EXPORT_SECRET",
+  "RATE_LIMIT_HASH_SECRET",
   "BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY"
 )
 
@@ -225,7 +227,11 @@ $recommendedEnvKeys = @(
   "STORE_NAME",
   "LINE_CHANNEL_ACCESS_TOKEN",
   "LINE_CHANNEL_SECRET",
-  "LIFF_ID"
+  "LINE_LOGIN_CHANNEL_ID",
+  "NEXT_PUBLIC_LIFF_BOOKING_ID",
+  "NEXT_PUBLIC_LIFF_LINK_ID",
+  "LINE_LINK_TOKEN_PEPPER"
+  # LIFF_ID は廃止。NEXT_PUBLIC_LIFF_BOOKING_ID / NEXT_PUBLIC_LIFF_LINK_ID を使う。
 )
 
 $serverProcess = $null
@@ -272,11 +278,18 @@ try {
     "NEXT_PUBLIC_SUPABASE_ANON_KEY",
     "SUPABASE_SERVICE_ROLE_KEY",
     "CRON_SECRET",
+    "BACKUP_EXPORT_SECRET",
+    "RATE_LIMIT_HASH_SECRET",
     "BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY"
   ) | Where-Object { Test-Placeholder -Value ([string]$envMap[$_]) })
 
   if ($placeholderKeys.Count -gt 0) {
     throw "Placeholder values detected: $($placeholderKeys -join ', ')"
+  }
+
+  $rateLimitHashSecret = [string]$envMap["RATE_LIMIT_HASH_SECRET"]
+  if ($rateLimitHashSecret.Length -lt 32 -or $rateLimitHashSecret -match "^(change-?me|dummy|test|placeholder|replace-with)") {
+    throw "Invalid RATE_LIMIT_HASH_SECRET: must be a non-placeholder value of at least 32 characters"
   }
 
   $recommendedMissing = @()

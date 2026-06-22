@@ -16,9 +16,36 @@ import {
   resolveOutputDir,
 } from "./reservation-backup-common";
 
-async function cleanupDayFiles(daysDir: string, cutoffDate: string, dryRun: boolean) {
+const APPLY_CONFIRMATION_TOKEN = "archive-reservation-backups";
+
+async function ensureDirectory(targetPath: string) {
+  await fs.mkdir(targetPath, { recursive: true });
+}
+
+async function archiveFile(
+  targetPath: string,
+  archiveDir: string,
+  dryRun: boolean,
+  label: string
+) {
+  const archivePath = path.join(archiveDir, path.basename(targetPath));
+  if (dryRun) {
+    console.info(`[backup:cleanup] dry-run archive ${label}: ${targetPath} -> ${archivePath}`);
+    return;
+  }
+
+  await ensureDirectory(archiveDir);
+  await fs.rename(targetPath, archivePath);
+}
+
+async function cleanupDayFiles(
+  daysDir: string,
+  archiveDaysDir: string,
+  cutoffDate: string,
+  dryRun: boolean
+) {
   let checked = 0;
-  let deleted = 0;
+  let archived = 0;
   let skipped = 0;
 
   const entries = await fs.readdir(daysDir, { withFileTypes: true });
@@ -46,18 +73,21 @@ async function cleanupDayFiles(daysDir: string, cutoffDate: string, dryRun: bool
     }
 
     const targetPath = path.join(daysDir, entry.name);
-    if (!dryRun) {
-      await fs.unlink(targetPath);
-    }
-    deleted += 1;
+    await archiveFile(targetPath, archiveDaysDir, dryRun, "day");
+    archived += 1;
   }
 
-  return { checked, deleted, skipped };
+  return { checked, archived, skipped };
 }
 
-async function cleanupRunFiles(runsDir: string, cutoffTimeMs: number, dryRun: boolean) {
+async function cleanupRunFiles(
+  runsDir: string,
+  archiveRunsDir: string,
+  cutoffTimeMs: number,
+  dryRun: boolean
+) {
   let checked = 0;
-  let deleted = 0;
+  let archived = 0;
 
   const entries = await fs.readdir(runsDir, { withFileTypes: true });
   for (const entry of entries) {
@@ -73,13 +103,11 @@ async function cleanupRunFiles(runsDir: string, cutoffTimeMs: number, dryRun: bo
       continue;
     }
 
-    if (!dryRun) {
-      await fs.unlink(targetPath);
-    }
-    deleted += 1;
+    await archiveFile(targetPath, archiveRunsDir, dryRun, "run");
+    archived += 1;
   }
 
-  return { checked, deleted };
+  return { checked, archived };
 }
 
 async function directoryExists(targetPath: string) {
@@ -95,7 +123,9 @@ async function main() {
   const cwd = process.cwd();
   const cli = parseCliArgs(process.argv.slice(2));
   const env = loadMergedEnv(cwd);
-  const dryRun = readOption(cli, "dry-run") === "true";
+  const apply = readOption(cli, "apply") === "true";
+  const dryRun = readOption(cli, "dry-run") !== "false" && !apply;
+  const confirmation = readOption(cli, "confirm-safe-target");
 
   const outputDir = resolveOutputDir(cwd, readOption(cli, "out-dir") ?? env.BACKUP_OUTPUT_DIR);
   const retentionDays = parsePositiveInt(
@@ -118,23 +148,33 @@ async function main() {
 
   const daysDir = path.join(outputDir, "days");
   const runsDir = path.join(outputDir, "runs");
+  const archiveRoot = path.join(outputDir, "archive");
+  const archiveDaysDir = path.join(archiveRoot, "days");
+  const archiveRunsDir = path.join(archiveRoot, "runs");
+
+  if (!dryRun && confirmation !== APPLY_CONFIRMATION_TOKEN) {
+    throw new Error(
+      `アーカイブ適用には --apply=true --confirm-safe-target=${APPLY_CONFIRMATION_TOKEN} が必要です`
+    );
+  }
 
   if (!(await directoryExists(daysDir))) {
     console.info(`[backup:cleanup] 対象ディレクトリが存在しません: ${daysDir}`);
     return;
   }
 
-  const dayResult = await cleanupDayFiles(daysDir, cutoffDate, dryRun);
+  const dayResult = await cleanupDayFiles(daysDir, archiveDaysDir, cutoffDate, dryRun);
   const runResult =
-    (await directoryExists(runsDir)) && (await cleanupRunFiles(runsDir, cutoffTimeMs, dryRun));
+    (await directoryExists(runsDir)) &&
+    (await cleanupRunFiles(runsDir, archiveRunsDir, cutoffTimeMs, dryRun));
 
   console.info(
-    `[backup:cleanup] 完了 retention=${retentionDays}days cutoff=${cutoffDate} dayFiles checked=${dayResult.checked} deleted=${dayResult.deleted} skipped=${dayResult.skipped}${dryRun ? " (dry-run)" : ""}`
+    `[backup:cleanup] 完了 retention=${retentionDays}days cutoff=${cutoffDate} dayFiles checked=${dayResult.checked} archived=${dayResult.archived} skipped=${dayResult.skipped}${dryRun ? " (dry-run)" : ""}`
   );
 
   if (runResult) {
     console.info(
-      `[backup:cleanup] runs checked=${runResult.checked} deleted=${runResult.deleted}${
+      `[backup:cleanup] runs checked=${runResult.checked} archived=${runResult.archived}${
         dryRun ? " (dry-run)" : ""
       }`
     );

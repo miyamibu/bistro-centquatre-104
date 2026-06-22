@@ -10,12 +10,21 @@ const PROTECTED_API_PREFIXES = [
   "/api/dashboard",
   // Add "/api/staff" here when staff-only APIs are introduced.
 ] as const;
+const TOKEN_AUTH_API_PATHS = ["/api/admin/backups/reservations/export"] as const;
 
 function matchesProtectedPrefix(pathname: string, prefix: string) {
   return pathname === prefix || pathname.startsWith(`${prefix}/`);
 }
 
 function isProtectedPath(pathname: string) {
+  if (TOKEN_AUTH_API_PATHS.includes(pathname as (typeof TOKEN_AUTH_API_PATHS)[number])) {
+    return false;
+  }
+
+  if (process.env.NODE_ENV === "development" && matchesProtectedPrefix(pathname, "/admin/daily-journal")) {
+    return false;
+  }
+
   return (
     PROTECTED_WEB_PREFIXES.some((prefix) => matchesProtectedPrefix(pathname, prefix)) ||
     PROTECTED_API_PREFIXES.some((prefix) => matchesProtectedPrefix(pathname, prefix))

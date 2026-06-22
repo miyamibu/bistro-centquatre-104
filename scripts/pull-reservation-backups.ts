@@ -163,8 +163,11 @@ async function fetchChunk(
   try {
     json = raw ? JSON.parse(raw) : null;
   } catch {
+    const contentType = response.headers.get("content-type") ?? "(none)";
     throw new Error(
-      `バックアップAPIのレスポンスがJSONではありません: ${raw.slice(0, 240) || "(empty)"}`
+      `バックアップAPIのレスポンスがJSONではありません [status=${response.status} content-type=${contentType}]: ${
+        raw.slice(0, 240) || "(empty)"
+      }`
     );
   }
 
@@ -197,10 +200,10 @@ async function main() {
     );
   }
 
-  const secret = readOption(cli, "secret") ?? env.BACKUP_EXPORT_SECRET ?? env.CRON_SECRET;
+  const secret = readOption(cli, "secret") ?? env.BACKUP_EXPORT_SECRET;
   if (!secret) {
     throw new Error(
-      "バックアップ認証トークンが見つかりません。`--secret` か `BACKUP_EXPORT_SECRET` を設定してください"
+      "バックアップ認証トークンが見つかりません。`--secret` か `BACKUP_EXPORT_SECRET` を設定してください。CRON_SECRET は使用しません"
     );
   }
 
@@ -333,6 +336,7 @@ async function main() {
       if (!dryRun) {
         const dayPath = path.join(daysDir, `${date}.json`);
         await fs.writeFile(dayPath, `${JSON.stringify(dayPayload, null, 2)}\n`, "utf8");
+        await fs.chmod(dayPath, 0o600);
       }
 
       dayFilesWritten += 1;
@@ -377,11 +381,10 @@ async function main() {
   if (!dryRun) {
     const runFilePath = path.join(runsDir, `pull-${createTimestampLabel()}.json`);
     await fs.writeFile(runFilePath, `${JSON.stringify(runSummary, null, 2)}\n`, "utf8");
-    await fs.writeFile(
-      path.join(outputDir, "latest-run.json"),
-      `${JSON.stringify(runSummary, null, 2)}\n`,
-      "utf8"
-    );
+    await fs.chmod(runFilePath, 0o600);
+    const latestRunPath = path.join(outputDir, "latest-run.json");
+    await fs.writeFile(latestRunPath, `${JSON.stringify(runSummary, null, 2)}\n`, "utf8");
+    await fs.chmod(latestRunPath, 0o600);
   }
 
   console.info(

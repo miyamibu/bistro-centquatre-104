@@ -2,9 +2,9 @@
 
 ## Project Information
 
-**Project Name**: Bistro Reservation System  
-**Repository**: french-restaurant-site  
-**Monorepo Structure**: bistro-reservation (main app)  
+**Project Name**: Bistro Reservation System
+**Repository**: french-restaurant-site
+**Monorepo Structure**: bistro-reservation (main app)
 
 ## Deployment Platforms
 
@@ -27,12 +27,12 @@
 }
 ```
 
-**Deployment URI**: Should be set in Vercel Project Settings  
+**Deployment URI**: Should be set in Vercel Project Settings
 **Environment Variables Needed**: See below
 
 ### 2. Database: Supabase (PostgreSQL)
 
-**RLS Policy File**: `supabase/rls-policies.sql`  
+**RLS Policy File**: `supabase/rls-policies.sql`
 **Migration Files**: `prisma/migrations/`
 
 ## Environment Variables Setup
@@ -64,7 +64,14 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
 # LINE Integration (optional)
 LINE_CHANNEL_ACCESS_TOKEN=
 LINE_CHANNEL_SECRET=
-LIFF_ID=
+LINE_LOGIN_CHANNEL_ID=
+# Booking LIFF → /booking
+NEXT_PUBLIC_LIFF_BOOKING_ID=
+# Link LIFF → /line/link
+NEXT_PUBLIC_LIFF_LINK_ID=
+# 32 chars minimum in production
+LINE_LINK_TOKEN_PEPPER=
+# LIFF_ID= は廃止 (deprecated, use NEXT_PUBLIC_LIFF_BOOKING_ID / NEXT_PUBLIC_LIFF_LINK_ID)
 
 # Cron Security
 CRON_SECRET=your-cron-secret-token-here

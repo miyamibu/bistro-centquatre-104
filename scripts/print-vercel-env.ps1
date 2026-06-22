@@ -45,6 +45,8 @@ $orderedKeys = @(
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
   "CRON_SECRET",
+  "BACKUP_EXPORT_SECRET",
+  "RATE_LIMIT_HASH_SECRET",
   "BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY",
   "BANK_ACCOUNT_HISTORY_KEY_VERSION",
   "STORE_NOTIFY_EMAIL",
@@ -62,7 +64,13 @@ $orderedKeys = @(
   "NEXT_PUBLIC_CONTACT_MESSAGE",
   "LINE_CHANNEL_ACCESS_TOKEN",
   "LINE_CHANNEL_SECRET",
-  "LIFF_ID"
+  "LINE_LOGIN_CHANNEL_ID",
+  "NEXT_PUBLIC_LIFF_BOOKING_ID",
+  "NEXT_PUBLIC_LIFF_LINK_ID",
+  "LINE_LINK_TOKEN_PEPPER",
+  "LINE_MONTHLY_REMINDER_LIMIT",
+  "LINE_MONTHLY_REMINDER_WARN_THRESHOLD"
+  # LIFF_ID は廃止。NEXT_PUBLIC_LIFF_BOOKING_ID / NEXT_PUBLIC_LIFF_LINK_ID を使う。
 )
 
 $requiredKeys = @(
@@ -73,7 +81,10 @@ $requiredKeys = @(
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
-  "CRON_SECRET"
+  "CRON_SECRET",
+  "BACKUP_EXPORT_SECRET",
+  "RATE_LIMIT_HASH_SECRET",
+  "BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY"
 )
 
 $envMap = Read-EnvMap -Paths @(
@@ -100,8 +111,9 @@ if ($missing.Count -gt 0) {
 }
 
 Write-Host "# Paste these into Vercel Production Environment Variables in this order" -ForegroundColor Cyan
+Write-Host "# Secret values are masked. Enter or paste the real values directly in Vercel; do not print them in terminal logs." -ForegroundColor Yellow
 foreach ($key in $orderedKeys) {
   if ($envMap.ContainsKey($key) -and -not [string]::IsNullOrWhiteSpace([string]$envMap[$key])) {
-    Write-Output ("{0}={1}" -f $key, [string]$envMap[$key])
+    Write-Output ("{0}=<set>" -f $key)
   }
 }

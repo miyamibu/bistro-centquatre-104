@@ -22,6 +22,22 @@ describe("Basic auth hardening", () => {
     expect(response.headers.get("WWW-Authenticate")).toContain("Basic");
   });
 
+  it("lets backup export API use its route-level token auth", () => {
+    const request = new NextRequest(
+      "http://localhost:3000/api/admin/backups/reservations/export?date=2026-04-21",
+      {
+        headers: {
+          accept: "application/json",
+          "x-backup-export-secret": "backup-export-secret",
+        },
+      }
+    );
+
+    const response = middleware(request);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("WWW-Authenticate")).toBeNull();
+  });
+
   it("returns 401 from admin route for malformed Basic header", async () => {
     const request = new NextRequest("http://localhost:3000/api/admin/business-days", {
       headers: {

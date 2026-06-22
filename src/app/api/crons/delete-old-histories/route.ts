@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
+import { prisma } from "@/lib/prisma";
 import { env } from "@/lib/env";
 import { apiError } from "@/lib/api-security";
 import { getRequestId, logError, logInfo } from "@/lib/logger";
@@ -9,14 +10,21 @@ export const runtime = "nodejs";
 const ORDER_HISTORY_RETENTION_DAYS = 365;
 const DELETE_BATCH_SIZE = 200;
 const MAX_DELETE_PER_RUN = 1000;
+const ORDER_PII_ANONYMIZE_BATCH_SIZE = 200;
+const REDACTED_ORDER_PII = {
+  customer_name: "[retention-redacted]",
+  email: "retention-redacted@example.invalid",
+  phone: "0000000000",
+  zip_code: "0000000",
+  prefecture: "[retention-redacted]",
+  city: "[retention-redacted]",
+  address: "[retention-redacted]",
+  building: null,
+};
 
 function isAuthorizedCron(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
   return !!env.CRON_SECRET && authHeader === `Bearer ${env.CRON_SECRET}`;
-}
-
-function isGetCompatibilityRequest(req: NextRequest) {
-  return req.headers.get("x-vercel-cron") === "1" || req.nextUrl.searchParams.get("compat") === "1";
 }
 
 async function executeDeleteOldHistories(req: NextRequest) {
@@ -88,11 +96,114 @@ async function executeDeleteOldHistories(req: NextRequest) {
     }
 
     const hasMore = deletedCount >= MAX_DELETE_PER_RUN;
+    const { data: oldShippedOrders, error: shippedSelectError } = await supabaseServer
+      .from("orders")
+      .select("id")
+      .eq("status", "SHIPPED")
+      .lt("shipped_at", retentionThresholdString)
+      .neq("email", REDACTED_ORDER_PII.email)
+      .limit(ORDER_PII_ANONYMIZE_BATCH_SIZE);
+
+    if (shippedSelectError) {
+      logError("crons.delete_old_histories.order_pii_select_failed", {
+        requestId,
+        route,
+        errorCode: "CRON_ORDER_PII_SELECT_FAILED",
+        context: { message: shippedSelectError.message, status: "SHIPPED" },
+      });
+      return apiError(500, {
+        error: "Database error",
+        code: "CRON_ORDER_PII_SELECT_FAILED",
+        requestId,
+      });
+    }
+
+    const remainingAnonymizeLimit = Math.max(
+      0,
+      ORDER_PII_ANONYMIZE_BATCH_SIZE - (oldShippedOrders?.length ?? 0)
+    );
+    const { data: oldCancelledOrders, error: cancelledSelectError } =
+      remainingAnonymizeLimit > 0
+        ? await supabaseServer
+            .from("orders")
+            .select("id")
+            .eq("status", "CANCELLED")
+            .lt("canceled_at", retentionThresholdString)
+            .neq("email", REDACTED_ORDER_PII.email)
+            .limit(remainingAnonymizeLimit)
+        : { data: [], error: null };
+
+    if (cancelledSelectError) {
+      logError("crons.delete_old_histories.order_pii_select_failed", {
+        requestId,
+        route,
+        errorCode: "CRON_ORDER_PII_SELECT_FAILED",
+        context: { message: cancelledSelectError.message, status: "CANCELLED" },
+      });
+      return apiError(500, {
+        error: "Database error",
+        code: "CRON_ORDER_PII_SELECT_FAILED",
+        requestId,
+      });
+    }
+
+    const terminalOrderIds = [...(oldShippedOrders ?? []), ...(oldCancelledOrders ?? [])].map(
+      (order) => order.id
+    );
+    let anonymizedOrderCount = 0;
+    if (terminalOrderIds.length > 0) {
+      const { error: anonymizeError } = await supabaseServer
+        .from("orders")
+        .update(REDACTED_ORDER_PII)
+        .in("id", terminalOrderIds);
+
+      if (anonymizeError) {
+        logError("crons.delete_old_histories.order_pii_anonymize_failed", {
+          requestId,
+          route,
+          errorCode: "CRON_ORDER_PII_ANONYMIZE_FAILED",
+          context: { message: anonymizeError.message, batchSize: terminalOrderIds.length },
+        });
+        return apiError(500, {
+          error: "Database error",
+          code: "CRON_ORDER_PII_ANONYMIZE_FAILED",
+          requestId,
+        });
+      }
+
+      anonymizedOrderCount = terminalOrderIds.length;
+    }
+
+    // Clean up expired ReservationLineLinkTokens (expired > 7 days ago).
+    let deletedExpiredTokens = 0;
+    try {
+      const tokenExpiryThreshold = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const { count } = await prisma.reservationLineLinkToken.deleteMany({
+        where: { expiresAt: { lt: tokenExpiryThreshold } },
+      });
+      deletedExpiredTokens = count;
+      if (count > 0) {
+        logInfo("crons.delete_old_histories.expired_tokens_deleted", {
+          requestId,
+          route,
+          context: { deletedExpiredTokens },
+        });
+      }
+    } catch (tokenCleanupError) {
+      // Non-fatal: log and continue — table may not exist if migration not yet applied.
+      logInfo("crons.delete_old_histories.token_cleanup_skipped", {
+        requestId,
+        route,
+        context: {
+          message: tokenCleanupError instanceof Error ? tokenCleanupError.message : String(tokenCleanupError),
+        },
+      });
+    }
 
     logInfo("crons.delete_old_histories.success", {
       requestId,
       route,
-      context: { deletedCount, hasMore },
+      context: { deletedCount, hasMore, anonymizedOrderCount, deletedExpiredTokens },
     });
 
     return NextResponse.json({
@@ -102,6 +213,9 @@ async function executeDeleteOldHistories(req: NextRequest) {
       maxDeletePerRun: MAX_DELETE_PER_RUN,
       batchSize: DELETE_BATCH_SIZE,
       retentionDays: ORDER_HISTORY_RETENTION_DAYS,
+      anonymizedOrderCount,
+      anonymizeBatchSize: ORDER_PII_ANONYMIZE_BATCH_SIZE,
+      deletedExpiredTokens,
       requestId,
     });
   } catch (error) {
@@ -123,20 +237,8 @@ export async function POST(req: NextRequest) {
   return executeDeleteOldHistories(req);
 }
 
+// Vercel Cron calls routes via HTTP GET. Authorization is enforced inside
+// executeDeleteOldHistories via CRON_SECRET Bearer check.
 export async function GET(req: NextRequest) {
-  const requestId = getRequestId(req);
-  if (!isGetCompatibilityRequest(req)) {
-    return apiError(
-      405,
-      {
-        error: "Method not allowed. Use POST.",
-        code: "METHOD_NOT_ALLOWED",
-        requestId,
-      },
-      { headers: { Allow: "POST" } }
-    );
-  }
-
   return executeDeleteOldHistories(req);
 }
-

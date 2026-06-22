@@ -1,4 +1,4 @@
-# Bistro Joa 予約システム
+# bistro centquatre 104 予約システム
 
 Next.js App Router で構成した、レストラン予約 + オンラインストア + 管理画面のアプリです。  
 データストアは以下の二系統を維持しています。
@@ -45,6 +45,10 @@ npm run dev
 
 リリース運用手順は `docs/production-launch.md` を参照してください。
 
+Codex 作業ガイド:
+- [CODEX_INSTRUCTIONS.md](/Users/mimac/Desktop/レストラン予約サイト_本体とバックアップ/bistro-reservation/CODEX_INSTRUCTIONS.md)
+- [docs/prompts/README.md](/Users/mimac/Desktop/レストラン予約サイト_本体とバックアップ/bistro-reservation/docs/prompts/README.md)
+
 ## 環境変数
 
 主要変数は `.env.example` に記載しています。特に以下は必須です。
@@ -54,6 +58,8 @@ npm run dev
 - `ADMIN_BASIC_USER`, `ADMIN_BASIC_PASS`
 - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
 - `CRON_SECRET`
+- `BACKUP_EXPORT_SECRET`
+- `RATE_LIMIT_HASH_SECRET`
 - `PRIVATE_BLOCK_ACCESS_CODE`（公開予約フォームで貸切モードを解放する管理用パスコード）
 - `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY`
 - `CONTACT_PHONE_E164`, `CONTACT_PHONE_DISPLAY`, `CONTACT_MESSAGE`
@@ -226,7 +232,7 @@ TEST_DATABASE_URL=postgresql://user:password@127.0.0.1:5432/bistro_test npx vite
 ## バックアップ保護
 
 - 予約バックアップの既定保存先はリポジトリ内ではなく、OSごとのユーザーデータ領域です。
-- macOS の既定値: `~/Library/Application Support/bistro-reservation/backups/reservation-status`
+- 標準の保存先: `backups/reservation-daily-backups`
 - 必要なら `BACKUP_OUTPUT_DIR` で上書きできます。
 - バックアップJSONは個人情報を含むため、Gitには含めない運用です。
 - `npm run backup:workspace:snapshot` を使うと、予約バックアップ実行後に Git bundle を外部ディレクトリへ保存します。
@@ -247,6 +253,8 @@ Preview へ出す前は、ローカル確認に加えて Vercel の `Preview` �
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `CRON_SECRET`
+- `BACKUP_EXPORT_SECRET`
+- `RATE_LIMIT_HASH_SECRET`
 - `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY`
 
 全て成功してからデプロイしてください。

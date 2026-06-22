@@ -27,13 +27,34 @@ import {
 } from "@/lib/reservation-dedup";
 import { createReservationSchema, zodFields } from "@/lib/validation";
 import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
+import { isLinePhoneAutoAttachEnabled } from "@/lib/env";
 import { getContactPayload } from "@/lib/contact";
 import { env } from "@/lib/env";
-import { getRequestId, logError, logInfo } from "@/lib/logger";
+import {
+  canPushToLineUser,
+  generateLineLinkToken,
+  hashNormalizedPhone,
+  hashLineLinkToken,
+  normalizeReservationPhone,
+  verifyLineIdToken,
+  type CanPushResult,
+} from "@/lib/line";
+import {
+  LINE_CUSTOMER_LINK_SOURCE,
+  getLineCustomerLinkConsentCutoff,
+} from "@/lib/line-customer-link";
+import { getRequestId, logError, logInfo, logWarn } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
 const RETRIES = 3;
+const LINK_TOKEN_TTL_HOURS = 48;
+
+type ResolvedLineLink = {
+  lineUserId: string;
+  linkSource: string;
+  canPushResult: CanPushResult;
+};
 
 async function acquireReservationAdvisoryLock(
   tx: Prisma.TransactionClient,
@@ -47,16 +68,107 @@ async function acquireReservationAdvisoryLock(
   );
 }
 
+async function createLineLinkToken(reservationId: string): Promise<string> {
+  const rawToken = generateLineLinkToken();
+  const tokenHash = hashLineLinkToken(rawToken);
+  const expiresAt = new Date(Date.now() + LINK_TOKEN_TTL_HOURS * 60 * 60 * 1000);
+  await prisma.reservationLineLinkToken.create({
+    data: { reservationId, tokenHash, expiresAt },
+  });
+  return rawToken;
+}
+
+// Raw tokens are never stored — only their hash. We always generate a fresh
+// token for each response; existing unused tokens expire naturally (48 h TTL).
+async function getOrCreateLineLinkToken(reservationId: string): Promise<string> {
+  return createLineLinkToken(reservationId);
+}
+
+async function resolveLineCustomerLinkByPhone(
+  phone: string,
+  requestId: string
+): Promise<ResolvedLineLink | null> {
+  if (!isLinePhoneAutoAttachEnabled()) {
+    logInfo("reservation.line.customer_link_auto_attach_disabled", {
+      requestId,
+      route: "/api/reservations",
+    });
+    return null;
+  }
+
+  const normalizedPhone = normalizeReservationPhone(phone);
+  if (normalizedPhone.length < 6) return null;
+
+  const normalizedPhoneHash = hashNormalizedPhone(normalizedPhone);
+  const now = new Date();
+  const links = await prisma.lineCustomerLink.findMany({
+    where: {
+      normalizedPhoneHash,
+      status: "ACTIVE",
+      lastLinkedAt: { gte: getLineCustomerLinkConsentCutoff(now) },
+    },
+    select: { lineUserId: true },
+    take: 3,
+  });
+  const lineUserIds = [...new Set(links.map((link) => link.lineUserId))];
+
+  if (lineUserIds.length !== 1) {
+    if (lineUserIds.length > 1) {
+      logWarn("reservation.line.customer_link_ambiguous", {
+        requestId,
+        route: "/api/reservations",
+        context: { matchCount: lineUserIds.length },
+      });
+    }
+    return null;
+  }
+
+  const lineUserId = lineUserIds[0];
+  const friend = await prisma.lineFriend.findUnique({
+    where: { lineUserId },
+    select: { friendshipStatus: true },
+  });
+  if (friend?.friendshipStatus === "BLOCKED") {
+    logInfo("reservation.line.customer_link_blocked", {
+      requestId,
+      route: "/api/reservations",
+    });
+    return null;
+  }
+
+  const canPushResult = await canPushToLineUser(lineUserId);
+  if (canPushResult.status !== "ACTIVE") {
+    logInfo("reservation.line.customer_link_push_not_active", {
+      requestId,
+      route: "/api/reservations",
+      context: { pushStatus: canPushResult.status },
+    });
+    return null;
+  }
+
+  logInfo("reservation.line.customer_link_resolved", {
+    requestId,
+    route: "/api/reservations",
+    context: { pushStatus: canPushResult.status },
+  });
+
+  return {
+    lineUserId,
+    linkSource: LINE_CUSTOMER_LINK_SOURCE,
+    canPushResult,
+  };
+}
+
 export async function POST(request: NextRequest) {
   const requestId = getRequestId(request);
   const contact = getContactPayload();
-  const body = await request.json().catch(() => null);
-
   const securityError = enforceWriteRequestSecurity(request, {
     requestId,
     requireRequestedWith: false,
   });
   if (securityError) return securityError;
+
+  const body = await request.json().catch(() => null);
 
   if (body?.reservationType === ReservationType.PRIVATE_BLOCK) {
     return apiError(403, {
@@ -72,7 +184,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (isReservationSchemaNotReadyError(error)) {
       return apiError(503, {
-          error: "予約システムの準備が完了していません",
+        error: "予約システムの準備が完了していません",
         code: RESERVATION_SCHEMA_NOT_READY_CODE,
         requestId,
         ...contact,
@@ -99,9 +211,7 @@ export async function POST(request: NextRequest) {
   const ipHash = hashClientIp(ipAddress);
 
   try {
-    await enforceReservationWriteRateLimit(prisma, {
-      ipHash,
-    });
+    await enforceReservationWriteRateLimit(prisma, { ipHash });
   } catch (error) {
     if (isReservationRateLimitError(error)) {
       return apiError(429, {
@@ -147,11 +257,73 @@ export async function POST(request: NextRequest) {
     name,
     phone,
     note,
-    lineUserId,
+    lineIdToken,
     course,
   } = parsed.data;
   const reservationNote =
     [course ? `コース: ${course}` : null, note].filter(Boolean).join("\n") || null;
+
+  // Verify LIFF ID token server-side. Never trust client-supplied lineUserId.
+  let resolvedLineUserId: string | null = null;
+  let resolvedLineLinkSource: string | null = null;
+  let canPushResult: CanPushResult | null = null;
+
+  if (typeof lineIdToken === "string" && lineIdToken.length > 0) {
+    try {
+      const sub = await verifyLineIdToken(lineIdToken);
+      if (sub) {
+        const verifiedPushResult = await canPushToLineUser(sub);
+        if (verifiedPushResult.status === "ACTIVE") {
+          canPushResult = verifiedPushResult;
+          resolvedLineUserId = sub;
+          resolvedLineLinkSource = "RESERVATION_FORM";
+        }
+        logInfo("reservation.line.verified", {
+          requestId,
+          route: "/api/reservations",
+          context: { pushStatus: verifiedPushResult.status },
+        });
+      } else {
+        logInfo("reservation.line.verify_failed", {
+          requestId,
+          route: "/api/reservations",
+        });
+      }
+    } catch (lineError) {
+      // LINE failure must never fail reservation creation.
+      logError("reservation.line.unexpected_error", {
+        requestId,
+        route: "/api/reservations",
+        errorCode: "LINE_VERIFY_UNEXPECTED",
+        context: {
+          message:
+            lineError instanceof Error ? lineError.message : String(lineError),
+        },
+      });
+    }
+  }
+
+  if (!resolvedLineUserId) {
+    try {
+      const linkedCustomer = await resolveLineCustomerLinkByPhone(phone, requestId);
+      if (linkedCustomer) {
+        resolvedLineUserId = linkedCustomer.lineUserId;
+        resolvedLineLinkSource = linkedCustomer.linkSource;
+        canPushResult = linkedCustomer.canPushResult;
+      }
+    } catch (lineError) {
+      // LINE customer-link failures must never fail reservation creation.
+      logError("reservation.line.customer_link_unexpected_error", {
+        requestId,
+        route: "/api/reservations",
+        errorCode: "LINE_CUSTOMER_LINK_UNEXPECTED",
+        context: {
+          message:
+            lineError instanceof Error ? lineError.message : String(lineError),
+        },
+      });
+    }
+  }
 
   if (!isArrivalTimeValid(arrivalTime, servicePeriod)) {
     return apiError(400, {
@@ -200,6 +372,9 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  const linePushStatus = canPushResult?.status ?? null;
+  const linePushCheckedAt = canPushResult ? new Date() : null;
+
   for (let attempt = 1; attempt <= RETRIES; attempt += 1) {
     try {
       const now = new Date();
@@ -226,10 +401,31 @@ export async function POST(request: NextRequest) {
                 partySize,
               })
           );
+
           if (duplicateReservation) {
+            if (resolvedLineUserId) {
+              if (duplicateReservation.lineUserId === resolvedLineUserId) {
+                // Same user — idempotent.
+                return {
+                  reservation: duplicateReservation,
+                  deduplicated: true,
+                  lineLinked: true,
+                  lineEnabled: true,
+                };
+              }
+              // Never attach a LINE user to an existing duplicate reservation.
+              return {
+                reservation: duplicateReservation,
+                deduplicated: true,
+                lineLinked: false,
+                lineEnabled: !!duplicateReservation.lineUserId,
+              };
+            }
             return {
               reservation: duplicateReservation,
               deduplicated: true,
+              lineLinked: null,
+              lineEnabled: !!duplicateReservation.lineUserId,
             };
           }
 
@@ -261,19 +457,38 @@ export async function POST(request: NextRequest) {
             phone,
             note: reservationNote,
             status: ReservationStatus.CONFIRMED,
-            lineUserId: lineUserId ?? null,
+            lineUserId: resolvedLineUserId,
+            lineLinkedAt: resolvedLineUserId ? now : null,
+            lineLinkSource: resolvedLineUserId ? resolvedLineLinkSource : null,
+            linePushStatus,
+            linePushCheckedAt,
           });
 
           return {
             reservation: createdReservation,
             deduplicated: false,
+            lineLinked: resolvedLineUserId ? true : null,
+            lineEnabled: !!resolvedLineUserId,
           };
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
       );
-      const { reservation, deduplicated } = result;
 
-      const adminLink = env.BASE_URL ? `${env.BASE_URL}/admin/reservations/${reservation.id}` : "";
+      const { reservation, deduplicated, lineLinked, lineEnabled } = result;
+
+      // Warn if duplicate with conflicting LINE user (no PII in log).
+      if (deduplicated && lineLinked === false && resolvedLineUserId) {
+        logWarn("reservation.line.duplicate_conflict", {
+          requestId,
+          route: "/api/reservations",
+          context: { reservationId: reservation.id },
+        });
+      }
+
+      const adminLink = env.BASE_URL
+        ? `${env.BASE_URL}/admin/reservations/${reservation.id}`
+        : "";
+
       if (!deduplicated) {
         sendReservationEmail({ reservation, adminUrl: adminLink }).catch((err) => {
           logError("reservation.email.failed", {
@@ -297,20 +512,57 @@ export async function POST(request: NextRequest) {
           servicePeriod: reservation.servicePeriod,
           partySize: reservation.partySize,
           deduplicated,
+          lineLinked,
         },
       });
 
+      // Build lineNotification response.
+      let lineNotification: Record<string, unknown>;
+      if (lineEnabled) {
+        lineNotification = { enabled: true };
+        if (lineLinked !== null) lineNotification.lineLinked = lineLinked;
+        if (deduplicated) lineNotification.deduplicated = true;
+      } else if (deduplicated) {
+        lineNotification = { enabled: false, deduplicated: true };
+      } else {
+        // Generate a post-reservation link URL using the LIFF link endpoint.
+        let linkUrl: string | undefined;
+        try {
+          const rawToken = await getOrCreateLineLinkToken(reservation.id);
+          const liffLinkId =
+            process.env.NEXT_PUBLIC_LIFF_LINK_ID ?? process.env.NEXT_PUBLIC_LIFF_ID;
+          if (liffLinkId) {
+            linkUrl = `https://liff.line.me/${liffLinkId}?t=${encodeURIComponent(rawToken)}`;
+          } else {
+            linkUrl = `/line/link?t=${encodeURIComponent(rawToken)}`;
+          }
+        } catch (tokenError) {
+          logError("reservation.line_token.failed", {
+            requestId,
+            route: "/api/reservations",
+            errorCode: "LINE_TOKEN_CREATE_FAILED",
+            context: {
+              reservationId: reservation.id,
+              message: tokenError instanceof Error ? tokenError.message : String(tokenError),
+            },
+          });
+        }
+        lineNotification = { enabled: false, ...(linkUrl ? { linkUrl } : {}) };
+      }
+
+      // adminLink is intentionally omitted from the public response.
+      // Admin navigation is handled via admin API / admin UI only.
       return NextResponse.json({
         reservationId: reservation.id,
         summary: `${reservation.date} ${reservation.servicePeriod === "LUNCH" ? "ランチ" : "ディナー"} ${reservation.partySize}名で承りました。`,
-        adminLink: adminLink || undefined,
         deduplicated,
+        lineNotification,
         requestId,
       });
     } catch (error: unknown) {
       if (isReservationSchemaNotReadyError(error)) {
         return apiError(503, {
-            error: "予約システムの準備が完了していません",
+          error: "予約システムの準備が完了していません",
           code: RESERVATION_SCHEMA_NOT_READY_CODE,
           requestId,
           ...contact,

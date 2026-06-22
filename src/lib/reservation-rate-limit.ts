@@ -134,7 +134,8 @@ export async function enforceReservationWriteRateLimit(
     }
 
     const privateBlockKeyHash = hashText(
-      `${input.privateBlockSlot.date}:${input.privateBlockSlot.servicePeriod}`
+      `${input.privateBlockSlot.date}:${input.privateBlockSlot.servicePeriod}`,
+      "private-block-slot"
     );
     const privateBlockSince = new Date(now.getTime() - PRIVATE_BLOCK_SLOT_WINDOW_MS);
     const privateBlockCount = await countRecentEvents(tx, {
