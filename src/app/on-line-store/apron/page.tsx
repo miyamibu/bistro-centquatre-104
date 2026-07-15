@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Noto_Serif_JP, Tangerine } from "next/font/google";
 import { addToCart } from "@/lib/store-cart";
+import { formatStoreProductPrice, getStoreProduct } from "@/lib/store-products";
 
 const headingFont = Tangerine({
   subsets: ["latin"],
@@ -45,6 +46,8 @@ const productImages = [
     fit: "contain",
   },
 ] as const;
+
+const apronProduct = getStoreProduct("apron");
 
 function clampQuantity(value: number) {
   return Math.min(10, Math.max(1, value));
@@ -101,11 +104,15 @@ function ApronPurchaseContent() {
   const isZoomPdf = zoomImage?.toLowerCase().endsWith(".pdf");
 
   const handleAddToCart = () => {
+    if (!apronProduct?.isPublished) {
+      return;
+    }
+
     addToCart(
       {
-        id: "apron",
-        name: "オリジナルエプロン",
-        price: 10000,
+        id: apronProduct.id,
+        name: apronProduct.name,
+        price: apronProduct.priceYen,
         image: productImages[0].src,
       },
       quantity,
@@ -224,13 +231,13 @@ function ApronPurchaseContent() {
                   className="font-semibold text-[#2f1b0f]"
                   style={{ fontSize: `${productInfoTextSize.name}px` }}
                 >
-                  オリジナルエプロン
+                  {apronProduct?.name ?? "商品情報を確認できません"}
                 </p>
                 <p
                   className="mt-[2cm] font-semibold text-[#4a3121]"
                   style={{ fontSize: `${productInfoTextSize.price}px` }}
                 >
-                  ¥10,000
+                  {apronProduct ? formatStoreProductPrice(apronProduct.priceYen) : "—"}
                 </p>
                 <div className="mt-[2cm] mb-[2cm] flex w-full max-w-[18rem] items-center justify-start gap-6">
                   <p

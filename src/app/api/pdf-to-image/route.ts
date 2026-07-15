@@ -97,6 +97,14 @@ export async function POST(request: NextRequest) {
     const securityError = enforceWriteRequestSecurity(request, { requestId });
     if (securityError) return securityError;
 
+    if (!isAuthorized(request)) {
+      return apiError(401, {
+        error: "Unauthorized - authentication required",
+        code: "UNAUTHORIZED",
+        requestId,
+      });
+    }
+
     const rateLimit = applyRateLimit(request);
     if (rateLimit.limited) {
       return apiError(
@@ -122,15 +130,6 @@ export async function POST(request: NextRequest) {
       });
     }
     slotAcquired = true;
-
-    // ⚠️ CRITICAL: Require authentication
-    if (!isAuthorized(request)) {
-      return apiError(401, {
-        error: "Unauthorized - authentication required",
-        code: "UNAUTHORIZED",
-        requestId,
-      });
-    }
 
     const body = await request.json().catch(() => null);
     const parsed = pdfToImageSchema.safeParse(body);

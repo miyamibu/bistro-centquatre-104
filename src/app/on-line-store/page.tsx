@@ -46,7 +46,7 @@ export default function StorePage() {
 
         <div className="mt-6 grid gap-y-12 md:mx-auto md:max-w-[56rem] md:grid-cols-2 md:gap-x-6">
           {storeProducts.map((product, index) => {
-            const isComingSoon = !product.href;
+            const isComingSoon = !product.isPublished;
             const card = (
               <article
                 className="text-center store-fade-up"
@@ -92,7 +92,7 @@ export default function StorePage() {
               </article>
             );
 
-            if (product.href) {
+            if (product.isPublished && product.href) {
               return (
                 <Link
                   key={product.id}

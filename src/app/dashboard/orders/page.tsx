@@ -12,8 +12,14 @@ export default async function DashboardOrdersPage() {
   return (
     <OrdersClient
       initialOrders={ordersResult.error ? [] : ordersResult.data || []}
+      initialOrdersError={ordersResult.error ? "注文一覧を取得できませんでした。時間をおいて再確認してください。" : null}
       initialBankAccount={
         bankAccountResult.error ? null : bankAccountResult.data?.[0] ? bankAccountResult.data[0] : null
+      }
+      initialBankAccountError={
+        bankAccountResult.error
+          ? "銀行情報を取得できませんでした。設定状態を確認できません。"
+          : null
       }
     />
   );

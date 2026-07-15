@@ -43,6 +43,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     : isAdminRoute
       ? "max-w-6xl md:max-w-7xl"
       : "max-w-6xl";
+  const mainClassName = isOrdersDashboard
+    ? "flex-1 pt-10"
+    : hideTopNav
+      ? "flex-1"
+      : isBookingRoute
+        ? "pt-[var(--header-h)] md:pt-0"
+        : isPublicWebRoute
+          ? "flex-1 pt-[var(--header-h)] md:pt-0"
+          : "flex-1 pt-[var(--header-h)]";
+  const mainBottomPaddingClass = pathname === "/"
+    ? "pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0"
+    : "";
   return (
     <div
       className={`relative mx-auto flex min-h-screen ${shellWidthClass} flex-col bg-white px-4 py-0 [--header-h:58px] md:[--header-h:92px]`}
@@ -70,19 +82,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </>
       )}
 
-      <main
-        className={
-          isOrdersDashboard
-            ? "flex-1 pt-10"
-            : hideTopNav
-              ? "flex-1"
-            : isBookingRoute
-              ? "pt-[var(--header-h)] md:pt-0"
-            : isPublicWebRoute
-              ? "flex-1 pt-[var(--header-h)] md:pt-0"
-              : "flex-1 pt-[var(--header-h)]"
-        }
-      >
+      <main className={`${mainClassName} ${mainBottomPaddingClass}`}>
         {children}
       </main>
       {!hideTopNav && isPublicWebRoute ? (

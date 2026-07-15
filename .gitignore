@@ -35,6 +35,15 @@ node_modules/
 /backups/**/*.json
 tmp-*.png
 
+# Local agent/review artifacts
+/.oracle/
+/.codex/
+/.codex-audit*/
+/output/
+/artifacts/
+/deliverables/
+/supabase/.temp/
+
 # Debug
 npm-debug.log
 npm-debug.log*

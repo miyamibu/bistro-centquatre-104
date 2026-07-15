@@ -31,44 +31,6 @@ type BankAccountRecord = {
   account_holder: string;
 };
 
-async function appendBankAccountHistory(input: {
-  bankAccount: BankAccountRecord;
-  actionType: "UPDATED" | "DELETED";
-  requestId: string;
-}) {
-  const encryptedAccountNumber = encryptBankHistoryValue(input.bankAccount.account_number);
-  const encryptedAccountHolder = encryptBankHistoryValue(input.bankAccount.account_holder);
-
-  const { error } = await supabaseServer.from("bank_account_history").insert([
-    {
-      bank_account_id: input.bankAccount.id,
-      action_type: input.actionType,
-      changed_by: "admin",
-      bank_name: input.bankAccount.bank_name,
-      branch_name: input.bankAccount.branch_name,
-      account_type: input.bankAccount.account_type,
-      account_number_last4: input.bankAccount.account_number.slice(-4),
-      account_number_enc: encryptedAccountNumber.ciphertext,
-      account_holder_enc: encryptedAccountHolder.ciphertext,
-      account_number_nonce: encryptedAccountNumber.nonce,
-      account_number_auth_tag: encryptedAccountNumber.authTag,
-      account_holder_nonce: encryptedAccountHolder.nonce,
-      account_holder_auth_tag: encryptedAccountHolder.authTag,
-      key_version: env.BANK_ACCOUNT_HISTORY_KEY_VERSION,
-    },
-  ]);
-
-  if (error) {
-    logError("dashboard.bank_account.history.failed", {
-      requestId: input.requestId,
-      route: "/api/dashboard/bank-account",
-      errorCode: "DASHBOARD_BANK_ACCOUNT_HISTORY_FAILED",
-      context: { message: error.message, actionType: input.actionType },
-    });
-    throw new Error("DASHBOARD_BANK_ACCOUNT_HISTORY_FAILED");
-  }
-}
-
 export async function GET(request: NextRequest) {
   const requestId = getRequestId(request);
   const route = "/api/dashboard/bank-account";
@@ -122,33 +84,29 @@ export async function PUT(request: NextRequest) {
     const payload = parsed.data;
     const { id, ...upsertData } = payload;
 
-    let bankAccount: BankAccountRecord | undefined;
-    if (id) {
-      const { data, error } = await supabaseServer
-        .from("bank_account")
-        .update(upsertData)
-        .eq("id", id)
-        .select();
+    const encryptedAccountNumber = encryptBankHistoryValue(payload.account_number);
+    const encryptedAccountHolder = encryptBankHistoryValue(payload.account_holder);
+    const { data, error } = await supabaseServer.rpc("save_bank_account_with_history", {
+      p_id: id ?? null,
+      p_bank_name: upsertData.bank_name,
+      p_branch_name: upsertData.branch_name,
+      p_account_type: upsertData.account_type,
+      p_account_number: upsertData.account_number,
+      p_account_holder: upsertData.account_holder,
+      p_account_number_enc: encryptedAccountNumber.ciphertext,
+      p_account_holder_enc: encryptedAccountHolder.ciphertext,
+      p_account_number_nonce: encryptedAccountNumber.nonce,
+      p_account_number_auth_tag: encryptedAccountNumber.authTag,
+      p_account_holder_nonce: encryptedAccountHolder.nonce,
+      p_account_holder_auth_tag: encryptedAccountHolder.authTag,
+      p_key_version: env.BANK_ACCOUNT_HISTORY_KEY_VERSION,
+    });
 
-      if (error) throw error;
-      bankAccount = data?.[0] as BankAccountRecord | undefined;
-    } else {
-      const { data, error } = await supabaseServer
-        .from("bank_account")
-        .insert([upsertData])
-        .select();
-
-      if (error) throw error;
-      bankAccount = data?.[0] as BankAccountRecord | undefined;
+    if (error) {
+      throw error;
     }
 
-    if (bankAccount) {
-      await appendBankAccountHistory({
-        bankAccount,
-        actionType: "UPDATED",
-        requestId,
-      });
-    }
+    const bankAccount = data as BankAccountRecord | undefined;
 
     logInfo("dashboard.bank_account.saved", {
       requestId,
@@ -202,15 +160,22 @@ export async function DELETE(request: NextRequest) {
 
     if (fetchError) throw fetchError;
 
-    const { error } = await supabaseServer.from("bank_account").delete().eq("id", parsed.data.id);
-    if (error) throw error;
-
     if (existing) {
-      await appendBankAccountHistory({
-        bankAccount: existing as BankAccountRecord,
-        actionType: "DELETED",
-        requestId,
+      const bankAccount = existing as BankAccountRecord;
+      const encryptedAccountNumber = encryptBankHistoryValue(bankAccount.account_number);
+      const encryptedAccountHolder = encryptBankHistoryValue(bankAccount.account_holder);
+      const { error } = await supabaseServer.rpc("delete_bank_account_with_history", {
+        p_id: parsed.data.id,
+        p_account_number_enc: encryptedAccountNumber.ciphertext,
+        p_account_holder_enc: encryptedAccountHolder.ciphertext,
+        p_account_number_nonce: encryptedAccountNumber.nonce,
+        p_account_number_auth_tag: encryptedAccountNumber.authTag,
+        p_account_holder_nonce: encryptedAccountHolder.nonce,
+        p_account_holder_auth_tag: encryptedAccountHolder.authTag,
+        p_key_version: env.BANK_ACCOUNT_HISTORY_KEY_VERSION,
       });
+
+      if (error) throw error;
     }
 
     logInfo("dashboard.bank_account.deleted", {
@@ -233,4 +198,3 @@ export async function DELETE(request: NextRequest) {
     });
   }
 }
-

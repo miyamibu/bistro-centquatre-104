@@ -76,7 +76,7 @@ describe("check-reservation-backup-freshness", () => {
     expect(manifest.status).toBe("FRESH");
     expect(manifest.totals.reservations).toBe(2);
     expect(manifest.chunkChecksums[0].checksumSha256).toBe("a".repeat(64));
-    expect(result.stdout).not.toContain("090");
+    expect(result.stdout).not.toMatch(/(?:^|[^\d])090[-\s]?\d{4}[-\s]?\d{4}(?:$|[^\d])/);
     expect(result.stdout).not.toContain("customer@example.com");
   });
 

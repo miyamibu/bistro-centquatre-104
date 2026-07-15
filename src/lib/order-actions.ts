@@ -356,6 +356,52 @@ export async function executeConfirmHumanAction(input: {
   });
 }
 
+export async function executeCreateOrderQuoteAction(input: {
+  customerInfo: {
+    name: string;
+    email: string;
+    phone: string;
+    zipCode: string;
+    prefecture: string;
+    city: string;
+    address: string;
+    building?: string | null;
+  };
+  items: Array<{ id: string; name: string; price: number; quantity: number }>;
+  total: number;
+  holdExpiresAt: string;
+  humanTokenHash: string;
+  actorId: string;
+  requestId: string;
+  idempotencyKey: string;
+  selectedPaymentMethod: NormalizedOrderPaymentMethod | null;
+  selectedStoreVisitDate?: string | null;
+}) {
+  return executeRpc<Record<string, unknown>>({
+    rpcName: "create_order_quote_action",
+    rpcArgs: {
+      p_customer_name: input.customerInfo.name,
+      p_email: input.customerInfo.email,
+      p_phone: input.customerInfo.phone,
+      p_zip_code: input.customerInfo.zipCode,
+      p_prefecture: input.customerInfo.prefecture,
+      p_city: input.customerInfo.city,
+      p_address: input.customerInfo.address,
+      p_building: input.customerInfo.building ?? null,
+      p_items: input.items,
+      p_total: input.total,
+      p_hold_expires_at: input.holdExpiresAt,
+      p_token_hash: input.humanTokenHash,
+      p_actor_id: input.actorId,
+      p_request_id: input.requestId,
+      p_idempotency_key: input.idempotencyKey,
+      p_selected_payment_method: input.selectedPaymentMethod,
+      p_selected_store_visit_date: input.selectedStoreVisitDate ?? null,
+    },
+    fallbackCode: "ORDER_QUOTE_CREATE_FAILED",
+  });
+}
+
 export async function executeSetPaymentMethodAction(input: {
   orderId: string;
   expectedVersion: number;

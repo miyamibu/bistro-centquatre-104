@@ -20,6 +20,16 @@ import { createAdminPrivateBlockSchema, zodFields } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 
+function isRetryablePrivateBlockTransactionError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+
+  return (
+    (error instanceof Prisma.PrismaClientKnownRequestError &&
+      (error.code === "P2034" || error.code === "P2002")) ||
+    /could not serialize|serialization[_ ]failure|deadlock detected/i.test(message)
+  );
+}
+
 export async function POST(request: NextRequest) {
   const requestId = getRequestId(request);
   const route = "/api/admin/private-block";
@@ -70,7 +80,8 @@ export async function POST(request: NextRequest) {
   const normalizedNote = note?.trim() || undefined;
 
   try {
-    const result = await prisma.$transaction(
+    const savePrivateBlock = () =>
+      prisma.$transaction(
       async (tx) => {
         const confirmed = await findReservationsCompat(tx, {
           where: {
@@ -141,7 +152,16 @@ export async function POST(request: NextRequest) {
         };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
-    );
+      );
+
+    let result: Awaited<ReturnType<typeof savePrivateBlock>>;
+    try {
+      result = await savePrivateBlock();
+    } catch (error) {
+      if (!isRetryablePrivateBlockTransactionError(error)) throw error;
+
+      result = await savePrivateBlock();
+    }
 
     logInfo("admin.private_block.saved", {
       requestId,
@@ -185,12 +205,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const isRetryable =
-      (error instanceof Prisma.PrismaClientKnownRequestError &&
-        (error.code === "P2034" || error.code === "P2002")) ||
-      message.includes("could not serialize");
-
-    if (isRetryable) {
+    if (isRetryablePrivateBlockTransactionError(error)) {
       return apiError(409, {
         error: "予約処理が競合しました。時間をおいて再度お試しください。",
         code: "RESERVATION_CONFLICT",

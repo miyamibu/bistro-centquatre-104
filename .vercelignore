@@ -1,0 +1,10 @@
+backups/
+output/
+artifacts/
+deliverables/
+.codex/
+.codex-audit/
+.codex-audit-review/
+.agents/
+*.log
+*.tsbuildinfo

@@ -36,7 +36,13 @@ export default function PrivacyPage() {
             </p>
           </section>
           <section className="space-y-2">
-            <h2 className="text-xl font-semibold">5. 開示・訂正等のお問い合わせ</h2>
+            <h2 className="text-xl font-semibold">5. LINE通知について</h2>
+            <p className="text-sm leading-7 md:text-base">
+              ご予約前日のLINEリマインド通知をご希望の場合、LINEアカウントのユーザーIDを予約情報と紐づけて保存します。LINEの友だち追加のみでは予約との自動紐づけは行いません。予約完了画面のリンク、またはLINE公式アカウントの「予約と連携」メニューから設定できます。通知に使用したLINEユーザーIDは、送信ログの信頼性確保のためシステム内に保持します。通知の停止をご希望の場合は、店舗までお電話またはお問い合わせフォームよりご連絡ください。トークン・IDトークン・チャンネルシークレットはログに記録しません。
+            </p>
+          </section>
+          <section className="space-y-2">
+            <h2 className="text-xl font-semibold">6. 開示・訂正等のお問い合わせ</h2>
             <p className="text-sm leading-7 md:text-base">
               保有個人情報の開示、訂正、削除等をご希望の場合は、店舗までお電話またはお問い合わせフォームよりご連絡ください。ご本人確認のうえ、法令に従って対応します。
             </p>

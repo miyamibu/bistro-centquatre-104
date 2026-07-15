@@ -5,7 +5,7 @@ import { Prisma, ReservationStatus } from "@prisma/client";
 import AdminReservationsTable, {
   type AdminReservationTableRow,
 } from "@/components/admin-reservations-table";
-import { getAdminReservationsPageData } from "@/lib/admin-day-status";
+import { getAdminReservationsPageData, normalizeAdminReservationDateInput } from "@/lib/admin-day-status";
 import {
   getMonthDayOperatingStatus,
 } from "@/lib/admin-operating-status";
@@ -17,6 +17,24 @@ import {
 import { RESERVATION_CONFIG } from "@/lib/reservation-config";
 
 export const dynamic = "force-dynamic";
+
+type ReservationWithLine = {
+  lineUserId?: string | null;
+  lineReminderSentAt?: Date | null;
+  lineReminderStatus?: string | null;
+  lineReminderError?: string | null;
+};
+
+function buildLineStatus(reservation: ReservationWithLine): string {
+  if (!reservation.lineUserId) return "未連携";
+  const status = reservation.lineReminderStatus;
+  if (!status || status === "PENDING") return "連携済み（未送信）";
+  if (status === "SENT") return "送信済み";
+  if (status === "FAILED") return "通知失敗";
+  if (status === "BLOCKED" || status === "SKIPPED_BLOCKED") return "通知ブロック";
+  if (status === "SKIPPED_QUOTA") return "送信上限停止";
+  return status;
+}
 
 const DAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"] as const;
 const CLOSED_WEEKDAY_SET = new Set<number>(RESERVATION_CONFIG.closedWeekdays);
@@ -54,7 +72,7 @@ export default async function AdminReservations({
 }) {
   const resolvedSearchParams = await searchParams;
   const defaultDate = formatJst(new Date());
-  const date = resolvedSearchParams.date || defaultDate;
+  const date = normalizeAdminReservationDateInput(resolvedSearchParams.date, defaultDate);
   const selectedDate = new Date(`${date}T00:00:00`);
   const calendarMonthStart = startOfMonth(selectedDate);
   const calendarMonthDays = getDaysInMonth(calendarMonthStart);
@@ -63,6 +81,7 @@ export default async function AdminReservations({
   let reservations: AdminReservationsPageData["reservations"] = [];
   let dayStatus: AdminReservationsPageData["dayStatus"] | null = null;
   let monthDays: AdminReservationsPageData["monthDays"] = {};
+  let dataError: string | null = null;
 
   try {
     const pageData = await getAdminReservationsPageData(date);
@@ -94,7 +113,7 @@ export default async function AdminReservations({
       );
     }
 
-    throw error;
+    dataError = "予約データを取得できませんでした。時間をおいて再確認してください。";
   }
 
   const calendarCells = [
@@ -176,6 +195,8 @@ export default async function AdminReservations({
           : reservation.status === ReservationStatus.CANCELLED
           ? "キャンセル"
           : "確定",
+      lineStatus: buildLineStatus(reservation),
+      lineReminderError: reservation.lineReminderError ?? null,
     };
   });
 
@@ -218,6 +239,7 @@ export default async function AdminReservations({
         selectedDate={date}
         reservations={reservationRows}
         dayStatus={dayStatus}
+        dataError={dataError}
       />
 
       <div className="card border-0 p-4 shadow-none overflow-x-auto">

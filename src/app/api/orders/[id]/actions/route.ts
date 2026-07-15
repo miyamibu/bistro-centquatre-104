@@ -1,11 +1,10 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { isAuthorized } from "@/lib/basic-auth";
-import { sendOrderConfirmationEmail } from "@/lib/email";
 import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
 import { validatePayInStoreVisitDate } from "@/lib/order-rules";
 import { archiveOrderHistoryByOrderId } from "@/lib/order-history";
-import { supabaseServer } from "@/lib/supabase-server";
+import { processOrderConfirmationOutboxForOrder } from "@/lib/order-notification-outbox";
 import {
   cancelOrderPayloadSchema,
   confirmHumanPayloadSchema,
@@ -18,7 +17,6 @@ import {
 } from "@/lib/validation";
 import {
   buildIdempotencyHash,
-  OrderActionError,
   executeCancelOrderAction,
   executeConfirmHumanAction,
   executeMarkCollectedAction,
@@ -158,113 +156,36 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
               idempotencyKey,
             });
 
-            const { data: orderRow, error: orderError } = await supabaseServer
-              .from("orders")
-              .select(
-                "id, customer_name, email, phone, zip_code, prefecture, city, address, building, items, total, payment_method, store_visit_date"
-              )
-              .eq("id", id)
-              .maybeSingle();
-
-            if (orderError || !orderRow) {
-              logError("orders.actions.set_payment_method.fetch_email_context_failed", {
+            const notificationResult = await processOrderConfirmationOutboxForOrder({
+              orderId: id,
+              requestId,
+            });
+            if (!notificationResult.sent) {
+              logError("orders.actions.set_payment_method.notification_failed", {
                 requestId,
                 route: "/api/orders/[id]/actions",
-                errorCode: "ORDER_EMAIL_CONTEXT_FETCH_FAILED",
-                context: { orderId: id, message: orderError?.message ?? "Order not found" },
-              });
-
-              throw new OrderActionError(
-                502,
-                "ORDER_EMAIL_CONTEXT_FETCH_FAILED",
-                "注文確認メール送信の準備に失敗しました"
-              );
-            }
-
-            const emailItems = Array.isArray(orderRow.items)
-              ? orderRow.items
-                  .filter(
-                    (item): item is { id?: string; name: string; price: number; quantity: number } =>
-                      typeof item === "object" &&
-                      item !== null &&
-                      typeof (item as { name?: unknown }).name === "string" &&
-                      typeof (item as { price?: unknown }).price === "number" &&
-                      typeof (item as { quantity?: unknown }).quantity === "number"
-                  )
-                  .map((item) => ({
-                    id: item.id ?? "",
-                    name: item.name,
-                    price: item.price,
-                    quantity: item.quantity,
-                  }))
-              : [];
-
-            let bankAccount:
-              | {
-                  bank_name: string;
-                  branch_name: string;
-                  account_type: string;
-                  account_number: string;
-                  account_holder: string;
-                }
-              | undefined;
-
-            if (orderRow.payment_method === "BANK_TRANSFER") {
-              const { data } = await supabaseServer.from("bank_account").select("*").limit(1);
-              bankAccount =
-                (data?.[0] as
-                  | {
-                      bank_name: string;
-                      branch_name: string;
-                      account_type: string;
-                      account_number: string;
-                      account_holder: string;
-                    }
-                  | undefined) ?? undefined;
-            }
-
-            const emailResult = await sendOrderConfirmationEmail(
-              {
-                name: String(orderRow.customer_name),
-                email: String(orderRow.email),
-                phone: String(orderRow.phone),
-                zipCode: String(orderRow.zip_code),
-                prefecture: String(orderRow.prefecture),
-                city: String(orderRow.city),
-                address: String(orderRow.address),
-                building: typeof orderRow.building === "string" ? orderRow.building : "",
-              },
-              emailItems,
-              Number(orderRow.total ?? 0),
-              orderRow.payment_method === "PAY_IN_STORE" ? "PAY_IN_STORE" : "BANK_TRANSFER",
-              typeof orderRow.store_visit_date === "string" ? orderRow.store_visit_date : undefined,
-              bankAccount
-            );
-
-            if (!emailResult.sent) {
-              logError("orders.actions.set_payment_method.email_failed", {
-                requestId,
-                route: "/api/orders/[id]/actions",
-                errorCode: emailResult.reason,
+                errorCode: String(notificationResult.reason),
                 context: {
                   orderId: id,
-                  target: emailResult.target,
+                  processed: notificationResult.processed,
                 },
               });
-
-              throw new OrderActionError(
-                502,
-                "ORDER_NOTIFICATION_FAILED",
-                "注文確認メールの送信に失敗しました"
-              );
+              return {
+                ...(actionResult as Record<string, unknown>),
+                notification: {
+                  sent: false,
+                  status: "PENDING_RETRY",
+                  durableState: notificationResult.durableState,
+                },
+              };
             }
 
             return {
               ...(actionResult as Record<string, unknown>),
               notification: {
                 sent: true,
-                provider: emailResult.provider,
-                adminSent: emailResult.adminSent,
+                status: "SENT",
+                durableState: notificationResult.durableState,
               },
             };
           },

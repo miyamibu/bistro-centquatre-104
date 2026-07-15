@@ -10,15 +10,13 @@ describe("reservation schema compatibility checks", () => {
     const client = {
       $queryRaw: async () => {
         calls += 1;
-        if (calls === 4) {
-          throw new Error('Raw query failed. Code: `42703`. Message: `column "lineLinkedAt" does not exist`');
-        }
-        return [];
+        throw new Error('Raw query failed. Code: `42703`. Message: `column "lineLinkedAt" does not exist`');
       },
     };
 
     await expect(ensureReservationSchemaReady(client as never)).rejects.toSatisfy((error) =>
       isReservationSchemaNotReadyError(error)
     );
+    expect(calls).toBe(1);
   });
 });

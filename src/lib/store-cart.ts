@@ -52,6 +52,10 @@ function saveCart(items: StoreCartItem[]): void {
   }
 }
 
+export function restoreCartItems(items: StoreCartItem[]): void {
+  saveCart(items);
+}
+
 /**
  * Add item to cart or increase quantity if already exists
  */

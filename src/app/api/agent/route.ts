@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 
 export function GET(request: Request) {
   const manifest = {
-    site: "Bistro Joa",
+    site: "bistro centquatre 104",
     agent_entry: "/agents",
     legacy_alias: "/ai",
     discovery: {
@@ -33,7 +33,7 @@ export function GET(request: Request) {
           "name",
           "phone",
         ],
-        optional_fields: ["note", "lineUserId", "course"],
+        optional_fields: ["note", "lineIdToken", "course"],
         required_headers: {
           "Content-Type": "application/json",
         },

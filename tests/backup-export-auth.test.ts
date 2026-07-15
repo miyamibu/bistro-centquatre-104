@@ -97,6 +97,55 @@ async function loadRouteWithBackupRows() {
   return routeModule.GET;
 }
 
+async function loadRouteWithDataAccessSpies() {
+  vi.resetModules();
+  process.env = {
+    ...originalEnv,
+    BACKUP_EXPORT_SECRET: "backup-export-secret",
+    CRON_SECRET: "cron-secret-fallback",
+  };
+
+  const ensureReservationSchemaReady = vi.fn().mockResolvedValue(undefined);
+  const findReservationsCompat = vi.fn().mockResolvedValue([]);
+  const businessDayFindMany = vi.fn().mockResolvedValue([]);
+  const privateBlockAuditFindMany = vi.fn().mockResolvedValue([]);
+
+  vi.doMock("@/lib/logger", () => ({
+    getRequestId: () => "test-request-id",
+    logError: vi.fn(),
+    logInfo: vi.fn(),
+  }));
+  vi.doMock("@/lib/prisma", () => ({
+    prisma: {
+      businessDay: {
+        findMany: businessDayFindMany,
+      },
+      privateBlockAuditLog: {
+        findMany: privateBlockAuditFindMany,
+      },
+    },
+  }));
+  vi.doMock("@/lib/reservation-compat", async () => {
+    const actual = await vi.importActual<typeof import("@/lib/reservation-compat")>(
+      "@/lib/reservation-compat"
+    );
+    return {
+      ...actual,
+      ensureReservationSchemaReady,
+      findReservationsCompat,
+    };
+  });
+
+  const routeModule = await import("@/app/api/admin/backups/reservations/export/route");
+  return {
+    GET: routeModule.GET,
+    businessDayFindMany,
+    ensureReservationSchemaReady,
+    findReservationsCompat,
+    privateBlockAuditFindMany,
+  };
+}
+
 describe("backup export auth boundary", () => {
   it("rejects missing authorization header", async () => {
     const GET = await loadRoute();
@@ -145,6 +194,34 @@ describe("backup export auth boundary", () => {
     expect(response.status).toBe(401);
     expect(response.headers.get("cache-control")).toBe("no-store");
     await expect(response.json()).resolves.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+
+  it("rejects Basic auth at the route before any backup data access", async () => {
+    const {
+      GET,
+      businessDayFindMany,
+      ensureReservationSchemaReady,
+      findReservationsCompat,
+      privateBlockAuditFindMany,
+    } = await loadRouteWithDataAccessSpies();
+    const request = new NextRequest(
+      "http://localhost:3000/api/admin/backups/reservations/export?date=2026-04-21",
+      {
+        method: "GET",
+        headers: {
+          authorization: `Basic ${Buffer.from("admin:password").toString("base64")}`,
+        },
+      }
+    );
+
+    const response = await GET(request);
+    expect(response.status).toBe(401);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    await expect(response.json()).resolves.toMatchObject({ code: "UNAUTHORIZED" });
+    expect(ensureReservationSchemaReady).not.toHaveBeenCalled();
+    expect(businessDayFindMany).not.toHaveBeenCalled();
+    expect(findReservationsCompat).not.toHaveBeenCalled();
+    expect(privateBlockAuditFindMany).not.toHaveBeenCalled();
   });
 
   it("accepts x-backup-export-secret header for auth", async () => {

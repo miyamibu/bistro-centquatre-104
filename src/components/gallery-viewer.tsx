@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 
 type GalleryItem = {
@@ -17,6 +17,7 @@ type GallerySection = {
 
 export function GalleryViewer({ sections }: { sections: GallerySection[] }) {
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const flatPhotos = useMemo(
     () =>
       sections.flatMap((section) =>
@@ -53,6 +54,9 @@ export function GalleryViewer({ sections }: { sections: GallerySection[] }) {
 
     const bodyOverflow = document.body.style.overflow;
     const htmlOverflow = document.documentElement.style.overflow;
+    const previousActiveElement =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusFrame = window.requestAnimationFrame(() => closeButtonRef.current?.focus());
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -81,9 +85,11 @@ export function GalleryViewer({ sections }: { sections: GallerySection[] }) {
     document.addEventListener("keydown", onKeyDown);
 
     return () => {
+      window.cancelAnimationFrame(focusFrame);
       document.body.style.overflow = bodyOverflow;
       document.documentElement.style.overflow = htmlOverflow;
       document.removeEventListener("keydown", onKeyDown);
+      previousActiveElement?.focus();
     };
   }, [selectedPhoto, selectedPhotoIndex, flatPhotos]);
 
@@ -137,6 +143,7 @@ export function GalleryViewer({ sections }: { sections: GallerySection[] }) {
             >
               <button
                 type="button"
+                ref={closeButtonRef}
                 onClick={closeModal}
                 className="absolute right-0 top-0 z-20 inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-xl leading-none text-[#2f1b0f] shadow-md transition hover:bg-white"
                 aria-label="閉じる"

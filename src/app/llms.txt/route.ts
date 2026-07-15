@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 
 export function GET() {
-  const body = `# AI Agent Guide (Bistro Joa)
+  const body = `# AI Agent Guide (bistro centquatre 104)
 
 Primary entry:
 - /agents
@@ -14,7 +14,7 @@ Legacy alias:
 Reservation:
 - Direct completion: POST /api/reservations
 - Required JSON fields: date, servicePeriod, partySize, arrivalTime, name, phone
-- Optional JSON fields: note, lineUserId, course
+- Optional JSON fields: note, lineIdToken, course
 - Required header: Content-Type: application/json
 - Optional header: X-Requested-With: XMLHttpRequest
 - Optional handoff review URL: /booking?mode=agent&date=YYYY-MM-DD&servicePeriod=LUNCH|DINNER&partySize=2&arrivalTime=18:00&course=...

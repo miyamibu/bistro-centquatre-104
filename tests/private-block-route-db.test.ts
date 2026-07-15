@@ -1,37 +1,36 @@
 import { NextRequest } from "next/server";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ReservationStatus, ReservationType } from "@prisma/client";
-import {
-  createTestPrismaClient,
-  safeTestDatabaseUrl,
-  summarizeDatabaseUrl,
-} from "./test-database";
+import { clearReservationArtifacts } from "./utils/reservation-destructive-cleanup";
+import { createTestPrismaClient, destructiveTestDbAccess } from "./test-database";
 
 const PRIVATE_BLOCK_TEST_CODE = "test-private-block-code";
 process.env.PRIVATE_BLOCK_ACCESS_CODE ??= PRIVATE_BLOCK_TEST_CODE;
+process.env.ADMIN_BASIC_USER ??= "admin";
+process.env.ADMIN_BASIC_PASS ??= "changeme";
 
-const hasSafeDatabase = Boolean(safeTestDatabaseUrl);
+const hasSafeDatabase = destructiveTestDbAccess.enabled;
 const describeIfDatabase = hasSafeDatabase ? describe : describe.skip;
 const prisma = hasSafeDatabase ? createTestPrismaClient() : null;
 const hasAdminCredentials =
   Boolean(process.env.ADMIN_BASIC_USER) && Boolean(process.env.ADMIN_BASIC_PASS);
 const itIfAdmin = hasAdminCredentials ? it : it.skip;
 
-if (process.env.TEST_DATABASE_URL && !hasSafeDatabase) {
-  console.warn(
-    `[tests] Skipping destructive DB tests because TEST_DATABASE_URL is not a safe local test database: ${summarizeDatabaseUrl(process.env.TEST_DATABASE_URL)}`
-  );
-}
-
-if (!process.env.TEST_DATABASE_URL) {
-  console.warn("[tests] Skipping destructive DB tests because TEST_DATABASE_URL is not set");
+if (!hasSafeDatabase) {
+  console.warn(`[tests] Skipping destructive DB tests: ${destructiveTestDbAccess.reason}`);
 }
 
 function buildReservationRequest(body: unknown) {
-  return new NextRequest("http://localhost:3000/api/reservations", {
+  const basicToken = Buffer.from(
+    `${process.env.ADMIN_BASIC_USER}:${process.env.ADMIN_BASIC_PASS}`
+  ).toString("base64");
+
+  return new NextRequest("http://localhost:3000/api/admin/private-block", {
     method: "POST",
     headers: {
+      authorization: `Basic ${basicToken}`,
       "content-type": "application/json",
+      "x-requested-with": "XMLHttpRequest",
       origin: "http://localhost:3000",
     },
     body: JSON.stringify(body),
@@ -43,17 +42,11 @@ async function postPrivateBlock(body: {
   servicePeriod: "LUNCH" | "DINNER";
   note?: string;
 }) {
-  const { POST: postReservation } = await import("@/app/api/reservations/route");
-  const arrivalTime = body.servicePeriod === "LUNCH" ? "11:30" : "18:00";
-  const response = await postReservation(
+  const { POST: postPrivateBlockRoute } = await import("@/app/api/admin/private-block/route");
+  const response = await postPrivateBlockRoute(
     buildReservationRequest({
-      reservationType: "PRIVATE_BLOCK",
-      privateBlockAccessCode: process.env.PRIVATE_BLOCK_ACCESS_CODE ?? PRIVATE_BLOCK_TEST_CODE,
       date: body.date,
-      arrivalTime,
-      lastName: "貸切",
-      firstName: "テスト",
-      phone: "09000000000",
+      servicePeriod: body.servicePeriod,
       note: body.note,
     })
   );
@@ -65,14 +58,15 @@ async function postPrivateBlock(body: {
   };
 }
 
-async function clearReservationArtifacts() {
-  if (!prisma) {
-    throw new Error("Safe TEST_DATABASE_URL is required for destructive DB tests");
-  }
+async function cleanupReservations() {
+  await clearReservationArtifacts(getPrismaOrThrow(), { includePrivateBlockAuditLog: true });
+}
 
-  await prisma.$executeRawUnsafe('DELETE FROM "PrivateBlockAuditLog"');
-  await prisma.$executeRawUnsafe('DELETE FROM "ReservationRateLimitEvent"');
-  await prisma.$executeRawUnsafe('DELETE FROM "Reservation"');
+function getPrismaOrThrow() {
+  if (!prisma) {
+    throw new Error("Safe TEST_DATABASE_URL and ALLOW_DESTRUCTIVE_TEST_DB=1 are required");
+  }
+  return prisma;
 }
 
 function buildAdminPatchRequest(id: string, body: unknown) {
@@ -94,16 +88,16 @@ function buildAdminPatchRequest(id: string, body: unknown) {
 
 describeIfDatabase("private block route contract (db)", () => {
   beforeAll(async () => {
-    await clearReservationArtifacts();
+    await cleanupReservations();
   });
 
   beforeEach(async () => {
-    await clearReservationArtifacts();
+    await cleanupReservations();
   });
 
   afterAll(async () => {
-    await clearReservationArtifacts();
-    await prisma.$disconnect();
+    await cleanupReservations();
+    await getPrismaOrThrow().$disconnect();
   });
 
   it("returns CREATED then NO_OP and persists audit logs", async () => {
@@ -115,13 +109,13 @@ describeIfDatabase("private block route contract (db)", () => {
 
     const created = await postPrivateBlock(payload);
     expect(created.status).toBe(201);
-    expect(created.body?.result).toBe("CREATED");
+    expect(created.body?.result).toBe("CREATE");
 
     const noop = await postPrivateBlock(payload);
     expect(noop.status).toBe(200);
     expect(noop.body?.result).toBe("NO_OP");
 
-    const auditRows = await prisma.$queryRaw<Array<{ result: string }>>`
+    const auditRows = await getPrismaOrThrow().$queryRaw<Array<{ result: string }>>`
       SELECT "result"
       FROM "PrivateBlockAuditLog"
       WHERE "date" = ${payload.date}
@@ -139,7 +133,7 @@ describeIfDatabase("private block route contract (db)", () => {
       note: "監査テスト: 競合",
     };
 
-    await prisma.reservation.create({
+    await getPrismaOrThrow().reservation.create({
       data: {
         date: payload.date,
         servicePeriod: payload.servicePeriod,
@@ -172,9 +166,9 @@ describeIfDatabase("private block route contract (db)", () => {
     const results = [left.body?.result, right.body?.result].sort();
 
     expect(statuses).toEqual([200, 201]);
-    expect(results).toEqual(["CREATED", "NO_OP"]);
+    expect(results).toEqual(["CREATE", "NO_OP"]);
 
-    const activePrivateBlocks = await prisma.reservation.count({
+    const activePrivateBlocks = await getPrismaOrThrow().reservation.count({
       where: {
         date: payload.date,
         servicePeriod: payload.servicePeriod,
@@ -216,7 +210,7 @@ describeIfDatabase("private block route contract (db)", () => {
 
     expect(releasedResponse.status).toBe(200);
 
-    const auditRows = await prisma.$queryRaw<Array<{ result: string; actorName: string | null }>>`
+    const auditRows = await getPrismaOrThrow().$queryRaw<Array<{ result: string; actorName: string | null }>>`
       SELECT "result", "actorName"
       FROM "PrivateBlockAuditLog"
       WHERE "reservationId" = ${reservationId}

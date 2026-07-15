@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "crypto";
-import { prisma } from "@/lib/prisma";
-import { supabaseServer } from "@/lib/supabase-server";
 import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
 import { createOrderSchema, zodFields } from "@/lib/validation";
 import {
   buildIdempotencyHash,
   createQuotedHoldExpiry,
+  executeCreateOrderQuoteAction,
   hashHumanToken,
   normalizeOrderPaymentMethod,
   runIdempotentMutation,
 } from "@/lib/order-actions";
 import { validatePayInStoreVisitDate } from "@/lib/order-rules";
+import { getPublishedStoreProduct } from "@/lib/store-products";
 import { getRequestId, logError, logInfo, logWarn } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -82,24 +82,24 @@ export async function POST(request: NextRequest) {
       requestHash,
       successStatus: 201,
       execute: async () => {
-        const menuItems = await prisma.menuItem.findMany({
-          where: {
-            id: { in: input.items.map((item) => item.id) },
-            isPublished: true,
-          },
+        const validatedItems = input.items.map((clientItem) => {
+          const product = getPublishedStoreProduct(clientItem.id);
+          if (!product) {
+            throw new Error("INVALID_MENU_ITEM");
+          }
+
+          return {
+            id: product.id,
+            name: product.name,
+            price: product.priceYen,
+            quantity: clientItem.quantity,
+          };
         });
 
-        if (menuItems.length !== input.items.length) {
-          throw new Error("INVALID_MENU_ITEM");
-        }
-
-        const calculatedTotal = input.items.reduce((sum, clientItem) => {
-          const menuItem = menuItems.find((m) => m.id === clientItem.id);
-          if (!menuItem) {
-            throw new Error(`Menu item not found: ${clientItem.id}`);
-          }
-          return sum + menuItem.price * clientItem.quantity;
-        }, 0);
+        const calculatedTotal = validatedItems.reduce(
+          (sum, item) => sum + item.price * item.quantity,
+          0,
+        );
 
         if (calculatedTotal !== input.total) {
           logWarn("orders.total.mismatch", {
@@ -115,121 +115,29 @@ export async function POST(request: NextRequest) {
           throw new Error("ORDER_TOTAL_MISMATCH");
         }
 
-        const validatedItems = input.items.map((clientItem) => {
-          const menuItem = menuItems.find((m) => m.id === clientItem.id)!;
-          return {
-            id: menuItem.id,
-            name: menuItem.title,
-            price: menuItem.price,
-            quantity: clientItem.quantity,
-          };
-        });
-
         const holdExpiresAt = createQuotedHoldExpiry();
 
-        const { data: insertedOrder, error: insertError } = await supabaseServer
-          .from("orders")
-          .insert([
-            {
-              customer_name: input.customerInfo.name,
-              email: input.customerInfo.email,
-              phone: input.customerInfo.phone,
-              zip_code: input.customerInfo.zipCode,
-              prefecture: input.customerInfo.prefecture,
-              city: input.customerInfo.city,
-              address: input.customerInfo.address,
-              building: input.customerInfo.building || null,
-              payment_method: null,
-              payment_reference: null,
-              items: validatedItems,
-              total: calculatedTotal,
-              store_visit_date: null,
-              hold_expires_at: holdExpiresAt,
-              expires_at: null,
-              human_confirmed_at: null,
-              human_confirmed_expires_at: null,
-              human_confirmed_by: null,
-              paid_at: null,
-              shipped_at: null,
-              canceled_at: null,
-              cancel_reason: null,
-              version: 0,
-              status: "QUOTED",
-            },
-          ])
-          .select()
-          .single();
-
-        if (insertError || !insertedOrder) {
-          logError("orders.create.db.failed", {
-            requestId,
-            route,
-            errorCode: "ORDER_DB_INSERT_FAILED",
-            context: { message: insertError?.message ?? "No order returned" },
-          });
-          throw new Error("ORDER_DB_INSERT_FAILED");
-        }
-
         const humanToken = randomBytes(24).toString("base64url");
+        const actionResult = await executeCreateOrderQuoteAction({
+          customerInfo: input.customerInfo,
+          items: validatedItems,
+          total: calculatedTotal,
+          holdExpiresAt,
+          humanTokenHash: hashHumanToken(humanToken),
+          actorId: actorKey,
+          requestId,
+          idempotencyKey,
+          selectedPaymentMethod: normalizedPaymentMethod,
+          selectedStoreVisitDate: input.storeVisitDate ?? null,
+        });
 
-        const { error: tokenError } = await supabaseServer.from("human_tokens").insert([
-          {
-            order_id: insertedOrder.id,
-            token_hash: hashHumanToken(humanToken),
-            expires_at: holdExpiresAt,
-          },
-        ]);
-
-        if (tokenError) {
-          await supabaseServer.from("orders").delete().eq("id", insertedOrder.id);
-          logError("orders.create.human_token.failed", {
-            requestId,
-            route,
-            errorCode: "ORDER_HUMAN_TOKEN_CREATE_FAILED",
-            context: { orderId: insertedOrder.id, message: tokenError.message },
-          });
-          throw new Error("ORDER_HUMAN_TOKEN_CREATE_FAILED");
-        }
-
-        const { error: actionError } = await supabaseServer.from("order_actions").insert([
-          {
-            order_id: insertedOrder.id,
-            action_type: "QUOTE_CREATED",
-            actor_type: "user",
-            actor_id: actorKey,
-            request_id: requestId,
-            idempotency_key: idempotencyKey,
-            from_status: null,
-            to_status: "QUOTED",
-            version_before: null,
-            version_after: 0,
-            payment_method_before: null,
-            payment_method_after: null,
-            payment_reference: null,
-            amount_snapshot: calculatedTotal,
-            metadata: {
-              selectedPaymentMethod: normalizedPaymentMethod,
-              selectedStoreVisitDate: input.storeVisitDate ?? null,
-            },
-          },
-        ]);
-
-        if (actionError) {
-          await supabaseServer.from("orders").delete().eq("id", insertedOrder.id);
-          logError("orders.create.quote_action.failed", {
-            requestId,
-            route,
-            errorCode: "ORDER_QUOTE_ACTION_CREATE_FAILED",
-            context: { orderId: insertedOrder.id, message: actionError.message },
-          });
-          throw new Error("ORDER_QUOTE_ACTION_CREATE_FAILED");
-        }
+        const order = (actionResult as { order?: Record<string, unknown> }).order ?? {};
 
         logInfo("orders.create.success", {
           requestId,
           route,
           context: {
-            orderId: insertedOrder.id,
+            orderId: order.id,
             paymentMethod: normalizedPaymentMethod,
             total: calculatedTotal,
           },
@@ -239,15 +147,15 @@ export async function POST(request: NextRequest) {
           ok: true,
           message: "Quote created successfully",
           order: {
-            id: insertedOrder.id,
-            status: insertedOrder.status,
-            version: insertedOrder.version,
-            total: insertedOrder.total,
+            id: String(order.id),
+            status: String(order.status),
+            version: Number(order.version ?? 0),
+            total: Number(order.total ?? calculatedTotal),
             holdExpiresAt,
           },
           paymentSetup: {
-            orderId: String(insertedOrder.id),
-            expectedVersion: Number(insertedOrder.version ?? 0),
+            orderId: String(order.id),
+            expectedVersion: Number(order.version ?? 0),
             humanToken,
             paymentMethod: normalizedPaymentMethod,
             storeVisitDate: input.storeVisitDate ?? null,
@@ -279,29 +187,11 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    if (message === "ORDER_DB_INSERT_FAILED") {
+    if (message === "ORDER_QUOTE_CREATE_FAILED") {
       return apiError(500, {
         ok: false,
         error: "注文の保存に失敗しました",
-        code: "ORDER_DB_INSERT_FAILED",
-        requestId,
-      });
-    }
-
-    if (message === "ORDER_HUMAN_TOKEN_CREATE_FAILED") {
-      return apiError(500, {
-        ok: false,
-        error: "本人確認トークンの作成に失敗しました",
-        code: "ORDER_HUMAN_TOKEN_CREATE_FAILED",
-        requestId,
-      });
-    }
-
-    if (message === "ORDER_QUOTE_ACTION_CREATE_FAILED") {
-      return apiError(500, {
-        ok: false,
-        error: "注文監査ログの作成に失敗しました",
-        code: "ORDER_QUOTE_ACTION_CREATE_FAILED",
+        code: "ORDER_QUOTE_CREATE_FAILED",
         requestId,
       });
     }

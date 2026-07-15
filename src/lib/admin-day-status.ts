@@ -109,6 +109,43 @@ function pad2(value: number) {
   return String(value).padStart(2, "0");
 }
 
+export function normalizeAdminReservationDateInput(
+  value: string | null | undefined,
+  fallbackDate: string
+) {
+  const trimmed = value?.trim();
+  const fallback = /^\d{4}-\d{2}-\d{2}$/.test(fallbackDate) ? fallbackDate : "2026-01-01";
+
+  if (!trimmed) {
+    return fallback;
+  }
+
+  const match = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(trimmed);
+  if (!match) {
+    return fallback;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(year, month - 1, day);
+
+  if (
+    !year ||
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > 31 ||
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day
+  ) {
+    return fallback;
+  }
+
+  return `${year}-${pad2(month)}-${pad2(day)}`;
+}
+
 function getDateKeysForMonth(month: string) {
   const { year, monthIndex } = parseMonthInput(month);
   const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();

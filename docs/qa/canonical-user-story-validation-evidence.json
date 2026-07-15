@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-06-25T02:14:31.435Z",
+  "purpose": "Canonical user-story tracker validation evidence for local release-readiness review.",
+  "scope": "Local dirty-snapshot evidence only. This file is not production deployment or external provider proof.",
+  "repository": {
+    "root": "/Users/mimac/Desktop/レストラン予約サイト_本体とバックアップ/bistro-reservation",
+    "branch": "main",
+    "headSha": "347000a1ea5eb0fd8b48be1865152637eafb632b",
+    "dirtyStatus": [
+      "M .gitignore",
+      " M docs/system-design-review-prep.md",
+      " M package.json",
+      " M src/app/admin/reservations/page.tsx",
+      " M src/app/api/admin/reservations/[id]/route.ts",
+      " M src/app/api/agent/route.ts",
+      " M src/app/api/crons/cancel-expired-orders/route.ts",
+      " M src/app/api/dashboard/bank-account/route.ts",
+      " M src/app/api/orders/[id]/actions/route.ts",
+      " M src/app/api/orders/route.ts",
+      " M src/app/api/pdf-to-image/route.ts",
+      " M src/app/globals.css",
+      " M src/app/layout.tsx",
+      " M src/app/llms.txt/route.ts",
+      " M src/app/privacy/page.tsx",
+      " M src/components/admin-reservations-table.tsx",
+      " M src/components/status-form.tsx",
+      " M src/lib/admin-day-status.ts",
+      " M src/lib/admin-reservation-mock.ts",
+      " M src/lib/email.ts",
+      " M src/lib/order-actions.ts",
+      " M src/middleware.ts",
+      " M tests/backup-export-auth.test.ts",
+      " M tests/basic-auth.test.ts",
+      " M tests/private-block-route-db.test.ts",
+      " M tests/reservation-integration.test.ts",
+      " M tests/reservations-route-db.test.ts",
+      "?? .agents/",
+      "?? .playwright-cli/",
+      "?? .vercelignore",
+      "?? AGENTS.md",
+      "?? CODEX_INSTRUCTIONS.md",
+      "?? DESIGN.md",
+      "?? docs/prompts/README.md",
+      "?? docs/qa/",
+      "?? docs/release/",
+      "?? scripts/export-canonical-user-story-evidence.mjs",
+      "?? scripts/export-reservation-site-understanding-report.mjs",
+      "?? src/lib/order-notification-outbox.ts",
+      "?? supabase/migrations/20260619063911_order_atomicity_closure.sql",
+      "?? tests/admin-day-status.test.ts",
+      "?? tests/admin-reservation-status-route.test.ts",
+      "?? tests/order-notification-outbox.test.ts"
+    ]
+  },
+  "runtime": {
+    "node": "v25.8.1",
+    "npm": "11.11.0"
+  },
+  "suppliedProcessEnvKeys": [
+    "RATE_LIMIT_HASH_SECRET"
+  ],
+  "tracker": {
+    "path": "docs/qa/canonical-user-story-status.csv",
+    "sha256": "cac7048f98ba6d60dd3f07444e1b4d738b01ca233201bebf670c886d45cb905a"
+  },
+  "buildArtifact": {
+    "buildIdPath": ".next/BUILD_ID",
+    "buildIdSha256": "cb36fecfda9e98fdf336eb9e2b33d1693da506b61452d105d69d5eb25d4ff5f5"
+  },
+  "validations": [
+    {
+      "command": "npm run lint",
+      "exitCode": 0,
+      "signal": null,
+      "startedAt": "2026-06-25T02:14:13.375Z",
+      "finishedAt": "2026-06-25T02:14:14.973Z",
+      "outputSha256": "e579eaca688324696dc000f8d6c0cc9ac0899229e767a9ee15b14f8b36802f06",
+      "stdoutTail": "\n> bistro-reservation@0.1.0 lint\n> eslint .\n\n",
+      "stderrTail": "",
+      "error": null
+    },
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0,
+      "signal": null,
+      "startedAt": "2026-06-25T02:14:14.973Z",
+      "finishedAt": "2026-06-25T02:14:16.085Z",
+      "outputSha256": "4efa2ff288c4a5dc3f547fcce5d740ba593e0cd2b1d990bbd046882b0f7bc351",
+      "stdoutTail": "\n> bistro-reservation@0.1.0 typecheck\n> tsc --noEmit\n\n",
+      "stderrTail": "",
+      "error": null
+    },
+    {
+      "command": "npm run test",
+      "exitCode": 0,
+      "signal": null,
+      "startedAt": "2026-06-25T02:14:16.085Z",
+      "finishedAt": "2026-06-25T02:14:17.326Z",
+      "outputSha256": "6a9df1df9f4213531c49c72665aae8f9bae3291dd11e5d5caabb69137f619bf2",
+      "stdoutTail": "lineLinked\":null}}\n\n ✓ tests/api-security.test.ts  (4 tests) 4ms\n ✓ tests/request-meta.test.ts  (3 tests) 8ms\nstdout | tests/admin-reservation-status-route.test.ts > admin reservation status transitions > allows CONFIRMED to move to a terminal status\n{\"timestamp\":\"2026-06-25T02:14:17.103Z\",\"level\":\"info\",\"event\":\"admin.reservation.status.updated\",\"requestId\":\"9cd94360-c0c4-4d39-a951-547fd34916e2\",\"route\":\"/api/admin/reservations/[id]\",\"context\":{\"reservationId\":\"res-1\",\"reservationType\":\"NORMAL\",\"previousStatus\":\"CONFIRMED\",\"nextStatus\":\"DONE\",\"date\":\"2099-12-30\",\"servicePeriod\":\"DINNER\",\"operatorName\":null,\"ipHash\":\"96ffcbb7800ef31c4939dd0d7894debfcae83626854b2b6cf38dab486544e543\",\"userAgent\":null,\"privateBlockReleaseRequested\":false}}\n\n ✓ tests/admin-reservation-status-route.test.ts  (3 tests) 145ms\n ✓ tests/line-link-reservation-route.test.ts  (18 tests) 381ms\n ✓ tests/line-helpers.test.ts  (5 tests) 33ms\n ✓ tests/basic-auth.test.ts  (6 tests) 19ms\n ✓ tests/bank-account-history-crypto.test.ts  (2 tests) 20ms\nstdout | tests/reservations-public-api.test.ts > public reservations API — LINE customer link auto attach > auto-attaches a unique active phone link when no lineIdToken is submitted\n{\"timestamp\":\"2026-06-25T02:14:17.128Z\",\"level\":\"info\",\"event\":\"reservation.line.customer_link_resolved\",\"requestId\":\"eec21c97-8536-4240-8183-d273f229c7e5\",\"route\":\"/api/reservations\",\"context\":{\"pushStatus\":\"ACTIVE\"}}\n{\"timestamp\":\"2026-06-25T02:14:17.130Z\",\"level\":\"info\",\"event\":\"reservation.created\",\"requestId\":\"eec21c97-8536-4240-8183-d273f229c7e5\",\"route\":\"/api/reservations\",\"context\":{\"reservationId\":\"res-abc\",\"date\":\"2026-08-15\",\"servicePeriod\":\"DINNER\",\"partySize\":2,\"deduplicated\":false,\"lineLinked\":true}}\n\n ✓ tests/private-block-access-route.test.ts  (3 tests) 53ms\n ✓ tests/cron-auth.test.ts  (2 tests) 85ms\nstdout | tests/reservations-public-api.test.ts > public reservations API — LINE customer link auto attach > does not auto-attach when no recent active phone link matches\n{\"timestamp\":\"2026-06-25T02:14:17.187Z\",\"level\":\"info\",\"event\":\"reservation.created\",\"requestId\":\"0f0c204c-1234-4aea-bd54-3a29f5511f5c\",\"route\":\"/api/reservations\",\"context\":{\"reservationId\":\"res-abc\",\"date\":\"2026-08-15\",\"servicePeriod\":\"DINNER\",\"partySize\":2,\"deduplicated\":false,\"lineLinked\":null}}\n\n ✓ tests/next-security-headers.test.ts  (1 test) 2ms\nstdout | tests/reservations-public-api.test.ts > public reservations API — LINE customer link auto attach > does not auto-attach when the same phone hash has multiple LINE users\n{\"timestamp\":\"2026-06-25T02:14:17.209Z\",\"level\":\"info\",\"event\":\"reservation.created\",\"requestId\":\"6ebc90b8-c373-4321-a462-c2c8f2b90e68\",\"route\":\"/api/reservations\",\"context\":{\"reservationId\":\"res-abc\",\"date\":\"2026-08-15\",\"servicePeriod\":\"DINNER\",\"partySize\":2,\"deduplicated\":false,\"lineLinked\":null}}\n\n ✓ tests/order-status.test.ts  (4 tests) 1ms\nstdout | tests/reservations-public-api.test.ts > public reservations API — LINE customer link auto attach > does not auto-attach a blocked LINE friend\n{\"timestamp\":\"2026-06-25T02:14:17.220Z\",\"level\":\"info\",\"event\":\"reservation.line.customer_link_blocked\",\"requestId\":\"709dd58b-3438-4290-9238-fca298bdc958\",\"route\":\"/api/reservations\"}\n{\"timestamp\":\"2026-06-25T02:14:17.221Z\",\"level\":\"info\",\"event\":\"reservation.created\",\"requestId\":\"709dd58b-3438-4290-9238-fca298bdc958\",\"route\":\"/api/reservations\",\"context\":{\"reservationId\":\"res-abc\",\"date\":\"2026-08-15\",\"servicePeriod\":\"DINNER\",\"partySize\":2,\"deduplicated\":false,\"lineLinked\":null}}\n\n ✓ tests/reservations-public-api.test.ts  (9 tests) 492ms\n ✓ tests/admin-day-status.test.ts  (3 tests) 1ms\n ✓ tests/reservation-compat.test.ts  (1 test) 2ms\n ✓ tests/reservations-route.test.ts  (1 test) 73ms\n ✓ tests/backup-freshness-script.test.ts  (2 tests) 240ms\n\n Test Files  34 passed | 2 skipped (36)\n      Tests  227 passed | 7 skipped (234)\n   Start at  11:14:16\n   Duration  893ms (transform 1.04s, setup 2ms, collect 1.86s, tests 2.71s, environment 3ms, prepare 1.79s)\n\n",
+      "stderrTail": "未設定です\n\nstderr | tests/line-webhook.test.ts > /api/line/webhook > returns 401 for an invalid signature\n{\"timestamp\":\"2026-06-25T02:14:16.774Z\",\"level\":\"warn\",\"event\":\"line.webhook.signature_invalid\",\"requestId\":\"7f2703e0-ab60-4845-95f3-520c890749cb\",\"route\":\"/api/line/webhook\"}\n\nstderr | tests/line-notification-guards.test.ts > claimAndSendLineReminder pre-send guards > returns 'skipped' (SKIPPED_BLOCKED) when LineFriend is BLOCKED\n{\"timestamp\":\"2026-06-25T02:14:16.776Z\",\"level\":\"warn\",\"event\":\"line.reminder.skipped.blocked\",\"context\":{\"reservationId\":\"res-1\",\"source\":\"TEST\"}}\n\nstderr | tests/line-webhook.test.ts > /api/line/webhook > returns 503 when LINE_CHANNEL_SECRET is not configured\n{\"timestamp\":\"2026-06-25T02:14:16.789Z\",\"level\":\"warn\",\"event\":\"line.webhook.skipped.not_configured\",\"requestId\":\"1f271c61-6379-46e6-9c18-c8e76952cd15\",\"route\":\"/api/line/webhook\"}\n\nstderr | tests/line-webhook.test.ts > /api/line/webhook > returns 400 when a signed body is malformed JSON\n{\"timestamp\":\"2026-06-25T02:14:16.808Z\",\"level\":\"warn\",\"event\":\"line.webhook.malformed_body\",\"requestId\":\"8be8d92f-81bf-426d-8ef8-95e314c2c38e\",\"route\":\"/api/line/webhook\"}\n\nstderr | tests/line-webhook.test.ts > /api/line/webhook > returns 413 before processing an oversized body\n{\"timestamp\":\"2026-06-25T02:14:16.817Z\",\"level\":\"warn\",\"event\":\"line.webhook.body_too_large\",\"requestId\":\"14281a90-d0e1-48c6-8ff6-e77bf3e7b96d\",\"route\":\"/api/line/webhook\",\"context\":{\"contentLength\":132096}}\n\nstderr | tests/line-link-reservation-route.test.ts > token flow > returns 400 LINK_VALIDATION_FAILED for wrong phone — same code, no hint about which field\n{\"timestamp\":\"2026-06-25T02:14:16.929Z\",\"level\":\"warn\",\"event\":\"line.link.phone_mismatch\",\"requestId\":\"1ee0c5f2-a473-4ab0-bc4a-01697266d3ed\",\"route\":\"/api/line/link-reservation\"}\n\nstderr | tests/email-delivery.test.ts > Email delivery hardening > treats order confirmation as failure when delivery fails\nEmail send failed { provider: 'resend', message: 'provider failed' }\n\nstderr | tests/line-link-reservation-route.test.ts > token flow > returns 409 LINK_VALIDATION_FAILED when a different lineUserId is already set, reservation NOT updated\n{\"timestamp\":\"2026-06-25T02:14:16.940Z\",\"level\":\"warn\",\"event\":\"line.link.conflict\",\"requestId\":\"0e6cb3b6-b587-42a3-a603-9675476a2aa1\",\"route\":\"/api/line/link-reservation\"}\n\nstderr | tests/line-link-reservation-route.test.ts > token flow > does not consume token or link reservation when LINE push status is pending\n{\"timestamp\":\"2026-06-25T02:14:16.957Z\",\"level\":\"warn\",\"event\":\"line.link.push_status_not_active\",\"requestId\":\"653baef4-1a9d-4727-a91e-10d9298c0b38\",\"route\":\"/api/line/link-reservation\",\"context\":{\"pushStatus\":\"PENDING_CHECK\"}}\n\nstderr | tests/reservations-route-db.test.ts:21:11\n[tests] Skipping destructive DB tests: TEST_DATABASE_URL が未設定です\n\nstderr | tests/line-link-reservation-route.test.ts > lookup flow > returns 409 and does NOT update when a different lineUserId is already set\n{\"timestamp\":\"2026-06-25T02:14:17.090Z\",\"level\":\"warn\",\"event\":\"line.link.conflict\",\"requestId\":\"96c1d257-b2fa-43b7-8d42-33222ac37b3b\",\"route\":\"/api/line/link-reservation\",\"context\":{\"reservationId\":\"res-1\"}}\n\nstderr | tests/line-link-reservation-route.test.ts > rate limit fail-closed (P9) > returns 503 when rate limit DB check throws (fail-closed, not fail-open)\n{\"timestamp\":\"2026-06-25T02:14:17.098Z\",\"level\":\"error\",\"event\":\"line.link.rate_limit_failed\",\"requestId\":\"46bcc642-9b2b-4184-ae32-143d7ad00460\",\"route\":\"/api/line/link-reservation\",\"errorCode\":\"RATE_LIMIT_CHECK_FAILED\",\"context\":{\"message\":\"DB connection lost\"}}\n\nstderr | tests/reservations-public-api.test.ts > public reservations API — LINE customer link auto attach > does not auto-attach when the same phone hash has multiple LINE users\n{\"timestamp\":\"2026-06-25T02:14:17.208Z\",\"level\":\"warn\",\"event\":\"reservation.line.customer_link_ambiguous\",\"requestId\":\"6ebc90b8-c373-4321-a462-c2c8f2b90e68\",\"route\":\"/api/reservations\",\"context\":{\"matchCount\":2}}\n\n",
+      "error": null
+    },
+    {
+      "command": "npm run security:destructive",
+      "exitCode": 0,
+      "signal": null,
+      "startedAt": "2026-06-25T02:14:17.326Z",
+      "finishedAt": "2026-06-25T02:14:17.509Z",
+      "outputSha256": "d280f05bce4e4f55bca11407d2e5b4d95ec1dba6288e9a23cecf93059a321bd6",
+      "stdoutTail": "\n> bistro-reservation@0.1.0 security:destructive\n> node scripts/security/check-destructive-reservation-queries.mjs\n\n[security:destructive] OK (211 files scanned, allowlist=1)\n",
+      "stderrTail": "",
+      "error": null
+    },
+    {
+      "command": "npm run build",
+      "exitCode": 0,
+      "signal": null,
+      "startedAt": "2026-06-25T02:14:17.509Z",
+      "finishedAt": "2026-06-25T02:14:31.263Z",
+      "outputSha256": "595d08ed85bd706ad8a99643887495b3022954be99c22c8f308216ed5f6e91dd",
+      "stdoutTail": "             172 B         106 kB\n├ ○ /admin/business-days                    12.7 kB         122 kB\n├ ○ /admin/daily-journal                    5.94 kB         112 kB\n├ ƒ /admin/reservations                     4.06 kB         134 kB\n├ ƒ /admin/reservations/[id]                1.84 kB         131 kB\n├ ○ /agents                                 2.82 kB         119 kB\n├ ○ /ai                                       217 B         103 kB\n├ ƒ /api/admin/backups/reservations/export    217 B         103 kB\n├ ƒ /api/admin/business-days                  217 B         103 kB\n├ ƒ /api/admin/daily-journal                  217 B         103 kB\n├ ƒ /api/admin/day-status                     217 B         103 kB\n├ ƒ /api/admin/private-block                  217 B         103 kB\n├ ƒ /api/admin/reservations                   217 B         103 kB\n├ ƒ /api/admin/reservations/[id]              217 B         103 kB\n├ ƒ /api/agent                                217 B         103 kB\n├ ƒ /api/availability                         217 B         103 kB\n├ ƒ /api/availability/monthly                 217 B         103 kB\n├ ƒ /api/contact                              217 B         103 kB\n├ ƒ /api/cron/remind                          217 B         103 kB\n├ ƒ /api/crons/cancel-expired-orders          217 B         103 kB\n├ ƒ /api/crons/delete-old-histories           217 B         103 kB\n├ ƒ /api/crons/remind                         217 B         103 kB\n├ ƒ /api/daily-journal                        217 B         103 kB\n├ ƒ /api/dashboard/bank-account               217 B         103 kB\n├ ƒ /api/dashboard/orders                     217 B         103 kB\n├ ƒ /api/line/customer-link                   217 B         103 kB\n├ ƒ /api/line/link-reservation                217 B         103 kB\n├ ƒ /api/line/webhook                         217 B         103 kB\n├ ƒ /api/orders                               217 B         103 kB\n├ ƒ /api/orders/[id]/actions                  217 B         103 kB\n├ ƒ /api/pdf-to-image                         217 B         103 kB\n├ ƒ /api/private-block/access                 217 B         103 kB\n├ ƒ /api/reservations                         217 B         103 kB\n├ ○ /apple-icon.png                             0 B            0 B\n├ ƒ /booking                                7.12 kB         120 kB\n├ ○ /contact                                17.8 kB         144 kB\n├ ○ /daily-journal                          3.55 kB         106 kB\n├ ƒ /dashboard/api/bank-account               217 B         103 kB\n├ ƒ /dashboard/api/orders                     217 B         103 kB\n├ ƒ /dashboard/orders                       3.54 kB         106 kB\n├ ○ /faq                                      217 B         103 kB\n├ ○ /hors-doeuvre                           2.63 kB         109 kB\n├ ○ /icon.png                                   0 B            0 B\n├ ○ /legal                                    217 B         103 kB\n├ ○ /line/link                              3.18 kB         106 kB\n├ ƒ /llms.txt                                 217 B         103 kB\n├ ○ /menu                                   5.82 kB         117 kB\n├ ○ /on-line-store                            312 B         111 kB\n├ ○ /on-line-store/apron                    3.93 kB         115 kB\n├ ○ /on-line-store/cart                     5.47 kB         117 kB\n├ ○ /on-line-store/order-complete           1.49 kB         107 kB\n├ ○ /on-line-store/pay                      2.91 kB         109 kB\n├ ƒ /picture                                2.29 kB         110 kB\n├ ○ /privacy                                  217 B         103 kB\n└ ƒ /staff                                    172 B         106 kB\n+ First Load JS shared by all                103 kB\n  ├ chunks/1255-5c680abb9db89955.js         46.3 kB\n  ├ chunks/4bd1b696-f785427dddbba9fb.js     54.2 kB\n  └ other shared chunks (total)             2.09 kB\n\n\nƒ Middleware                                48.8 kB\n\n○  (Static)   prerendered as static content\nƒ  (Dynamic)  server-rendered on demand\n\n",
+      "stderrTail": "",
+      "error": null
+    }
+  ],
+  "releaseChecks": {
+    "production": {
+      "command": "npm run check:release:production",
+      "exitCode": 0,
+      "signal": null,
+      "startedAt": "2026-06-25T02:14:31.263Z",
+      "finishedAt": "2026-06-25T02:14:31.435Z",
+      "outputSha256": "b998ad81cc7e7db8f31da9e9eb3ce6b7a3ade0ad8e418ee757e21ba5cd45994b",
+      "stdoutTail": "\n> bistro-reservation@0.1.0 check:release:production\n> node scripts/check-release-safety.mjs production\n\n\n==> Release safety check (production)\nRepository: /Users/mimac/Desktop/レストラン予約サイト_本体とバックアップ/bistro-reservation\nRequired env checks passed.\n",
+      "stderrTail": "Recommended env keys are unset: LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET, NEXT_PUBLIC_LIFF_BOOKING_ID, NEXT_PUBLIC_LIFF_LINK_ID, LINE_LINK_TOKEN_PEPPER\nBefore production deploy, confirm the same required keys are set in Vercel Production and point to the intended live services.\n",
+      "error": null
+    }
+  },
+  "summary": {
+    "allValidationExitCodesZero": true,
+    "validationCommands": [
+      "npm run lint",
+      "npm run typecheck",
+      "npm run test",
+      "npm run security:destructive",
+      "npm run build"
+    ],
+    "productionReleaseCheckExitCode": 0,
+    "productionReleaseCheckPassed": true
+  }
+}

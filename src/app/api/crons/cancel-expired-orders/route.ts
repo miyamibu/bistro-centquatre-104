@@ -16,10 +16,6 @@ function isAuthorizedCron(req: NextRequest) {
   return !!env.CRON_SECRET && authHeader === `Bearer ${env.CRON_SECRET}`;
 }
 
-function isGetCompatibilityRequest(req: NextRequest) {
-  return req.headers.get("x-vercel-cron") === "1" || req.nextUrl.searchParams.get("compat") === "1";
-}
-
 async function executeCancelExpired(req: NextRequest) {
   const requestId = getRequestId(req);
   const route = "/api/crons/cancel-expired-orders";
@@ -198,19 +194,8 @@ export async function POST(req: NextRequest) {
   return executeCancelExpired(req);
 }
 
+// Vercel Cron calls routes via HTTP GET. Authorization is enforced inside
+// executeCancelExpired via CRON_SECRET Bearer check.
 export async function GET(req: NextRequest) {
-  const requestId = getRequestId(req);
-  if (!isGetCompatibilityRequest(req)) {
-    return apiError(
-      405,
-      {
-        error: "Method not allowed. Use POST.",
-        code: "METHOD_NOT_ALLOWED",
-        requestId,
-      },
-      { headers: { Allow: "POST" } }
-    );
-  }
-
   return executeCancelExpired(req);
 }

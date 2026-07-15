@@ -54,6 +54,7 @@ interface Props {
 }
 
 interface SubmittedReservationSummary {
+  reservationId?: string;
   date: string;
   servicePeriod: ReservationServicePeriodKey;
   partySize: number;
@@ -66,6 +67,31 @@ interface SubmittedReservationSummary {
 interface LineNotificationResponse {
   enabled: boolean;
   linkUrl?: string;
+}
+
+const reservationFieldLabels: Record<string, string> = {
+  date: "来店日",
+  servicePeriod: "時間帯",
+  partySize: "人数",
+  arrivalTime: "来店時間",
+  course: "コース",
+  name: "氏名",
+  lastName: "姓",
+  firstName: "名",
+  phone: "電話番号",
+  note: "要望",
+  root: "予約内容",
+};
+
+function parseReservationFieldErrors(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object") return {};
+
+  return Object.entries(value).reduce<Record<string, string>>((errors, [field, message]) => {
+    if (typeof message === "string" && message.trim()) {
+      errors[field] = message;
+    }
+    return errors;
+  }, {});
 }
 
 type AvailabilityState = Omit<AvailabilityResponse, "reason"> & {
@@ -140,6 +166,7 @@ export function ReserveForm({
   const submittingRef = useRef(false);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submittedReservation, setSubmittedReservation] =
     useState<SubmittedReservationSummary | null>(null);
   const [lineNotification, setLineNotification] =
@@ -478,6 +505,7 @@ export function ReserveForm({
     submittingRef.current = true;
     setSubmitting(true);
     setError(null);
+    setFieldErrors({});
     setResult(null);
     setSubmittedReservation(null);
 
@@ -522,6 +550,10 @@ export function ReserveForm({
           setLineNotification(data.lineNotification as LineNotificationResponse);
         }
         setSubmittedReservation({
+          reservationId:
+            typeof data.reservationId === "string" && data.reservationId.trim()
+              ? data.reservationId
+              : undefined,
           date: form.date,
           servicePeriod: submittedServicePeriod,
           partySize: Number(form.partySize),
@@ -559,6 +591,7 @@ export function ReserveForm({
           `${getJstMonthKey(startOfJstMonth(calendarMonth))}:${form.partySize}`
         );
       } else {
+        setFieldErrors(parseReservationFieldErrors(data.fields));
         setError(data.error ?? data.reason ?? "予約に失敗しました。お電話ください。");
       }
     } catch (err) {
@@ -624,6 +657,12 @@ export function ReserveForm({
     ? "空席情報の取得に失敗しました。時間をおいて再度お試しください。"
     : availability.reason === "OK"
     ? "この条件でWeb予約できます。"
+    : availability.reason === "CLOSED"
+    ? "休業日のため予約できません。別の日を選択するか、お電話でご相談ください。"
+    : availability.reason === "PRIVATE_BLOCK"
+    ? "貸切営業のため、この条件ではWeb予約できません。別の時間帯を選択するか、お電話でご相談ください。"
+    : availability.reason === "PHONE_ONLY"
+    ? "この時間帯は電話のみで承ります。店舗へお電話ください。"
     : null;
   const submittedServiceLabel =
     submittedReservation?.servicePeriod === "LUNCH" ? "ランチ" : "ディナー";
@@ -655,16 +694,39 @@ export function ReserveForm({
         </div>
       ) : null}
 
+      {Object.keys(fieldErrors).length > 0 ? (
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="rounded-xl border border-[#b32626]/20 bg-[#fff1f1] px-4 py-3 text-sm leading-6 text-[#8f2a2a]"
+        >
+          <p className="font-semibold">入力内容を確認してください。</p>
+          <ul className="mt-1 list-disc space-y-1 pl-5">
+            {Object.entries(fieldErrors).map(([field, message]) => (
+              <li key={field}>
+                <span className="font-semibold">{reservationFieldLabels[field] ?? field}</span>：{message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       <section className="space-y-4 px-0 py-2 md:p-4">
         <div className="grid gap-6 md:grid-cols-[auto,minmax(0,1fr)] md:items-stretch">
           <div
             className="mx-auto mt-[-0.5cm] w-full max-w-[20.5rem] space-y-4 md:mx-0 md:mt-0 md:max-w-none"
           >
-            <div className="flex items-center gap-3">
-              <p className="text-sm font-semibold text-[#2f1b0f]">来店日</p>
+              <div className="flex items-center gap-3">
+              <p id="reservation-calendar-label" className="text-sm font-semibold text-[#2f1b0f]">
+                来店日
+              </p>
             </div>
 
-            <div className="mx-auto max-w-[19rem] rounded-md border-0 bg-white p-3">
+            <div
+              role="group"
+              aria-labelledby="reservation-calendar-label"
+              className="mx-auto max-w-[19rem] rounded-md border-0 bg-white p-3"
+            >
               <div className="mb-2 flex items-center justify-between">
                 <button
                   type="button"
@@ -712,6 +774,16 @@ export function ReserveForm({
                 {dayLabels.map((label) => (
                   <span key={label}>{label}</span>
                 ))}
+              </div>
+
+              <div
+                aria-label="カレンダー凡例"
+                className="mt-3 flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] leading-5 text-[#6b5644]"
+              >
+                <span><strong className="text-[#7a5528]">○</strong> Web予約可</span>
+                <span><strong className="text-[#b32626]">△</strong> 電話確認</span>
+                <span><strong className="text-[#b32626]">休</strong> 休業</span>
+                <span><strong className="text-[#b32626]">貸切</strong> 貸切・時間帯制限</span>
               </div>
 
               <div
@@ -790,6 +862,18 @@ export function ReserveForm({
                     markerText === "終日貸切"
                       ? "#b32626"
                       : "#7a5528";
+                  const markerAriaLabel =
+                    markerText === "○"
+                      ? "Web予約可"
+                      : markerText === "△"
+                      ? "電話確認"
+                      : markerText === "休"
+                      ? "休業"
+                      : markerText === "夜のみ" || markerText === "昼のみ"
+                      ? `${markerText}のみ予約可`
+                      : markerText === "終日貸切"
+                      ? "終日貸切"
+                      : "";
 
                   return (
                     <div
@@ -817,7 +901,8 @@ export function ReserveForm({
                           width: `${calendarDayCircleSize}px`,
                           height: `${calendarDayCircleSize}px`,
                         }}
-                        aria-label={formatJstMonthDay(cell.dateObj)}
+                        aria-label={`${formatJstMonthDay(cell.dateObj)}${isDateDisabled ? " 予約不可" : ""}${markerAriaLabel ? ` ${markerAriaLabel}` : ""}`}
+                        aria-current={isSelected ? "date" : undefined}
                       >
                         {getJstDayOfMonth(cell.dateObj)}
                       </button>
@@ -1170,6 +1255,16 @@ export function ReserveForm({
           className="space-y-3 rounded-xl border border-[#c7a357]/30 bg-[#fff7e6] px-4 py-4 text-sm text-[#4a3121]"
         >
           <p className="font-semibold text-[#2f1b0f]">{result}</p>
+          {submittedReservation.reservationId ? (
+            <div className="rounded-md border border-[#c7a357]/30 bg-white/70 px-3 py-2">
+              <p className="font-semibold text-[#2f1b0f]">
+                予約番号: <span className="break-all">{submittedReservation.reservationId}</span>
+              </p>
+              <p className="mt-1 text-xs text-[#6b5644]">
+                変更や確認の際は、この予約番号を店舗へお伝えください。
+              </p>
+            </div>
+          ) : null}
           <div className="space-y-1">
             <p>ご来店日: {submittedReservation.date}</p>
             <p>時間帯: {submittedServiceLabel}</p>

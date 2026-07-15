@@ -4,7 +4,7 @@ import { AppShell } from "@/components/app-shell";
 
 export const metadata: Metadata = {
   title: "ビストロ　サンキャトル　１０４",
-  description: "フレンチレストランの予約・管理システム",
+  description: "川越のフレンチレストラン bistro centquatre 104 の予約・店舗情報・オンラインストア",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

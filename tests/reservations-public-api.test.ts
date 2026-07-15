@@ -13,6 +13,17 @@ const routeMocks = vi.hoisted(() => ({
   txReservationFindMany: vi.fn(),
 }));
 
+const readySchemaRow = {
+  reservationTableReady: true,
+  privateBlockAuditLogReady: true,
+  reservationRateLimitEventReady: true,
+  reservationLineColumnsReady: true,
+  reservationLineLinkTokenReady: true,
+  notificationEventReady: true,
+  lineFriendReady: true,
+  lineCustomerLinkReady: true,
+};
+
 function resetRouteMocks() {
   routeMocks.lineLinkTokenCreate.mockResolvedValue({
     id: "tok-1",
@@ -45,7 +56,7 @@ const MIN_BODY = {
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    $queryRaw: vi.fn().mockResolvedValue([]),
+    $queryRaw: vi.fn().mockResolvedValue([readySchemaRow]),
     $transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => unknown) => {
       const fakeTx = {
         $executeRawUnsafe: vi.fn().mockResolvedValue(1),

@@ -78,27 +78,49 @@ export function isReservationSchemaNotReadyError(
 
 async function runReservationSchemaReadyCheck(client: ReservationClient) {
   try {
-    // Core reservation schema (original migrations)
-    await client.$queryRaw`
-      SELECT "servicePeriod", "reservationType" FROM "Reservation" LIMIT 0
-    `;
-    await client.$queryRaw`SELECT "id" FROM "PrivateBlockAuditLog" LIMIT 0`;
-    await client.$queryRaw`SELECT "id" FROM "ReservationRateLimitEvent" LIMIT 0`;
+    const schemaRows = await client.$queryRaw<
+      Array<{
+        reservationTableReady: boolean;
+        privateBlockAuditLogReady: boolean;
+        reservationRateLimitEventReady: boolean;
+        reservationLineColumnsReady: boolean;
+        reservationLineLinkTokenReady: boolean;
+        notificationEventReady: boolean;
+        lineFriendReady: boolean;
+        lineCustomerLinkReady: boolean;
+      }>>(
+      Prisma.sql`
+      SELECT
+        to_regclass('"Reservation"') IS NOT NULL AS "reservationTableReady",
+        to_regclass('"PrivateBlockAuditLog"') IS NOT NULL AS "privateBlockAuditLogReady",
+        to_regclass('"ReservationRateLimitEvent"') IS NOT NULL AS "reservationRateLimitEventReady",
+        (
+          SELECT COUNT(*) = 8
+          FROM information_schema.columns
+          WHERE table_schema = current_schema()
+            AND table_name = 'Reservation'
+            AND column_name IN (
+              'lineUserId', 'lineReminderSentAt', 'lineReminderStatus',
+              'lineReminderError', 'lineLinkedAt', 'lineLinkSource',
+              'linePushStatus', 'linePushCheckedAt'
+            )
+        ) AS "reservationLineColumnsReady",
+        to_regclass('"ReservationLineLinkToken"') IS NOT NULL AS "reservationLineLinkTokenReady",
+        to_regclass('"NotificationEvent"') IS NOT NULL AS "notificationEventReady",
+        to_regclass('"LineFriend"') IS NOT NULL AS "lineFriendReady",
+        to_regclass('"LineCustomerLink"') IS NOT NULL AS "lineCustomerLinkReady"
+      `
+    );
+    const schema = schemaRows[0];
 
-    // LINE columns introduced in 20260511120000_add_line_reminder_fields
-    await client.$queryRaw`
-      SELECT "lineUserId", "lineReminderSentAt", "lineReminderStatus",
-             "lineReminderError", "lineLinkedAt", "lineLinkSource",
-             "linePushStatus", "linePushCheckedAt"
-      FROM "Reservation" LIMIT 0
-    `;
-
-    // LINE link tables introduced in 20260529150000_line_link_and_notification_ledger
-    await client.$queryRaw`SELECT "id" FROM "ReservationLineLinkToken" LIMIT 0`;
-    await client.$queryRaw`SELECT "id" FROM "NotificationEvent" LIMIT 0`;
-    await client.$queryRaw`SELECT "lineUserId" FROM "LineFriend" LIMIT 0`;
-    await client.$queryRaw`SELECT "id" FROM "LineCustomerLink" LIMIT 0`;
+    if (!schema || Object.values(schema).some((ready) => !ready)) {
+      throw new ReservationSchemaNotReadyError();
+    }
   } catch (error) {
+    if (error instanceof ReservationSchemaNotReadyError) {
+      throw error;
+    }
+
     throwIfReservationSchemaNotReady(error);
     throw error;
   }

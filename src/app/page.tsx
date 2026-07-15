@@ -111,7 +111,7 @@ const MENU = {
       {
         title: "北京じゃないよ 3品 3,800円",
         subtitle: " プティラ Petite La course",
-        description: `Amuse-bouches（2種）/ Hors-d’œuvre または Entrée / ${MOBILE_ONLY_BREAK_TOKEN}Poisson または ßViande / ${DESKTOP_ONLY_BREAK_TOKEN}Café`,
+        description: `Amuse-bouches（2種）/ Hors-d’œuvre または Entrée / ${MOBILE_ONLY_BREAK_TOKEN}Poisson または Viande / ${DESKTOP_ONLY_BREAK_TOKEN}Café`,
         anchor: "petite",
       },
     ],
@@ -144,20 +144,18 @@ const DRINK_MENU = {
 };
 
 const dishPhotos = [
-  { src: "/photos/料理/１.jpg", alt: "料理 01" },
-  { src: "/photos/料理/２.jpg", alt: "料理 02" },
-  { src: "/photos/料理/３.jpg", alt: "料理 03" },
-  { src: "/photos/料理/４.jpg", alt: "料理 04" },
-  { src: "/photos/料理/５.jpg", alt: "料理 05" },
-  { src: "/photos/料理/６.jpg", alt: "料理 06" },
-  { src: "/photos/料理/１.jpg", alt: "料理 07" },
-  { src: "/photos/料理/１.jpg", alt: "料理 08" },
-  { src: "/photos/料理/１.jpg", alt: "料理 09" },
-  { src: "/photos/料理/１.jpg", alt: "料理 10" },];
+  { src: "/photos/料理/料理４.JPG", alt: "魚介料理" },
+  { src: "/photos/料理/料理１.JPG", alt: "煮詰めたソース" },
+  { src: "/photos/料理/料理２.JPG", alt: "カツとソースの料理" },
+  { src: "/photos/料理/料理３.JPG", alt: "テーブルのワイン" },
+  { src: "/photos/料理/１.jpg", alt: "カレーの一皿" },
+  { src: "/photos/料理/５.jpg", alt: "チーズを使った一皿" },
+  { src: "/photos/料理/６.jpg", alt: "カツの定食" },
+  { src: "/photos/料理/２.jpg", alt: "食卓の料理" },
+];
 const dishPhotoCardWidthPx = 360; // 2列時と3列時の中間サイズ
 const dishPhotoGapPx = 24; // gap-6 と同じ間隔
 const mobileDishPhotoCardWidthPx = 112;
-const mobileDishPhotoGapPx = 8;
 
 function ScrollReveal({
   children,
@@ -165,25 +163,33 @@ function ScrollReveal({
   delayMs = 0,
   distancePx = 34,
   durationMs = 780,
+  initialVisible = true,
 }: {
   children: ReactNode;
   className?: string;
   delayMs?: number;
   distancePx?: number;
   durationMs?: number;
+  initialVisible?: boolean;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const [visible, setVisible] = useState(false);
+  const [visible, setVisible] = useState(initialVisible);
 
   useEffect(() => {
     const node = ref.current;
     if (!node) return;
+
+    const fallbackTimer = window.setTimeout(
+      () => setVisible(true),
+      Math.max(700, delayMs + 500),
+    );
 
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting) {
             setVisible(true);
+            window.clearTimeout(fallbackTimer);
             observer.unobserve(entry.target);
           }
         }
@@ -192,8 +198,11 @@ function ScrollReveal({
     );
 
     observer.observe(node);
-    return () => observer.disconnect();
-  }, []);
+    return () => {
+      window.clearTimeout(fallbackTimer);
+      observer.disconnect();
+    };
+  }, [delayMs]);
 
   return (
     <div
@@ -298,7 +307,7 @@ export default function HomePage() {
   const desktopHomeLayout = {
     readMoreBtnPos: {
       x: 0,
-      y: 550,
+      y: 0,
     },
     heroPhoto: {
       offsetXPx: 0,
@@ -320,7 +329,7 @@ export default function HomePage() {
       y: -120,
     },
     storySpacing: {
-      top: 150,
+      top: 96,
     },
     storyPos: {
       group: { x: -285, y: -90 },
@@ -401,14 +410,11 @@ export default function HomePage() {
   const readMoreBtnPos = homeLayout.readMoreBtnPos;
   const heroPhoto = homeLayout.heroPhoto;
   const po = homeLayout.po;
-  const storyGraphic = homeLayout.storyGraphic;
-  const storySpacing = homeLayout.storySpacing;
-  const storyPos = homeLayout.storyPos;
   const infoPos = homeLayout.infoPos;
   const contactPos = homeLayout.contactPos;
   const contactSpacing = homeLayout.contactSpacing;
   const dishesSpacing = homeLayout.dishesSpacing;
-  const dishPhotoRows = splitIntoAlternatingColumns(dishPhotos, [2, 3]);
+  const dishPhotoRows = splitIntoAlternatingColumns(dishPhotos, [2, 3, 3]);
   const heroGoldBandLiftPx = 4; // 約0.1cmぶん上に移動
   const goldDividerPos = {
     thicknessBase: 44, // 帯の基準太さ(px)
@@ -428,6 +434,7 @@ export default function HomePage() {
     divider4Y: 180,      // 4本目: CONTACT 上の帯
   };
   const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
+  const lightboxCloseButtonRef = useRef<HTMLButtonElement | null>(null);
   const [menuKind, setMenuKind] = useState<MenuKind>("dinner");
   const activeMenu = MENU[menuKind];
 
@@ -442,17 +449,22 @@ useEffect(() => {
 
   // 背景スクロール止める
   const prevOverflow = document.body.style.overflow;
+  const previousActiveElement =
+    document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const focusFrame = window.requestAnimationFrame(() => lightboxCloseButtonRef.current?.focus());
   document.body.style.overflow = "hidden";
 
   return () => {
+    window.cancelAnimationFrame(focusFrame);
     document.removeEventListener("keydown", onKeyDown);
     document.body.style.overflow = prevOverflow;
+    previousActiveElement?.focus();
   };
 }, [lightbox]);
   const chefText = {
   label: "text-[12px] md:text-[27px]",
-  title: "text-[23px] md:text-[40px] whitespace-nowrap",
-  body: "text-[18px] md:text-[24px] leading-relaxed md:leading-relaxed",
+  title: "text-[23px] md:text-[40px] whitespace-normal md:whitespace-nowrap",
+  body: "text-[16px] md:text-[24px] leading-relaxed md:leading-relaxed",
 };
 const sectionBackgroundTone = {
   white: "#ffffff",
@@ -502,9 +514,10 @@ const readMoreButtonStyle = {
   fontFamily:
     '"Noto Serif JP","Yu Mincho","游明朝","Hiragino Mincho ProN","Hiragino Mincho Pro",serif',
 };
-return (
+  return (
   <>
   <div className="relative z-10 space-y-0 pb-0 md:pb-0">
+     <h1 className="sr-only">bistro centquatre 104</h1>
      <a
        href={reserveLabel.href}
        aria-label="予約する"
@@ -553,6 +566,15 @@ return (
     }}
   >
     <div className="relative w-full max-w-5xl">
+      <button
+        ref={lightboxCloseButtonRef}
+        type="button"
+        onClick={() => setLightbox(null)}
+        aria-label="閉じる"
+        className="absolute right-3 top-3 z-20 inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-xl text-[#2f1b0f] shadow-md transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+      >
+        ×
+      </button>
       {/* 写真の上だけフォークナイフ */}
       <div className="relative aspect-[16/10] w-full overflow-hidden rounded-2xl bg-black shadow-2xl cursor-utensils">
         <Image
@@ -568,8 +590,8 @@ return (
   </div>
 )}
 
-	      <ScrollReveal>
-	<section className="relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] w-screen overflow-hidden h-[56.25vw] min-h-[180px] rounded-none md:h-auto md:min-h-[950px]">
+	      <ScrollReveal initialVisible distancePx={0} durationMs={0}>
+	<section className="relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] w-screen overflow-hidden h-[72vw] min-h-[260px] max-h-[420px] rounded-none md:h-[calc(100vh-88px)] md:min-h-[640px] md:max-h-[780px]">
   <div
     className="absolute inset-0"
     style={{
@@ -621,8 +643,7 @@ return (
 
 	      <ScrollReveal delayMs={80}>
 	<section
-  className="mt-0 space-y-8 px-4 text-center md:space-y-6 md:px-0"
-  style={{ paddingTop: `${storySpacing.top}px` }}
+  className="mt-0 space-y-8 px-4 pt-4 text-center md:space-y-6 md:px-0 md:pt-[96px]"
 >
   <div className="mx-auto hidden w-full max-w-5xl justify-center md:flex">
     <Link
@@ -662,12 +683,7 @@ return (
     {/* 右カラム：2.png + Story（ここに “元の内容” を入れる） */}
     <div className="order-1 flex flex-col items-center space-y-5 text-center md:order-2 md:space-y-3">
       <div
-        className="relative mx-auto"
-        style={{
-          width: `${storyGraphic.w}px`,
-          height: `${storyGraphic.h}px`,
-          transform: `translate(${storyGraphic.x}px, ${storyGraphic.y}px)`,
-        }}
+        className="relative mx-auto -mb-[96px] h-[160px] w-[188px] -translate-y-[110px] md:mb-0 md:h-[300px] md:w-[350px] md:-translate-x-[285px] md:-translate-y-[120px]"
       >
         <Image
           src="/photos/2.png"
@@ -680,26 +696,22 @@ return (
       </div>
 
       <div
-        className="text-center md:max-w-none"
-        style={{ transform: `translate(${storyPos.group.x}px, ${storyPos.group.y}px)` }}
+        className="text-center -translate-y-[32px] md:max-w-none md:-translate-x-[285px] md:-translate-y-[90px]"
       >
         <p
           className={`${chefText.label} uppercase tracking-[0.25em] text-[#b68c5a]`}
-          style={{ transform: `translate(${storyPos.label.x}px, ${storyPos.label.y}px)` }}
         >
           STORY
         </p>
 
-        <h3
+        <h2
           className={`${chefText.title} font-semibold text-[#2f1b0f]`}
-          style={{ transform: `translate(${storyPos.title.x}px, ${storyPos.title.y}px)` }}
         >
           川越をフレンチの街へ
-        </h3>
+        </h2>
 
         <p
           className={`${chefText.body} whitespace-pre-line text-center text-[#4a3121] md:whitespace-pre`}
-          style={{ transform: `translate(${storyPos.body.x}px, ${storyPos.body.y}px)` }}
         >
           {"川越は芋ばっかり😩\n街全体が芋になってしまう前にフレンチの街にしよう！"}
         </p>
@@ -708,11 +720,10 @@ return (
       <div className="relative mx-auto h-[112px] w-full max-w-[280px] md:hidden">
         <div
           className="absolute top-1/2"
-          style={{ left: "calc(50% - 132px)", transform: `translate(${po.x}px, -50%)` }}
+          style={{ left: "calc(50% - 132px)", transform: "translate(0, -50%)" }}
         >
           <div
-            className="relative overflow-hidden rounded-2xl border-0 bg-transparent shadow-none ring-0"
-            style={{ width: `${po.w}px`, height: `${po.h}px` }}
+            className="relative h-[112px] w-[68px] overflow-hidden rounded-2xl border-0 bg-transparent shadow-none ring-0"
           >
             <Image
               src="/photos/po.png"
@@ -777,14 +788,10 @@ return (
           <div
             key={`dish-row-${rowIndex}`}
             className="mx-auto flex w-full flex-wrap justify-center gap-2 md:grid md:gap-6"
-            style={
-              isMobile
-                ? { gap: `${mobileDishPhotoGapPx}px` }
-                : {
-                    maxWidth: `calc(${row.length} * ${dishPhotoCardWidthPx}px + ${(row.length - 1) * dishPhotoGapPx}px)`,
-                    gridTemplateColumns: `repeat(${row.length}, minmax(0, 1fr))`,
-                  }
-            }
+            style={{
+              maxWidth: `calc(${row.length} * ${dishPhotoCardWidthPx}px + ${(row.length - 1) * dishPhotoGapPx}px)`,
+              gridTemplateColumns: `repeat(${row.length}, minmax(0, 1fr))`,
+            }}
           >
             {row.map((p, itemIndex) => {
               const delayMs = revealIndex * 140;
@@ -800,19 +807,14 @@ return (
                     type="button"
                     onClick={() => setLightbox(p)}
                     aria-label={`${p.alt} を拡大`}
-                    className="relative aspect-[4/3] overflow-hidden rounded-2xl border border-[#cfa96d]/40 bg-white shadow-md cursor-utensils focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c7a357]/40 md:w-full"
-                    style={isMobile ? { width: `${mobileDishPhotoCardWidthPx}px` } : undefined}
+                    className="group relative aspect-[4/3] w-[112px] overflow-hidden rounded-xl border border-[#cfa96d]/40 bg-white shadow-md transition duration-300 cursor-utensils hover:-translate-y-1 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c7a357]/40 md:w-full"
                   >
                     <Image
                       src={p.src}
                       alt={p.alt}
                       fill
-                      className="object-cover"
-                      sizes={
-                        isMobile
-                          ? `${mobileDishPhotoCardWidthPx}px`
-                          : `${dishPhotoCardWidthPx}px`
-                      }
+                      className="object-cover transition duration-700 group-hover:scale-[1.04]"
+                      sizes={`(max-width: 767px) ${mobileDishPhotoCardWidthPx}px, ${dishPhotoCardWidthPx}px`}
                     />
                   </button>
                 </ScrollReveal>
@@ -1045,9 +1047,9 @@ return (
               <h2 className="ml-[19px] text-[24px] font-semibold md:ml-0 md:text-3xl">アクセス / お問い合わせ</h2>
               <div className="space-y-1 pl-[38px] text-[14px] font-normal text-black md:pl-0 md:text-lg">
                 <p>〒350-0824</p>
-                <p className="whitespace-nowrap">埼玉県川越市石原町１丁目４７−７</p>
+                <p className="break-words whitespace-normal md:whitespace-nowrap">埼玉県川越市石原町１丁目４７−７</p>
               </div>
-              <div className="flex w-full flex-nowrap items-center gap-2 pl-[38px] text-[14px] font-normal text-black md:pl-0 md:text-lg">
+              <div className="flex w-full flex-wrap items-center gap-2 pl-[38px] text-[14px] font-normal text-black md:flex-nowrap md:pl-0 md:text-lg">
                 <span>連絡先：</span>
                 <a className="whitespace-nowrap underline text-black" href={CONTACT_TEL_LINK}>
                   {CONTACT_PHONE_DISPLAY}

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ReservationStatus } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 
@@ -13,9 +14,24 @@ export function StatusForm({
   current: ReservationStatus;
   isPrivateBlock?: boolean;
 }) {
+  const router = useRouter();
+  const selectId = useId();
+  const [currentStatus, setCurrentStatus] = useState<ReservationStatus>(current);
   const [status, setStatus] = useState<ReservationStatus>(current);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const isTerminal =
+    currentStatus === ReservationStatus.CANCELLED ||
+    currentStatus === ReservationStatus.DONE ||
+    currentStatus === ReservationStatus.NOSHOW;
+  const allowedStatuses = isTerminal
+    ? [currentStatus]
+    : [
+        ReservationStatus.CONFIRMED,
+        ReservationStatus.CANCELLED,
+        ReservationStatus.DONE,
+        ReservationStatus.NOSHOW,
+      ];
 
   async function submitStatus(nextStatus: ReservationStatus) {
     let operatorName: string | undefined;
@@ -37,6 +53,7 @@ export function StatusForm({
 
     setLoading(true);
     setMessage(null);
+    const previousStatus = currentStatus;
     setStatus(nextStatus);
     const res = await fetch(`/api/admin/reservations/${id}`, {
       method: "PATCH",
@@ -47,9 +64,12 @@ export function StatusForm({
       body: JSON.stringify({ status: nextStatus, operatorName }),
     });
     if (res.ok) {
+      setCurrentStatus(nextStatus);
       setMessage(`ステータスを ${nextStatus} に更新しました`);
+      router.refresh();
     } else {
       const data = await res.json().catch(() => ({}));
+      setStatus(previousStatus);
       setMessage(`更新に失敗しました: ${data.error ?? res.status}`);
     }
     setLoading(false);
@@ -62,40 +82,48 @@ export function StatusForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-2">
-      <label className="text-sm text-gray-700">ステータス更新</label>
+      <label htmlFor={selectId} className="text-sm text-gray-700">ステータス更新</label>
       <select
+        id={selectId}
         className="w-full rounded border px-3 py-2"
         value={status}
         onChange={(e) => setStatus(e.target.value as ReservationStatus)}
+        disabled={isTerminal || loading}
       >
-        {Object.values(ReservationStatus).map((s) => (
+        {allowedStatuses.map((s) => (
           <option key={s} value={s}>
             {s}
           </option>
         ))}
       </select>
-      <Button type="submit" disabled={loading}>
+      <Button type="submit" disabled={loading || isTerminal}>
         {loading ? "更新中..." : "更新"}
       </Button>
-      <div className="flex flex-wrap gap-2 text-sm">
-        <Button
-          type="button"
-          variant="outline"
-          disabled={loading}
-          onClick={() => submitStatus(ReservationStatus.CANCELLED)}
-        >
-          キャンセルにする
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={loading}
-          onClick={() => submitStatus(ReservationStatus.DONE)}
-        >
-          来店済みにする
-        </Button>
-      </div>
-      {message && <p className="text-sm text-gray-700">{message}</p>}
+      {!isTerminal && (
+        <div className="flex flex-wrap gap-2 text-sm">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={loading}
+            onClick={() => submitStatus(ReservationStatus.CANCELLED)}
+          >
+            キャンセルにする
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={loading}
+            onClick={() => submitStatus(ReservationStatus.DONE)}
+          >
+            来店済みにする
+          </Button>
+        </div>
+      )}
+      {message && (
+        <p role="status" aria-live="polite" className="text-sm text-gray-700">
+          {message}
+        </p>
+      )}
     </form>
   );
 }

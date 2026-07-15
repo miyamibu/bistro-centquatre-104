@@ -80,7 +80,6 @@ a:hover {
   .cursor-utensils {
     cursor:
       url("/photos/icons/utensils-cursor-64.png") 32 32,
-      url("/photos/icons/utensils-cursor-32.png") 16 16,
       pointer;
   }
 }

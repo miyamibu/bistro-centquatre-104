@@ -71,6 +71,8 @@ export function TopNav() {
           <button
             type="button"
             aria-label="メニューを開く"
+            aria-expanded={open}
+            aria-controls="site-navigation-dialog"
             className="flex h-10 w-10 items-center justify-center text-[#6b3b20] transition hover:text-[#8a4c29]"
             onClick={() => setOpen((prev) => !prev)}
           >
@@ -82,11 +84,15 @@ export function TopNav() {
       {open && (
         <div className="fixed inset-0 z-[220] bg-black/40 backdrop-blur-sm" onClick={() => setOpen(false)}>
           <div
+            id="site-navigation-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="サイトメニュー"
             className="absolute left-1/2 top-8 z-[221] w-[90%] max-w-sm -translate-x-1/2 rounded-2xl bg-white p-5 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-end">
-              <button type="button" aria-label="閉じる" onClick={() => setOpen(false)} className="text-[#6b3b20] hover:text-[#8a4c29]">
+              <button type="button" aria-label="閉じる" onClick={() => setOpen(false)} className="inline-flex h-10 w-10 items-center justify-center rounded-full text-[#6b3b20] hover:bg-[#f4e8d8] hover:text-[#8a4c29] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#b68c5a]/50">
                 <X size={20} />
               </button>
             </div>

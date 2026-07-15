@@ -7,6 +7,8 @@ import { Noto_Serif_JP, Tangerine } from "next/font/google";
 import {
   clearPendingOrderPaymentSetup,
   loadPendingOrderPaymentSetup,
+  restorePendingOrderCart,
+  saveOrderCompletionReceipt,
   type PendingOrderPaymentSetup,
 } from "@/lib/store-checkout-session";
 
@@ -59,6 +61,21 @@ function PayContent() {
       setMessage("本人確認用の注文情報が見つかりません。カートからやり直してください。");
       return;
     }
+
+    const holdExpiresAt = Date.parse(setup.holdExpiresAt);
+    if (!Number.isFinite(holdExpiresAt) || holdExpiresAt <= Date.now()) {
+      const restored = restorePendingOrderCart(setup);
+      clearPendingOrderPaymentSetup();
+      setPendingSetup(null);
+      setIsError(true);
+      setMessage(
+        restored
+          ? "注文の確認期限が切れたため、カートの内容を復元しました。もう一度お試しください。"
+          : "注文の確認期限が切れました。カートからもう一度お試しください。",
+      );
+      return;
+    }
+
     setPendingSetup(setup);
     setPaymentMethod(setup.paymentMethod);
     setStoreVisitDate(setup.storeVisitDate ?? "");
@@ -107,19 +124,51 @@ function PayContent() {
         }),
       });
 
-      const json = await response.json();
+      const json = await response.json().catch(() => ({}));
       if (!response.ok) {
+        const code = typeof json?.code === "string" ? json.code : "";
+        if (code === "HUMAN_TOKEN_EXPIRED" || code === "ORDER_NOT_FOUND") {
+          const restored = restorePendingOrderCart(pendingSetup);
+          clearPendingOrderPaymentSetup();
+          setPendingSetup(null);
+          setIsError(true);
+          setMessage(
+            restored
+              ? "注文を続けられないため、カートの内容を復元しました。もう一度お試しください。"
+              : "注文を続けられません。カートからもう一度お試しください。",
+          );
+          return;
+        }
         throw new Error(json?.error ?? "本人確認と支払い方法の確定に失敗しました");
       }
 
+      const confirmedOrderId = typeof json?.order?.id === "string" ? json.order.id : "";
+      if (confirmedOrderId !== pendingSetup.orderId) {
+        throw new Error("注文番号を確認できないため、完了画面へ進めません");
+      }
+
+      const notificationStatus =
+        json?.notification?.status === "PENDING_RETRY" ? "PENDING_RETRY" : "SENT";
+      saveOrderCompletionReceipt({
+        orderId: confirmedOrderId,
+        paymentMethod,
+        storeVisitDate: paymentMethod === "PAY_IN_STORE" ? storeVisitDate : null,
+        notificationStatus,
+      });
       clearPendingOrderPaymentSetup();
-      router.push(`/on-line-store/order-complete?method=${paymentMethod}`);
+      router.push(`/on-line-store/order-complete?order_id=${encodeURIComponent(confirmedOrderId)}`);
     } catch (error) {
       setIsError(true);
       setMessage(error instanceof Error ? error.message : "本人確認に失敗しました");
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleReturnToCart = () => {
+    restorePendingOrderCart(pendingSetup);
+    clearPendingOrderPaymentSetup();
+    router.push("/on-line-store/cart");
   };
 
   return (
@@ -216,9 +265,13 @@ function PayContent() {
               </button>
               <Link
                 href="/on-line-store/cart"
+                onClick={(event) => {
+                  event.preventDefault();
+                  handleReturnToCart();
+                }}
                 className="inline-flex items-center justify-center rounded-full border border-[#2f1b0f] px-6 py-3 text-sm font-semibold text-[#2f1b0f] transition hover:bg-white/70"
               >
-                カートへ戻る
+                カートへ戻る（内容を復元）
               </Link>
             </div>
           </div>

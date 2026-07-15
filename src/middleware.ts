@@ -21,10 +21,6 @@ function isProtectedPath(pathname: string) {
     return false;
   }
 
-  if (process.env.NODE_ENV === "development" && matchesProtectedPrefix(pathname, "/admin/daily-journal")) {
-    return false;
-  }
-
   return (
     PROTECTED_WEB_PREFIXES.some((prefix) => matchesProtectedPrefix(pathname, prefix)) ||
     PROTECTED_API_PREFIXES.some((prefix) => matchesProtectedPrefix(pathname, prefix))

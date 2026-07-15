@@ -58,12 +58,21 @@ interface BankAccount {
 
 interface OrdersClientProps {
   initialOrders: Order[];
+  initialOrdersError?: string | null;
   initialBankAccount: BankAccount | null;
+  initialBankAccountError?: string | null;
 }
 
-export function OrdersClient({ initialOrders, initialBankAccount }: OrdersClientProps) {
+export function OrdersClient({
+  initialOrders,
+  initialOrdersError = null,
+  initialBankAccount,
+  initialBankAccountError = null,
+}: OrdersClientProps) {
   const [orders, setOrders] = useState<Order[]>(initialOrders);
+  const [ordersError, setOrdersError] = useState<string | null>(initialOrdersError);
   const [bankAccount, setBankAccount] = useState<BankAccount | null>(initialBankAccount);
+  const [bankAccountError, setBankAccountError] = useState<string | null>(initialBankAccountError);
   const [isLoading, setIsLoading] = useState(false);
   const [showBankForm, setShowBankForm] = useState(false);
   const [editingBank, setEditingBank] = useState<BankAccount | null>(null);
@@ -99,6 +108,7 @@ export function OrdersClient({ initialOrders, initialBankAccount }: OrdersClient
       const data = await response.json();
       if (ordersRequestIdRef.current !== requestId) return;
       setOrders(data || []);
+      setOrdersError(null);
       setFeedback((current) =>
         current?.type === "error" && current.text === "注文一覧の読み込みに失敗しました"
           ? null
@@ -107,6 +117,7 @@ export function OrdersClient({ initialOrders, initialBankAccount }: OrdersClient
     } catch (error) {
       if (ordersRequestIdRef.current !== requestId) return;
       console.error("Failed to load orders:", error);
+      setOrdersError("注文一覧を取得できませんでした。時間をおいて再確認してください。");
       setFeedback({ type: "error", text: "注文一覧の読み込みに失敗しました" });
     } finally {
       if (ordersRequestIdRef.current === requestId) {
@@ -131,9 +142,11 @@ export function OrdersClient({ initialOrders, initialBankAccount }: OrdersClient
       const data = await response.json();
       if (bankAccountRequestIdRef.current !== requestId) return;
       setBankAccount(data?.id ? data : null);
+      setBankAccountError(null);
     } catch (error) {
       if (bankAccountRequestIdRef.current !== requestId) return;
       console.error("Failed to load bank account:", error);
+      setBankAccountError("銀行情報を取得できませんでした。設定状態を確認できません。");
     }
   };
 
@@ -263,7 +276,11 @@ export function OrdersClient({ initialOrders, initialBankAccount }: OrdersClient
 
           {!showBankForm ? (
             <>
-              {bankAccount ? (
+              {bankAccountError ? (
+                <p role="alert" className="mb-4 rounded border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+                  {bankAccountError}
+                </p>
+              ) : bankAccount ? (
                 <div className="bg-gray-50 p-4 rounded mb-4">
                   <p>
                     <strong>銀行:</strong> {bankAccount.bank_name}
@@ -413,7 +430,11 @@ export function OrdersClient({ initialOrders, initialBankAccount }: OrdersClient
         <div className={`${bodySerif.className} bg-white p-6 rounded-lg border border-gray-300`}>
           <h2 className="text-2xl font-semibold text-[#2f1b0f] mb-4">注文一覧</h2>
 
-          {orders.length === 0 ? (
+          {ordersError ? (
+            <p role="alert" className="rounded border border-amber-300 bg-amber-50 px-4 py-8 text-center text-sm text-amber-900">
+              {ordersError}
+            </p>
+          ) : orders.length === 0 ? (
             <p className="text-gray-600 text-center py-8">注文はまだありません</p>
           ) : (
             <div className="overflow-x-auto">

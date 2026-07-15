@@ -5,8 +5,16 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Noto_Serif_JP, Tangerine } from "next/font/google";
-import { formatYen, getCartItems, type StoreCartItem, clearCart, removeFromCart } from "@/lib/store-cart";
+import {
+  clearCart,
+  formatYen,
+  getCartItems,
+  removeFromCart,
+  restoreCartItems,
+  type StoreCartItem,
+} from "@/lib/store-cart";
 import { savePendingOrderPaymentSetup } from "@/lib/store-checkout-session";
+import { getPublishedStoreProduct } from "@/lib/store-products";
 
 const headingFont = Tangerine({
   subsets: ["latin"],
@@ -59,6 +67,52 @@ const prefectures = [
   "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県",
 ];
 
+function normalizeCartItems(rawItems: StoreCartItem[]): StoreCartItem[] {
+  return rawItems.flatMap((item) => {
+    const product = getPublishedStoreProduct(item.id);
+    if (!product || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 99) {
+      return [];
+    }
+
+    return [
+      {
+        id: product.id,
+        name: product.name,
+        price: product.priceYen,
+        image: product.image,
+        quantity: item.quantity,
+      },
+    ];
+  });
+}
+
+const orderFieldLabels: Record<string, string> = {
+  "customerInfo.name": "お名前",
+  "customerInfo.email": "メールアドレス",
+  "customerInfo.phone": "電話番号",
+  "customerInfo.zipCode": "郵便番号",
+  "customerInfo.prefecture": "都道府県",
+  "customerInfo.city": "市区町村",
+  "customerInfo.address": "番地",
+  "customerInfo.building": "建物名・部屋番号",
+  paymentMethod: "支払い方法",
+  storeVisitDate: "来店予定日",
+  items: "商品",
+  total: "合計金額",
+  root: "注文内容",
+};
+
+function parseFieldErrors(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object") return {};
+
+  return Object.entries(value).reduce<Record<string, string>>((errors, [key, message]) => {
+    if (typeof message === "string" && message.trim()) {
+      errors[key] = message;
+    }
+    return errors;
+  }, {});
+}
+
 function StoreCartFallback() {
   return (
     <section
@@ -88,6 +142,7 @@ function StoreCartContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [submitMessage, setSubmitMessage] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [customerInfo, setCustomerInfo] = useState<CustomerInfo>({
     name: "",
     email: "",
@@ -103,7 +158,9 @@ function StoreCartContent() {
   const { minDate, maxDate } = useMemo(() => getStoreDateRange(), []);
 
   useEffect(() => {
-    setItems(getCartItems());
+    const normalizedItems = normalizeCartItems(getCartItems());
+    setItems(normalizedItems);
+    restoreCartItems(normalizedItems);
   }, []);
 
   const total = useMemo(
@@ -115,6 +172,12 @@ function StoreCartContent() {
     const { name, value } = e.target;
     orderIdempotencyKeyRef.current = null;
     setCustomerInfo((prev) => ({ ...prev, [name]: value }));
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      delete next[name];
+      delete next[`customerInfo.${name}`];
+      return next;
+    });
   };
 
   const validateForm = (): string | null => {
@@ -159,6 +222,7 @@ function StoreCartContent() {
     setIsLoading(true);
     setSubmitError(false);
     setSubmitMessage(null);
+    setFieldErrors({});
     try {
       if (!orderIdempotencyKeyRef.current) {
         orderIdempotencyKeyRef.current =
@@ -202,13 +266,19 @@ function StoreCartContent() {
               ? json.paymentSetup.storeVisitDate
               : null,
           holdExpiresAt: String(json.paymentSetup.holdExpiresAt ?? ""),
+          cartItems: items,
         });
         clearCart();
         router.push(`/on-line-store/pay?order_id=${encodeURIComponent(String(json.paymentSetup.orderId))}`);
       } else {
-        const errorData = await response.json();
+        const errorData = (await response.json().catch(() => ({}))) as {
+          error?: unknown;
+          fields?: unknown;
+        };
+        setFieldErrors(parseFieldErrors(errorData.fields));
         setSubmitError(true);
-        setSubmitMessage(`注文処理中にエラーが発生しました: ${errorData.error ?? "不明なエラー"}`);
+        const errorMessage = typeof errorData.error === "string" ? errorData.error : "不明なエラー";
+        setSubmitMessage(`注文処理中にエラーが発生しました: ${errorMessage}`);
       }
     } catch (error) {
       console.error("エラー:", error);
@@ -324,7 +394,9 @@ function StoreCartContent() {
                   <button
                     onClick={() => {
                       removeFromCart(item.id);
-                      setItems(getCartItems());
+                      const nextItems = normalizeCartItems(getCartItems());
+                      setItems(nextItems);
+                      restoreCartItems(nextItems);
                     }}
                     className="rounded bg-red-200 px-4 py-2 text-red-800 transition hover:bg-red-300"
                   >
@@ -368,6 +440,22 @@ function StoreCartContent() {
 
             <div className={`${bodySerif.className} rounded-lg border border-[#2f1b0f] bg-white p-8`}>
               <h2 className="mb-6 text-2xl font-semibold text-[#2f1b0f]">顧客情報</h2>
+
+              {Object.keys(fieldErrors).length > 0 && (
+                <div
+                  role="alert"
+                  className="mb-6 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800"
+                >
+                  <p className="font-semibold">入力内容を確認してください</p>
+                  <ul className="mt-2 list-disc space-y-1 pl-5">
+                    {Object.entries(fieldErrors).map(([field, message]) => (
+                      <li key={field}>
+                        <span className="font-semibold">{orderFieldLabels[field] ?? field}</span>：{message}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               <div className="mb-6 grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div>
@@ -500,6 +588,11 @@ function StoreCartContent() {
                     onChange={(e) => {
                       orderIdempotencyKeyRef.current = null;
                       setPaymentMethod(e.target.value as PaymentMethod);
+                      setFieldErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.paymentMethod;
+                        return next;
+                      });
                     }}
                     className="mt-1 h-5 w-5 flex-shrink-0"
                   />
@@ -520,6 +613,11 @@ function StoreCartContent() {
                     onChange={(e) => {
                       orderIdempotencyKeyRef.current = null;
                       setPaymentMethod(e.target.value as PaymentMethod);
+                      setFieldErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.paymentMethod;
+                        return next;
+                      });
                     }}
                     className="mt-1 h-5 w-5 flex-shrink-0"
                   />
@@ -544,6 +642,11 @@ function StoreCartContent() {
                     onChange={(e) => {
                       orderIdempotencyKeyRef.current = null;
                       setStoreVisitDate(e.target.value);
+                      setFieldErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.storeVisitDate;
+                        return next;
+                      });
                     }}
                     min={minDate}
                     max={maxDate}

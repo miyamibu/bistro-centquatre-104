@@ -2,11 +2,8 @@ import { NextRequest } from "next/server";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { formatJst } from "@/lib/dates";
 import { getNextBookableReservationDate } from "@/lib/booking-rules";
-import {
-  createTestPrismaClient,
-  safeTestDatabaseUrl,
-  summarizeDatabaseUrl,
-} from "./test-database";
+import { clearReservationArtifacts } from "./utils/reservation-destructive-cleanup";
+import { createTestPrismaClient, destructiveTestDbAccess } from "./test-database";
 
 const { sendReservationEmailMock } = vi.hoisted(() => ({
   sendReservationEmailMock: vi.fn().mockResolvedValue({ sent: true, provider: "resend" }),
@@ -16,18 +13,12 @@ vi.mock("@/lib/email", () => ({
   sendReservationEmail: sendReservationEmailMock,
 }));
 
-const hasSafeDatabase = Boolean(safeTestDatabaseUrl);
+const hasSafeDatabase = destructiveTestDbAccess.enabled;
 const describeIfDatabase = hasSafeDatabase ? describe : describe.skip;
 const prisma = hasSafeDatabase ? createTestPrismaClient() : null;
 
-if (process.env.TEST_DATABASE_URL && !hasSafeDatabase) {
-  console.warn(
-    `[tests] Skipping destructive DB tests because TEST_DATABASE_URL is not a safe local test database: ${summarizeDatabaseUrl(process.env.TEST_DATABASE_URL)}`
-  );
-}
-
-if (!process.env.TEST_DATABASE_URL) {
-  console.warn("[tests] Skipping destructive DB tests because TEST_DATABASE_URL is not set");
+if (!hasSafeDatabase) {
+  console.warn(`[tests] Skipping destructive DB tests: ${destructiveTestDbAccess.reason}`);
 }
 
 function buildRequest(body: Record<string, unknown>) {
@@ -58,25 +49,27 @@ function buildPayload(overrides: Partial<Record<string, unknown>> = {}) {
   };
 }
 
-async function clearReservationArtifacts() {
-  if (!prisma) {
-    throw new Error("Safe TEST_DATABASE_URL is required for destructive DB tests");
-  }
+async function cleanupReservations() {
+  await clearReservationArtifacts(getPrismaOrThrow());
+}
 
-  await prisma.$executeRawUnsafe('DELETE FROM "ReservationRateLimitEvent"');
-  await prisma.$executeRawUnsafe('DELETE FROM "Reservation"');
+function getPrismaOrThrow() {
+  if (!prisma) {
+    throw new Error("Safe TEST_DATABASE_URL and ALLOW_DESTRUCTIVE_TEST_DB=1 are required");
+  }
+  return prisma;
 }
 
 describeIfDatabase("reservations route duplicate guard (db)", () => {
   beforeEach(async () => {
     vi.resetModules();
     sendReservationEmailMock.mockClear();
-    await clearReservationArtifacts();
+    await cleanupReservations();
   });
 
   afterAll(async () => {
-    await clearReservationArtifacts();
-    await prisma.$disconnect();
+    await cleanupReservations();
+    await getPrismaOrThrow().$disconnect();
   });
 
   it("returns the existing reservation for duplicate submissions within 1 minute", async () => {
@@ -101,7 +94,7 @@ describeIfDatabase("reservations route duplicate guard (db)", () => {
     expect(secondBody.deduplicated).toBe(true);
     expect(secondBody.reservationId).toBe(firstBody.reservationId);
 
-    const reservations = await prisma.reservation.findMany({
+    const reservations = await getPrismaOrThrow().reservation.findMany({
       where: {
         date: payload.date as string,
         servicePeriod: payload.servicePeriod as "LUNCH" | "DINNER",
@@ -128,7 +121,7 @@ describeIfDatabase("reservations route duplicate guard (db)", () => {
     expect(response.status).toBe(200);
     expect(body.deduplicated).toBe(false);
 
-    const reservations = await prisma.reservation.findMany({
+    const reservations = await getPrismaOrThrow().reservation.findMany({
       where: {
         date: payload.date as string,
         servicePeriod: payload.servicePeriod as "LUNCH" | "DINNER",
@@ -148,10 +141,11 @@ describeIfDatabase("reservations route duplicate guard (db)", () => {
     const firstResponse = await POST(buildRequest(payload));
     const firstBody = await firstResponse.json();
 
-    await prisma.$executeRawUnsafe(
-      `UPDATE "Reservation" SET "createdAt" = NOW() - INTERVAL '2 minutes' WHERE "id" = $1`,
-      firstBody.reservationId
-    );
+    const staleCreatedAt = new Date(Date.now() - 5 * 60 * 1000);
+    await getPrismaOrThrow().reservation.update({
+      where: { id: firstBody.reservationId },
+      data: { createdAt: staleCreatedAt },
+    });
 
     const secondResponse = await POST(buildRequest(payload));
     const secondBody = await secondResponse.json();
@@ -160,7 +154,7 @@ describeIfDatabase("reservations route duplicate guard (db)", () => {
     expect(secondBody.deduplicated).toBe(false);
     expect(secondBody.reservationId).not.toBe(firstBody.reservationId);
 
-    const reservations = await prisma.reservation.findMany({
+    const reservations = await getPrismaOrThrow().reservation.findMany({
       where: {
         date: payload.date as string,
         servicePeriod: payload.servicePeriod as "LUNCH" | "DINNER",

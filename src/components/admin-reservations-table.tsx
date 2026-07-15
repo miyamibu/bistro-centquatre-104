@@ -19,15 +19,18 @@ export type AdminReservationTableRow = {
   note: string | null;
   isCancelled: boolean;
   statusLabel: string;
+  lineStatus: string;
+  lineReminderError: string | null;
 };
 
 type AdminReservationsTableProps = {
   selectedDate: string;
   reservations: AdminReservationTableRow[];
   dayStatus: AdminDayStatus | null;
+  dataError?: string | null;
 };
 
-const TABLE_COLUMN_COUNT = 7;
+const TABLE_COLUMN_COUNT = 9;
 
 function formatSelectedDate(date: string) {
   const match = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -55,6 +58,7 @@ export default function AdminReservationsTable({
   selectedDate,
   reservations,
   dayStatus,
+  dataError = null,
 }: AdminReservationsTableProps) {
   const [openReservationIds, setOpenReservationIds] = useState<Record<string, boolean>>({});
   const [searchQuery, setSearchQuery] = useState("");
@@ -124,6 +128,12 @@ export default function AdminReservationsTable({
         </div>
       </div>
 
+      {dataError ? (
+        <p role="alert" className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {dataError} 空の一覧とは区別して表示しています。
+        </p>
+      ) : null}
+
       <div className="space-y-4 md:hidden">
         {sections.map((section) => (
           <section key={`${section.key}-mobile`} className="card space-y-3 border-0 p-4 shadow-none">
@@ -151,7 +161,11 @@ export default function AdminReservationsTable({
               ) : null}
             </div>
 
-            {section.rows.length === 0 ? (
+            {dataError ? (
+              <p className="rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                取得失敗のため、この時間帯の件数は判定できません。
+              </p>
+            ) : section.rows.length === 0 ? (
               <p className="rounded-md bg-[#f8f5ef] px-4 py-3 text-sm text-gray-600">
                 {section.privateBlockId
                   ? "通常予約はありません（貸切中）。"
@@ -179,6 +193,12 @@ export default function AdminReservationsTable({
                       <p>人数: {reservation.partySize}名</p>
                       <p>
                         電話: <a className="underline" href={`tel:${reservation.phone}`}>{reservation.phone}</a>
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        LINE通知: {reservation.lineStatus}
+                        {reservation.lineReminderError ? (
+                          <span className="ml-1 text-amber-700">[{reservation.lineReminderError}]</span>
+                        ) : null}
                       </p>
                     </div>
                     <div className="mt-4 flex flex-wrap gap-2">
@@ -237,6 +257,7 @@ export default function AdminReservationsTable({
                 <th className="px-4 py-2">氏名</th>
                 <th className="px-4 py-2">電話</th>
                 <th className="px-4 py-2">状態</th>
+                <th className="px-4 py-2">LINE</th>
                 <th className="px-4 py-2">内部メモ</th>
                 <th className="px-4 py-2">解除</th>
               </tr>
@@ -246,7 +267,7 @@ export default function AdminReservationsTable({
                 <Fragment key={section.key}>
                   <tr className="bg-[#f8f5ef]">
                     <th
-                      colSpan={TABLE_COLUMN_COUNT + 1}
+                      colSpan={TABLE_COLUMN_COUNT}
                       scope="colgroup"
                       className="border-b border-[#e9dfd0] px-4 py-2 text-left text-sm font-semibold text-gray-700"
                     >
@@ -281,10 +302,19 @@ export default function AdminReservationsTable({
                     </th>
                   </tr>
 
-                  {section.rows.length === 0 ? (
+                  {dataError ? (
                     <tr>
                       <td
-                        colSpan={TABLE_COLUMN_COUNT + 1}
+                        colSpan={TABLE_COLUMN_COUNT}
+                        className="border-b border-gray-100 bg-amber-50 px-4 py-5 text-sm text-amber-900"
+                      >
+                        取得失敗のため、この時間帯の件数は判定できません。
+                      </td>
+                    </tr>
+                  ) : section.rows.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={TABLE_COLUMN_COUNT}
                         className="border-b border-gray-100 px-4 py-5 text-sm text-gray-500"
                       >
                         {section.privateBlockId
@@ -309,6 +339,12 @@ export default function AdminReservationsTable({
                             <td className="px-4 py-2">{reservation.name}</td>
                             <td className="px-4 py-2">{reservation.phone}</td>
                             <td className="px-4 py-2">{reservation.statusLabel}</td>
+                            <td className="px-4 py-2 text-xs text-gray-500">
+                              LINE通知: {reservation.lineStatus}
+                              {reservation.lineReminderError ? (
+                                <span className="ml-1 text-amber-700 block">{reservation.lineReminderError}</span>
+                              ) : null}
+                            </td>
                             <td className="px-4 py-2">
                               {hasNote ? (
                                 <Button
@@ -341,7 +377,7 @@ export default function AdminReservationsTable({
 
                           {hasNote && isMemoOpen ? (
                             <tr className="border-b border-gray-100 cursor-default bg-[#fffbf5]">
-                              <td colSpan={TABLE_COLUMN_COUNT + 1} className="px-4 py-3">
+                              <td colSpan={TABLE_COLUMN_COUNT} className="px-4 py-3">
                                 <div
                                   id={memoPanelId}
                                   className="rounded-md border border-[#ead4bb] border-l-4 border-l-[#d4a96a] bg-[#fff8f0] px-4 py-3"

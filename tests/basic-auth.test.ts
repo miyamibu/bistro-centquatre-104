@@ -1,8 +1,27 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { parseBasicAuthHeader } from "@/lib/basic-auth";
 import { middleware } from "@/middleware";
 import { GET as getAdminBusinessDays } from "@/app/api/admin/business-days/route";
+
+const originalEnv = { ...process.env };
+
+afterEach(() => {
+  vi.resetModules();
+  process.env = { ...originalEnv };
+});
+
+async function loadMiddlewareWithAdminEnv(nodeEnv: "development" | "test" | "production") {
+  vi.resetModules();
+  process.env = {
+    ...originalEnv,
+    NODE_ENV: nodeEnv,
+    ADMIN_BASIC_USER: "admin",
+    ADMIN_BASIC_PASS: "password",
+  };
+  const middlewareModule = await import("@/middleware");
+  return middlewareModule.middleware;
+}
 
 describe("Basic auth hardening", () => {
   it("treats malformed base64 credentials as null instead of throwing", () => {
@@ -34,6 +53,28 @@ describe("Basic auth hardening", () => {
     );
 
     const response = middleware(request);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("WWW-Authenticate")).toBeNull();
+  });
+
+  it("keeps /admin/daily-journal Basic-auth protected in development", async () => {
+    const developmentMiddleware = await loadMiddlewareWithAdminEnv("development");
+    const request = new NextRequest("http://localhost:3000/admin/daily-journal");
+
+    const response = developmentMiddleware(request);
+    expect(response.status).toBe(401);
+    expect(response.headers.get("WWW-Authenticate")).toContain("Basic");
+  });
+
+  it("allows /admin/daily-journal in development only with valid Basic auth", async () => {
+    const developmentMiddleware = await loadMiddlewareWithAdminEnv("development");
+    const request = new NextRequest("http://localhost:3000/admin/daily-journal", {
+      headers: {
+        authorization: `Basic ${Buffer.from("admin:password").toString("base64")}`,
+      },
+    });
+
+    const response = developmentMiddleware(request);
     expect(response.status).toBe(200);
     expect(response.headers.get("WWW-Authenticate")).toBeNull();
   });

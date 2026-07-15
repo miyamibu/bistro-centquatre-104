@@ -4,9 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { isAuthorized } from "@/lib/basic-auth";
 import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
 import { updateReservationStatusSchema, zodFields } from "@/lib/validation";
-import { getRequestId, logError } from "@/lib/logger";
+import { getRequestId, logError, logInfo } from "@/lib/logger";
 import { createPrivateBlockAuditLog } from "@/lib/private-block-audit";
-import { getClientIp, getUserAgent } from "@/lib/request-meta";
+import { getClientIp, getUserAgent, hashClientIp } from "@/lib/request-meta";
 import {
   RESERVATION_SCHEMA_NOT_READY_CODE,
   ensureReservationSchemaReady,
@@ -18,6 +18,11 @@ import {
 export const dynamic = "force-dynamic";
 
 type RouteContext = { params: Promise<{ id: string }> };
+const TERMINAL_RESERVATION_STATUSES = new Set<ReservationStatus>([
+  ReservationStatus.CANCELLED,
+  ReservationStatus.DONE,
+  ReservationStatus.NOSHOW,
+]);
 
 export async function GET(request: NextRequest, { params }: RouteContext) {
   const requestId = getRequestId(request);
@@ -95,6 +100,14 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         return null;
       }
 
+      if (current.status === parsed.data.status) {
+        return { current, next: current };
+      }
+
+      if (TERMINAL_RESERVATION_STATUSES.has(current.status)) {
+        throw new Error("TERMINAL_STATUS_TRANSITION_NOT_ALLOWED");
+      }
+
       const privateBlockReleaseRequested =
         current.reservationType === ReservationType.PRIVATE_BLOCK &&
         parsed.data.status === ReservationStatus.CANCELLED;
@@ -123,7 +136,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         });
       }
 
-      return next;
+      return { current, next };
     });
 
     if (!updated) {
@@ -134,12 +147,39 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       });
     }
 
-    return NextResponse.json(updated);
+    logInfo("admin.reservation.status.updated", {
+      requestId,
+      route,
+      context: {
+        reservationId: updated.next.id,
+        reservationType: updated.next.reservationType,
+        previousStatus: updated.current.status,
+        nextStatus: updated.next.status,
+        date: updated.next.date,
+        servicePeriod: updated.next.servicePeriod,
+        operatorName,
+        ipHash: hashClientIp(ipAddress),
+        userAgent,
+        privateBlockReleaseRequested:
+          updated.current.reservationType === ReservationType.PRIVATE_BLOCK &&
+          updated.next.status === ReservationStatus.CANCELLED,
+      },
+    });
+
+    return NextResponse.json(updated.next);
   } catch (error) {
     if (error instanceof Error && error.message === "MISSING_OPERATOR_NAME") {
       return apiError(400, {
         error: "貸切解除には担当者名が必須です",
         code: "MISSING_OPERATOR_NAME",
+        requestId,
+      });
+    }
+
+    if (error instanceof Error && error.message === "TERMINAL_STATUS_TRANSITION_NOT_ALLOWED") {
+      return apiError(409, {
+        error: "終端状態の予約はこの画面から再変更できません",
+        code: "TERMINAL_STATUS_TRANSITION_NOT_ALLOWED",
         requestId,
       });
     }
