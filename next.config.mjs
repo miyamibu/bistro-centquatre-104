@@ -11,9 +11,9 @@ const contentSecurityPolicy = [
   "form-action 'self'",
   "img-src 'self' data: blob: https://images.unsplash.com",
   "font-src 'self' data:",
-  "connect-src 'self' https://api.line.me https://access.line.me https://*.supabase.co",
-  "frame-src 'self' https://www.google.com https://liff.line.me",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+  "connect-src 'self' https://api.line.me https://access.line.me https://liffsdk.line-scdn.net https://static.line-scdn.net https://*.supabase.co",
+  "frame-src 'self' https://www.google.com https://liff.line.me https://access.line.me",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.line-scdn.net",
   "style-src 'self' 'unsafe-inline'",
   "worker-src 'self' blob:",
 ].join("; ");

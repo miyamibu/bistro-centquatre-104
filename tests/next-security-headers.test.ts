@@ -20,6 +20,8 @@ describe("Next security headers", () => {
     expect(csp?.value).toContain("frame-ancestors 'none'");
     expect(csp?.value).toContain("https://api.line.me");
     expect(csp?.value).toContain("https://access.line.me");
+    expect(csp?.value).toContain("https://static.line-scdn.net");
+    expect(csp?.value).toContain("https://liffsdk.line-scdn.net");
     expect(csp?.value).toContain("https://liff.line.me");
     expect(csp?.value).toContain("https://www.google.com");
     expect(csp?.value).toContain("https://images.unsplash.com");
