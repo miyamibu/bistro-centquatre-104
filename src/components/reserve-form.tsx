@@ -115,6 +115,26 @@ const nonSelectableReasons = new Set([
   "CUTOFF_PASSED",
 ]);
 const servicePeriods: ReservationServicePeriodKey[] = ["LUNCH", "DINNER"];
+const LIFF_OPERATION_TIMEOUT_MS = 10_000;
+
+function withLiffTimeout<T>(promise: Promise<T>, operation: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error(`${operation} timed out`));
+    }, LIFF_OPERATION_TIMEOUT_MS);
+
+    promise.then(
+      (value) => {
+        clearTimeout(timeoutId);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      }
+    );
+  });
+}
 
 export function ReserveForm({
   defaultDate,
@@ -453,22 +473,22 @@ export function ReserveForm({
     setLineLinkStatus("connecting");
     setLineLinkMessage(null);
     try {
-      const liffModule = await import("@line/liff");
+      const liffModule = await withLiffTimeout(import("@line/liff"), "LIFF SDK loading");
       const liff = liffModule.default;
-      await liff.init({ liffId: liffIdFromEnv });
+      await withLiffTimeout(liff.init({ liffId: liffIdFromEnv }), "LIFF initialization");
       if (!liff.isLoggedIn()) {
         // login() triggers a navigation; nothing after will run on this load.
         liff.login();
         return;
       }
-      if (typeof liff.requestFriendship === "function") {
+      if (liff.isInClient() && typeof liff.requestFriendship === "function") {
         try {
-          await liff.requestFriendship();
+          await withLiffTimeout(liff.requestFriendship(), "LINE friendship request");
         } catch {
           // some clients/contexts disallow this; continue and rely on getFriendship check below.
         }
       }
-      const friendship = await liff.getFriendship();
+      const friendship = await withLiffTimeout(liff.getFriendship(), "LINE friendship check");
       if (!friendship?.friendFlag) {
         setLineLinkStatus("error");
         setLineLinkMessage(

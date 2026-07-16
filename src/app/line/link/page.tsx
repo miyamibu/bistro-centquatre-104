@@ -17,6 +17,27 @@ interface LinkResult {
   immediateReminderSent?: boolean;
 }
 
+const LIFF_OPERATION_TIMEOUT_MS = 10_000;
+
+function withLiffTimeout<T>(promise: Promise<T>, operation: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error(`${operation} timed out`));
+    }, LIFF_OPERATION_TIMEOUT_MS);
+
+    promise.then(
+      (value) => {
+        clearTimeout(timeoutId);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      }
+    );
+  });
+}
+
 export default function LineLinkPage() {
   const [step, setStep] = useState<Step>("init");
   const isSubmitting = step === "submitting";
@@ -66,9 +87,12 @@ export default function LineLinkPage() {
   }, []); // initLiff is intentionally called only once on mount
 
   async function initLiff(liffId: string) {
-    const liffModule = await import("@line/liff");
+    const liffModule = await withLiffTimeout(
+      import("@line/liff"),
+      "LIFF SDK loading"
+    );
     const liff = liffModule.default;
-    await liff.init({ liffId });
+    await withLiffTimeout(liff.init({ liffId }), "LIFF initialization");
 
     if (!liff.isLoggedIn()) {
       setStep("liff_login");
@@ -76,15 +100,20 @@ export default function LineLinkPage() {
       return;
     }
 
-    if (typeof liff.requestFriendship === "function") {
+    // requestFriendship is a LIFF-browser feature. In Safari or another
+    // external browser it can leave the page waiting on a subwindow forever.
+    if (liff.isInClient() && typeof liff.requestFriendship === "function") {
       try {
-        await liff.requestFriendship();
+        await withLiffTimeout(liff.requestFriendship(), "LINE friendship request");
       } catch {
         // context may not support this — continue
       }
     }
 
-    const friendship = await liff.getFriendship();
+    const friendship = await withLiffTimeout(
+      liff.getFriendship(),
+      "LINE friendship check"
+    );
     if (!friendship?.friendFlag) {
       setErrorMsg(
         "LINE公式アカウントの友だち追加が必要です。QRコードから友だち追加後に再度お試しください。"
