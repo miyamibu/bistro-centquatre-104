@@ -162,17 +162,21 @@ create table if not exists public.api_idempotency (
 create table if not exists public.order_notification_outbox (
   id uuid primary key default gen_random_uuid(),
   order_id uuid not null references public.orders(id) on delete cascade,
-  type text not null check (type in ('ORDER_CONFIRMATION')),
-  status text not null default 'PENDING' check (status in ('PENDING', 'PROCESSING', 'SENT', 'FAILED')),
-  idempotency_key text not null,
-  payload jsonb not null default '{}'::jsonb,
+  notification_type text not null check (notification_type in ('ORDER_CONFIRMATION')),
+  status text not null default 'PENDING' check (status in ('PENDING', 'PROCESSING', 'SENT', 'DEAD_LETTER')),
   attempts integer not null default 0,
-  last_attempt_at timestamptz,
+  max_attempts integer not null default 5,
+  claimed_at timestamptz,
+  locked_until timestamptz,
+  next_attempt_at timestamptz,
   sent_at timestamptz,
-  error_code text,
+  provider_message_id text,
+  last_error text,
+  request_id text not null,
+  idempotency_key text not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (type, order_id, idempotency_key)
+  unique (order_id, notification_type, idempotency_key)
 );
 
 create table if not exists public.bank_account_history (
@@ -935,29 +939,30 @@ begin
 
   insert into public.order_notification_outbox (
     order_id,
-    type,
+    notification_type,
     status,
+    next_attempt_at,
+    request_id,
     idempotency_key,
-    payload
+    max_attempts
   ) values (
     v_updated.id,
     'ORDER_CONFIRMATION',
     'PENDING',
+    now(),
+    p_request_id,
     p_idempotency_key,
-    jsonb_build_object(
-      'orderVersion', v_updated.version,
-      'paymentMethod', v_updated.payment_method,
-      'paymentReferenceIssued', v_payment_reference is not null
-    )
+    5
   )
-  on conflict (type, order_id, idempotency_key) do update
+  on conflict (order_id, notification_type, idempotency_key) do update
   set
-    payload = excluded.payload,
     status = case
       when public.order_notification_outbox.status = 'SENT' then public.order_notification_outbox.status
       else 'PENDING'
     end,
-    error_code = null
+    next_attempt_at = now(),
+    request_id = excluded.request_id,
+    last_error = null
   returning id
   into v_outbox_id;
 

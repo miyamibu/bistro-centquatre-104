@@ -20,15 +20,7 @@ async function execute(request: NextRequest) {
 
   try {
     const summary = await processOrderNotificationOutbox({ requestId });
-    if ("error" in summary) {
-      return apiError(500, {
-        ...summary,
-        error: "Outbox lookup failed",
-        code: "CRON_ORDER_NOTIFICATION_OUTBOX_LOOKUP_FAILED",
-        requestId,
-      });
-    }
-    if (summary.failed > 0) {
+    if (summary.failed > 0 || summary.deadLetter > 0) {
       return apiError(500, {
         ...summary,
         error: "Cron partially failed",

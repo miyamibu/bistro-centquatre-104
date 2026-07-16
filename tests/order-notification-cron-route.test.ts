@@ -23,6 +23,7 @@ describe("process order notification cron route", () => {
       scanned: 0,
       sent: 0,
       failed: 0,
+      deadLetter: 0,
       skipped: 0,
     });
   });
@@ -75,6 +76,7 @@ describe("process order notification cron route", () => {
       scanned: 2,
       sent: 1,
       failed: 1,
+      deadLetter: 0,
       skipped: 0,
     });
     const { GET } = await import("@/app/api/crons/process-order-notifications/route");
@@ -92,13 +94,9 @@ describe("process order notification cron route", () => {
   });
 
   it("returns a retryable failure when outbox lookup fails", async () => {
-    processOrderNotificationOutboxMock.mockResolvedValue({
-      scanned: 0,
-      sent: 0,
-      failed: 0,
-      skipped: 0,
-      error: "LOOKUP_FAILED",
-    });
+    processOrderNotificationOutboxMock.mockRejectedValueOnce(
+      new Error("ORDER_NOTIFICATION_OUTBOX_SELECT_FAILED")
+    );
     const { GET } = await import("@/app/api/crons/process-order-notifications/route");
     const response = await GET(
       new NextRequest("http://localhost:3000/api/crons/process-order-notifications", {
@@ -108,8 +106,8 @@ describe("process order notification cron route", () => {
 
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toMatchObject({
-      code: "CRON_ORDER_NOTIFICATION_OUTBOX_LOOKUP_FAILED",
-      error: "Outbox lookup failed",
+      code: "CRON_ORDER_NOTIFICATION_OUTBOX_FAILED",
+      error: "Cron execution failed",
     });
   });
 });

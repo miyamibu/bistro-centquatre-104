@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const sendOrderConfirmationEmailMock = vi.hoisted(() => vi.fn());
 const fromMock = vi.hoisted(() => vi.fn());
@@ -50,8 +50,9 @@ function query(result: unknown) {
   return chain;
 }
 
-afterEach(() => {
-  vi.clearAllMocks();
+beforeEach(() => {
+  fromMock.mockReset();
+  sendOrderConfirmationEmailMock.mockReset();
 });
 
 describe("processOrderConfirmationOutboxForOrder", () => {
@@ -69,16 +70,21 @@ describe("processOrderConfirmationOutboxForOrder", () => {
 
     expect(result).toMatchObject({ processed: false, sent: false, reason: "NO_PENDING_OUTBOX" });
     expect(pendingQuery.or).toHaveBeenCalledWith(
-      expect.stringContaining("and(status.eq.PROCESSING,last_attempt_at.lt.")
-    );
-    expect(pendingQuery.or).toHaveBeenCalledWith(
-      expect.stringContaining("error_code.is.null")
+      expect.stringContaining("next_attempt_at.is.null,next_attempt_at.lte.")
     );
   });
 
   it("marks a claimed outbox row FAILED when order email delivery throws", async () => {
     const pendingQuery = query({
-      data: [{ id: "outbox-1", order_id: "order-1", attempts: 0 }],
+      data: [
+        {
+          id: "outbox-1",
+          order_id: "order-1",
+          notification_type: "ORDER_CONFIRMATION",
+          attempts: 0,
+          max_attempts: 5,
+        },
+      ],
       error: null,
     });
     const claimQuery = query({ data: [{ id: "outbox-1" }], error: null });
@@ -120,17 +126,28 @@ describe("processOrderConfirmationOutboxForOrder", () => {
     expect(result).toMatchObject({
       processed: true,
       sent: false,
-      reason: "ORDER_CONFIRMATION_EMAIL_THROWN",
+      reason: "ORDER_NOTIFICATION_FAILED",
     });
     expect(markFailedQuery.update).toHaveBeenCalledWith({
-      status: "FAILED",
-      error_code: "ORDER_CONFIRMATION_EMAIL_THROWN",
+      status: "PENDING",
+      attempts: 1,
+      next_attempt_at: expect.any(String),
+      locked_until: null,
+      last_error: "provider unavailable",
     });
   });
 
   it("does not leave a delivered email in retryable PROCESSING state when mark SENT fails", async () => {
     const pendingQuery = query({
-      data: [{ id: "outbox-1", order_id: "order-1", attempts: 0 }],
+      data: [
+        {
+          id: "outbox-1",
+          order_id: "order-1",
+          notification_type: "ORDER_CONFIRMATION",
+          attempts: 0,
+          max_attempts: 5,
+        },
+      ],
       error: null,
     });
     const claimQuery = query({ data: [{ id: "outbox-1" }], error: null });
@@ -177,20 +194,30 @@ describe("processOrderConfirmationOutboxForOrder", () => {
 
     expect(result).toMatchObject({
       processed: true,
-      sent: true,
-      reason: "MARK_SENT_FAILED",
+      sent: false,
+      reason: "ORDER_NOTIFICATION_FAILED",
       durableState: true,
     });
     expect(reconcileQuery.update).toHaveBeenCalledWith({
-      status: "SENT",
-      sent_at: expect.any(String),
-      error_code: "ORDER_NOTIFICATION_OUTBOX_MARK_SENT_FAILED",
+      status: "PENDING",
+      attempts: 1,
+      next_attempt_at: expect.any(String),
+      locked_until: null,
+      last_error: expect.stringContaining("ORDER_NOTIFICATION_OUTBOX_MARK_SENT_FAILED"),
     });
   });
 
   it("reports non-durable delivery and excludes it from normal stale retry when reconciliation fails", async () => {
     const pendingQuery = query({
-      data: [{ id: "outbox-1", order_id: "order-1", attempts: 0, error_code: null }],
+      data: [
+        {
+          id: "outbox-1",
+          order_id: "order-1",
+          notification_type: "ORDER_CONFIRMATION",
+          attempts: 0,
+          max_attempts: 5,
+        },
+      ],
       error: null,
     });
     const claimQuery = query({ data: [{ id: "outbox-1" }], error: null });
@@ -237,11 +264,12 @@ describe("processOrderConfirmationOutboxForOrder", () => {
 
     expect(result).toMatchObject({
       processed: true,
-      sent: true,
-      reason: "MARK_SENT_FAILED",
+      sent: false,
+      reason: "MARK_FAILED_FAILED",
       durableState: false,
     });
-    expect(pendingQuery.or).toHaveBeenCalledWith(expect.stringContaining("error_code.is.null"));
-    expect(claimQuery.or).toHaveBeenCalledWith(expect.stringContaining("error_code.is.null"));
+    expect(pendingQuery.or).toHaveBeenCalledWith(
+      expect.stringContaining("next_attempt_at.is.null,next_attempt_at.lte.")
+    );
   });
 });

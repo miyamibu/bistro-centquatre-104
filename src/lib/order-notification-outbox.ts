@@ -2,19 +2,18 @@ import { sendOrderConfirmationEmail } from "@/lib/email";
 import { logError, logInfo, logWarn } from "@/lib/logger";
 import { supabaseServer } from "@/lib/supabase-server";
 
-type OrderNotificationOutboxRow = {
+const MAX_ATTEMPTS = 5;
+const LOCK_MINUTES = 5;
+
+type OutboxStatus = "PENDING" | "PROCESSING" | "SENT" | "DEAD_LETTER";
+
+type OutboxRow = {
   id: string;
   order_id: string;
+  notification_type: string;
   attempts: number | null;
-  error_code: string | null;
+  max_attempts: number | null;
 };
-
-const PROCESSING_STALE_AFTER_MS = 10 * 60 * 1000;
-const MARK_SENT_FAILED_ERROR_CODE = "ORDER_NOTIFICATION_OUTBOX_MARK_SENT_FAILED";
-
-function eligibleOutboxFilter(staleBefore: string) {
-  return `status.in.(PENDING,FAILED),and(status.eq.PROCESSING,last_attempt_at.lt.${staleBefore},error_code.is.null)`;
-}
 
 type OrderEmailItem = {
   id: string;
@@ -35,7 +34,7 @@ type OrderEmailRow = {
   building: string | null;
   items: unknown;
   total: number | null;
-  payment_method: string | null;
+  payment_method: "BANK_TRANSFER" | "PAY_IN_STORE";
   store_visit_date: string | null;
 };
 
@@ -67,79 +66,104 @@ function normalizeEmailItems(items: unknown): OrderEmailItem[] {
     }));
 }
 
-async function markOutboxFailed(input: {
-  outboxId: string;
+export async function enqueueOrderNotification(input: {
+  orderId: string;
+  notificationType: "ORDER_CONFIRMATION";
   requestId: string;
-  errorCode: string;
+  idempotencyKey: string;
 }) {
+  const { data, error } = await supabaseServer
+    .from("order_notification_outbox")
+    .upsert(
+      [
+        {
+          order_id: input.orderId,
+          notification_type: input.notificationType,
+          status: "PENDING" satisfies OutboxStatus,
+          next_attempt_at: new Date().toISOString(),
+          request_id: input.requestId,
+          idempotency_key: input.idempotencyKey,
+          max_attempts: MAX_ATTEMPTS,
+        },
+      ],
+      { onConflict: "order_id,notification_type,idempotency_key" }
+    )
+    .select("id")
+    .single();
+
+  if (error || !data) {
+    throw new Error(
+      "ORDER_NOTIFICATION_OUTBOX_ENQUEUE_FAILED:" + (error?.message ?? "missing row")
+    );
+  }
+
+  return String(data.id);
+}
+
+async function claimOutboxRow(id: string, requestId: string) {
+  const now = new Date();
+  const lockedUntil = new Date(now.getTime() + LOCK_MINUTES * 60 * 1000).toISOString();
+  const { data, error } = await supabaseServer
+    .from("order_notification_outbox")
+    .update({
+      status: "PROCESSING" satisfies OutboxStatus,
+      claimed_at: now.toISOString(),
+      locked_until: lockedUntil,
+      last_error: null,
+      request_id: requestId,
+    })
+    .eq("id", id)
+    .in("status", ["PENDING", "PROCESSING"])
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error("ORDER_NOTIFICATION_OUTBOX_CLAIM_FAILED:" + error.message);
+  }
+  return !!data;
+}
+
+async function markOutboxSent(id: string) {
   const { error } = await supabaseServer
     .from("order_notification_outbox")
     .update({
-      status: "FAILED",
-      error_code: input.errorCode,
+      status: "SENT" satisfies OutboxStatus,
+      sent_at: new Date().toISOString(),
+      locked_until: null,
+      last_error: null,
     })
-    .eq("id", input.outboxId);
-
+    .eq("id", id);
   if (error) {
-    logError("orders.notification_outbox.mark_failed_failed", {
-      requestId: input.requestId,
-      route: "/api/orders/[id]/actions",
-      errorCode: "ORDER_NOTIFICATION_OUTBOX_MARK_FAILED_FAILED",
-      context: { outboxId: input.outboxId, message: error.message },
-    });
+    throw new Error("ORDER_NOTIFICATION_OUTBOX_MARK_SENT_FAILED:" + error.message);
   }
 }
 
-export async function processOrderConfirmationOutboxForOrder(input: {
-  orderId: string;
-  requestId: string;
-}) {
-  const staleBefore = new Date(Date.now() - PROCESSING_STALE_AFTER_MS).toISOString();
-  const { data: pendingRows, error: pendingError } = await supabaseServer
-    .from("order_notification_outbox")
-    .select("id, order_id, attempts, error_code")
-    .eq("order_id", input.orderId)
-    .eq("type", "ORDER_CONFIRMATION")
-    .or(eligibleOutboxFilter(staleBefore))
-    .order("created_at", { ascending: true })
-    .limit(1);
-
-  if (pendingError) {
-    logError("orders.notification_outbox.lookup_failed", {
-      requestId: input.requestId,
-      route: "/api/orders/[id]/actions",
-      errorCode: "ORDER_NOTIFICATION_OUTBOX_LOOKUP_FAILED",
-      context: { orderId: input.orderId, message: pendingError.message },
-    });
-    return { processed: false, sent: false, reason: "LOOKUP_FAILED" as const };
-  }
-
-  const row = (pendingRows?.[0] ?? null) as OrderNotificationOutboxRow | null;
-  if (!row) {
-    return { processed: false, sent: false, reason: "NO_PENDING_OUTBOX" as const };
-  }
-
-  const attempts = Number(row.attempts ?? 0) + 1;
-  const { data: claimedRows, error: claimError } = await supabaseServer
+async function markOutboxFailed(
+  id: string,
+  status: Extract<OutboxStatus, "PENDING" | "DEAD_LETTER">,
+  attempts: number,
+  error: unknown
+) {
+  const nextAttemptAt = new Date(Date.now() + Math.min(60, 2 ** attempts) * 60 * 1000);
+  const message = error instanceof Error ? error.message : String(error);
+  const { error: updateError } = await supabaseServer
     .from("order_notification_outbox")
     .update({
-      status: "PROCESSING",
+      status,
       attempts,
-      last_attempt_at: new Date().toISOString(),
-      error_code: null,
+      next_attempt_at: status === "DEAD_LETTER" ? null : nextAttemptAt.toISOString(),
+      locked_until: null,
+      last_error: message.slice(0, 1000),
     })
-    .eq("id", row.id)
-    .or(eligibleOutboxFilter(staleBefore))
-    .select("id");
+    .eq("id", id);
+  if (updateError) {
+    throw new Error("ORDER_NOTIFICATION_OUTBOX_MARK_FAILED_FAILED:" + updateError.message);
+  }
+}
 
-  if (claimError || !claimedRows?.length) {
-    logWarn("orders.notification_outbox.claim_skipped", {
-      requestId: input.requestId,
-      route: "/api/orders/[id]/actions",
-      errorCode: "ORDER_NOTIFICATION_OUTBOX_CLAIM_SKIPPED",
-      context: { outboxId: row.id, message: claimError?.message ?? "Already claimed" },
-    });
-    return { processed: false, sent: false, reason: "CLAIM_SKIPPED" as const };
+async function sendOutboxRow(row: OutboxRow, requestId: string) {
+  if (row.notification_type !== "ORDER_CONFIRMATION") {
+    throw new Error("Unsupported notification type: " + row.notification_type);
   }
 
   const { data: orderRow, error: orderError } = await supabaseServer
@@ -147,36 +171,23 @@ export async function processOrderConfirmationOutboxForOrder(input: {
     .select(
       "id, customer_name, email, phone, zip_code, prefecture, city, address, building, items, total, payment_method, store_visit_date"
     )
-    .eq("id", input.orderId)
+    .eq("id", row.order_id)
     .maybeSingle();
 
   if (orderError || !orderRow) {
-    await markOutboxFailed({
-      outboxId: row.id,
-      requestId: input.requestId,
-      errorCode: "ORDER_EMAIL_CONTEXT_FETCH_FAILED",
-    });
-    return { processed: true, sent: false, reason: "ORDER_EMAIL_CONTEXT_FETCH_FAILED" as const };
+    throw new Error(
+      "ORDER_EMAIL_CONTEXT_FETCH_FAILED:" + (orderError?.message ?? "missing order")
+    );
   }
 
   const order = orderRow as OrderEmailRow;
   let bankAccount: BankAccountRow | undefined;
   if (order.payment_method === "BANK_TRANSFER") {
-    const { data: bankRows, error: bankError } = await supabaseServer
-      .from("bank_account")
-      .select("*")
-      .limit(1);
-
-    if (bankError) {
-      await markOutboxFailed({
-        outboxId: row.id,
-        requestId: input.requestId,
-        errorCode: "BANK_ACCOUNT_FETCH_FAILED",
-      });
-      return { processed: true, sent: false, reason: "BANK_ACCOUNT_FETCH_FAILED" as const };
+    const { data, error } = await supabaseServer.from("bank_account").select("*").limit(1);
+    if (error) {
+      throw new Error("BANK_ACCOUNT_FETCH_FAILED:" + error.message);
     }
-
-    bankAccount = (bankRows?.[0] as BankAccountRow | undefined) ?? undefined;
+    bankAccount = (data?.[0] as BankAccountRow | undefined) ?? undefined;
   }
 
   const emailResult = await sendOrderConfirmationEmail(
@@ -192,130 +203,161 @@ export async function processOrderConfirmationOutboxForOrder(input: {
     },
     normalizeEmailItems(order.items),
     Number(order.total ?? 0),
-    order.payment_method === "PAY_IN_STORE" ? "PAY_IN_STORE" : "BANK_TRANSFER",
+    order.payment_method,
     typeof order.store_visit_date === "string" ? order.store_visit_date : undefined,
     bankAccount
-  ).catch(async (error: unknown) => {
-    logError("orders.notification_outbox.email_thrown", {
-      requestId: input.requestId,
-      route: "/api/orders/[id]/actions",
-      errorCode: "ORDER_CONFIRMATION_EMAIL_THROWN",
-      context: {
-        outboxId: row.id,
-        orderId: input.orderId,
-        message: error instanceof Error ? error.message : String(error),
-      },
-    });
-    return {
-      sent: false as const,
-      reason: "ORDER_CONFIRMATION_EMAIL_THROWN" as const,
-      target: "customer" as const,
-    };
-  });
+  );
 
   if (!emailResult.sent) {
-    await markOutboxFailed({
-      outboxId: row.id,
-      requestId: input.requestId,
+    logError("order_notification_outbox.email_failed", {
+      requestId,
+      route: "/api/crons/process-order-notifications",
       errorCode: emailResult.reason,
+      context: { orderId: order.id, target: emailResult.target },
     });
+    throw new Error("ORDER_NOTIFICATION_FAILED:" + emailResult.reason);
+  }
+}
+
+export async function processOrderConfirmationOutboxForOrder(input: {
+  orderId: string;
+  requestId: string;
+  outboxId?: string;
+}) {
+  const now = new Date().toISOString();
+  let pendingQuery = supabaseServer
+    .from("order_notification_outbox")
+    .select("id, order_id, notification_type, attempts, max_attempts")
+    .eq("order_id", input.orderId)
+    .eq("notification_type", "ORDER_CONFIRMATION")
+    .in("status", ["PENDING", "PROCESSING"])
+    .or("next_attempt_at.is.null,next_attempt_at.lte." + now + ",locked_until.lte." + now)
+    .order("next_attempt_at", { ascending: true, nullsFirst: true })
+    .limit(1);
+
+  if (input.outboxId) {
+    pendingQuery = pendingQuery.eq("id", input.outboxId);
+  }
+
+  const { data, error } = await pendingQuery;
+  if (error) {
+    logError("orders.notification_outbox.lookup_failed", {
+      requestId: input.requestId,
+      route: "/api/orders/[id]/actions",
+      errorCode: "ORDER_NOTIFICATION_OUTBOX_LOOKUP_FAILED",
+      context: { orderId: input.orderId, message: error.message },
+    });
+    return { processed: false, sent: false, reason: "LOOKUP_FAILED" as const, durableState: false };
+  }
+
+  const row = (data?.[0] ?? null) as OutboxRow | null;
+  if (!row) {
+    return { processed: false, sent: false, reason: "NO_PENDING_OUTBOX" as const };
+  }
+
+  let claimed = false;
+  try {
+    claimed = await claimOutboxRow(row.id, input.requestId);
+  } catch (error) {
+    logError("orders.notification_outbox.claim_failed", {
+      requestId: input.requestId,
+      route: "/api/orders/[id]/actions",
+      errorCode: "ORDER_NOTIFICATION_OUTBOX_CLAIM_FAILED",
+      context: { outboxId: row.id, message: error instanceof Error ? error.message : String(error) },
+    });
+    return {
+      processed: false,
+      sent: false,
+      reason: "CLAIM_FAILED" as const,
+      durableState: false,
+    };
+  }
+
+  if (!claimed) {
+    logWarn("orders.notification_outbox.claim_skipped", {
+      requestId: input.requestId,
+      route: "/api/orders/[id]/actions",
+      errorCode: "ORDER_NOTIFICATION_OUTBOX_CLAIM_SKIPPED",
+      context: { outboxId: row.id },
+    });
+    return { processed: false, sent: false, reason: "CLAIM_SKIPPED" as const };
+  }
+
+  try {
+    await sendOutboxRow(row, input.requestId);
+    await markOutboxSent(row.id);
+    return { processed: true, sent: true, reason: "SENT" as const, durableState: true };
+  } catch (error) {
+    const attempts = Number(row.attempts ?? 0) + 1;
+    const maxAttempts = Number(row.max_attempts ?? MAX_ATTEMPTS) || MAX_ATTEMPTS;
+    const status = attempts >= maxAttempts ? "DEAD_LETTER" : "PENDING";
+
+    try {
+      await markOutboxFailed(row.id, status, attempts, error);
+    } catch (markError) {
+      logError("orders.notification_outbox.mark_failed_failed", {
+        requestId: input.requestId,
+        route: "/api/orders/[id]/actions",
+        errorCode: "ORDER_NOTIFICATION_OUTBOX_MARK_FAILED_FAILED",
+        context: {
+          outboxId: row.id,
+          message: markError instanceof Error ? markError.message : String(markError),
+        },
+      });
+      return {
+        processed: true,
+        sent: false,
+        reason: "MARK_FAILED_FAILED" as const,
+        durableState: false,
+      };
+    }
+
+    const reason = status === "DEAD_LETTER" ? ("DEAD_LETTER" as const) : ("ORDER_NOTIFICATION_FAILED" as const);
     logWarn("orders.notification_outbox.email_failed", {
       requestId: input.requestId,
       route: "/api/orders/[id]/actions",
-      errorCode: emailResult.reason,
-      context: { outboxId: row.id, orderId: input.orderId, target: emailResult.target },
+      errorCode: reason,
+      context: { outboxId: row.id, attempts, status },
     });
-    return { processed: true, sent: false, reason: emailResult.reason };
+    return { processed: true, sent: false, reason, durableState: true };
   }
-
-  const { error: sentError } = await supabaseServer
-    .from("order_notification_outbox")
-    .update({
-      status: "SENT",
-      sent_at: new Date().toISOString(),
-      error_code: null,
-    })
-    .eq("id", row.id);
-
-  if (sentError) {
-    const { error: reconcileError } = await supabaseServer
-      .from("order_notification_outbox")
-      .update({
-        status: "SENT",
-        sent_at: new Date().toISOString(),
-        error_code: MARK_SENT_FAILED_ERROR_CODE,
-      })
-      .eq("id", row.id);
-
-    logError("orders.notification_outbox.mark_sent_failed", {
-      requestId: input.requestId,
-      route: "/api/orders/[id]/actions",
-      errorCode: MARK_SENT_FAILED_ERROR_CODE,
-      context: {
-        outboxId: row.id,
-        message: sentError.message,
-        reconciled: !reconcileError,
-        reconcileMessage: reconcileError?.message,
-      },
-    });
-    return {
-      processed: true,
-      sent: true,
-      reason: "MARK_SENT_FAILED" as const,
-      durableState: !reconcileError,
-    };
-  }
-
-  logInfo("orders.notification_outbox.email_sent", {
-    requestId: input.requestId,
-    route: "/api/orders/[id]/actions",
-    context: {
-      outboxId: row.id,
-      orderId: input.orderId,
-      provider: emailResult.provider,
-      adminSent: emailResult.adminSent,
-    },
-  });
-
-  return { processed: true, sent: true, reason: "SENT" as const, durableState: true };
 }
 
 export async function processOrderNotificationOutbox(input: {
   requestId: string;
   limit?: number;
 }) {
-  const staleBefore = new Date(Date.now() - PROCESSING_STALE_AFTER_MS).toISOString();
-  const limit = Math.max(1, Math.min(input.limit ?? 20, 100));
+  const now = new Date().toISOString();
+  const limit = Math.max(1, Math.min(input.limit ?? 10, 50));
   const { data, error } = await supabaseServer
     .from("order_notification_outbox")
-    .select("id, order_id, attempts, error_code")
-    .eq("type", "ORDER_CONFIRMATION")
-    .or(eligibleOutboxFilter(staleBefore))
-    .order("created_at", { ascending: true })
+    .select("id, order_id, notification_type, attempts, max_attempts")
+    .in("status", ["PENDING", "PROCESSING"])
+    .or("next_attempt_at.is.null,next_attempt_at.lte." + now + ",locked_until.lte." + now)
+    .order("next_attempt_at", { ascending: true, nullsFirst: true })
     .limit(limit);
 
   if (error) {
-    logError("crons.order_notification_outbox.lookup_failed", {
-      requestId: input.requestId,
-      route: "/api/crons/process-order-notifications",
-      errorCode: "CRON_ORDER_NOTIFICATION_OUTBOX_LOOKUP_FAILED",
-      context: { message: error.message, limit },
-    });
-    return { scanned: 0, sent: 0, failed: 0, skipped: 0, error: "LOOKUP_FAILED" as const };
+    throw new Error("ORDER_NOTIFICATION_OUTBOX_SELECT_FAILED:" + error.message);
   }
 
+  const rows = (data ?? []) as OutboxRow[];
   let sent = 0;
   let failed = 0;
+  let deadLetter = 0;
   let skipped = 0;
 
-  for (const row of (data ?? []) as OrderNotificationOutboxRow[]) {
+  for (const row of rows) {
     const result = await processOrderConfirmationOutboxForOrder({
       orderId: row.order_id,
+      outboxId: row.id,
       requestId: input.requestId,
     });
 
-    if (result.sent && result.durableState !== false) {
+    if (result.sent) {
       sent += 1;
+    } else if (result.reason === "DEAD_LETTER") {
+      deadLetter += 1;
     } else if (result.processed) {
       failed += 1;
     } else {
@@ -323,11 +365,11 @@ export async function processOrderNotificationOutbox(input: {
     }
   }
 
-  logInfo("crons.order_notification_outbox.completed", {
+  logInfo("order_notification_outbox.processed", {
     requestId: input.requestId,
     route: "/api/crons/process-order-notifications",
-    context: { scanned: data?.length ?? 0, sent, failed, skipped, limit },
+    context: { scanned: rows.length, sent, failed, deadLetter, skipped },
   });
 
-  return { scanned: data?.length ?? 0, sent, failed, skipped };
+  return { scanned: rows.length, sent, failed, deadLetter, skipped };
 }
