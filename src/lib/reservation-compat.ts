@@ -88,6 +88,7 @@ async function runReservationSchemaReadyCheck(client: ReservationClient) {
         notificationEventReady: boolean;
         lineFriendReady: boolean;
         lineCustomerLinkReady: boolean;
+        reservationStatusAuditLogReady: boolean;
       }>>(
       Prisma.sql`
       SELECT
@@ -108,7 +109,8 @@ async function runReservationSchemaReadyCheck(client: ReservationClient) {
         to_regclass('"ReservationLineLinkToken"') IS NOT NULL AS "reservationLineLinkTokenReady",
         to_regclass('"NotificationEvent"') IS NOT NULL AS "notificationEventReady",
         to_regclass('"LineFriend"') IS NOT NULL AS "lineFriendReady",
-        to_regclass('"LineCustomerLink"') IS NOT NULL AS "lineCustomerLinkReady"
+        to_regclass('"LineCustomerLink"') IS NOT NULL AS "lineCustomerLinkReady",
+        to_regclass('"ReservationStatusAuditLog"') IS NOT NULL AS "reservationStatusAuditLogReady"
       `
     );
     const schema = schemaRows[0];

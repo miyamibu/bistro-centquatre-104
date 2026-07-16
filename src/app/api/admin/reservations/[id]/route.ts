@@ -121,6 +121,19 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         return null;
       }
 
+      await tx.reservationStatusAuditLog.create({
+        data: {
+          reservationId: next.id,
+          actorName: operatorName,
+          requestId,
+          ipAddress,
+          userAgent,
+          previousStatus: current.status,
+          nextStatus: next.status,
+          reason: privateBlockReleaseRequested ? "PRIVATE_BLOCK_RELEASE" : null,
+        },
+      });
+
       if (privateBlockReleaseRequested) {
         await createPrivateBlockAuditLog(tx, {
           reservationId: next.id,

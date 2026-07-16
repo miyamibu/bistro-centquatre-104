@@ -22,6 +22,10 @@
       "schedule": "0 1 * * *"
     },
     {
+      "path": "/api/crons/process-order-notifications",
+      "schedule": "0 2 * * *"
+    },
+    {
       "path": "/api/crons/remind",
       "schedule": "0 3 * * *"
     }

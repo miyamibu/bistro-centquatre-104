@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReservationStatus, ReservationType } from "@prisma/client";
 
 const transactionMock = vi.hoisted(() => vi.fn());
+const auditLogCreateMock = vi.hoisted(() => vi.fn());
 const ensureReservationSchemaReadyMock = vi.hoisted(() => vi.fn());
 const findReservationByIdCompatMock = vi.hoisted(() => vi.fn());
 const updateReservationStatusCompatMock = vi.hoisted(() => vi.fn());
@@ -34,9 +35,16 @@ beforeEach(() => {
     RATE_LIMIT_HASH_SECRET: "test-rate-limit-hash-secret-32chars",
   };
   ensureReservationSchemaReadyMock.mockResolvedValue(undefined);
-  transactionMock.mockImplementation(async (callback: (tx: unknown) => unknown) => callback({}));
+  transactionMock.mockImplementation(async (callback: (tx: unknown) => unknown) =>
+    callback({
+      reservationStatusAuditLog: {
+        create: auditLogCreateMock,
+      },
+    })
+  );
   findReservationByIdCompatMock.mockReset();
   updateReservationStatusCompatMock.mockReset();
+  auditLogCreateMock.mockReset();
 });
 
 afterEach(() => {
@@ -111,5 +119,13 @@ describe("admin reservation status transitions", () => {
       "res-1",
       ReservationStatus.DONE
     );
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        reservationId: "res-1",
+        previousStatus: ReservationStatus.CONFIRMED,
+        nextStatus: ReservationStatus.DONE,
+        reason: null,
+      }),
+    });
   });
 });

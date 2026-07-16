@@ -6,5 +6,8 @@ deliverables/
 .codex-audit/
 .codex-audit-review/
 .agents/
+.playwright-cli/
+AGENTS.md
+CODEX_INSTRUCTIONS.md
 *.log
 *.tsbuildinfo

@@ -94,7 +94,10 @@ beforeEach(async () => {
   vi.resetAllMocks();
 
   const { prisma } = await import("@/lib/prisma");
-  const p = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
+  type TestMock = ReturnType<typeof vi.fn<(...args: unknown[]) => unknown>>;
+  const p = prisma as unknown as {
+    $queryRaw: TestMock;
+  } & Record<string, Record<string, TestMock>>;
 
   // Prisma defaults
   p.$queryRaw.mockResolvedValue([]);

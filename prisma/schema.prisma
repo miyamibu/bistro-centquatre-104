@@ -49,34 +49,55 @@ enum DailyJournalStatus {
 }
 
 model Reservation {
-  id                    String                       @id @default(cuid())
-  date                  String
-  servicePeriod         ServicePeriod
-  reservationType       ReservationType              @default(NORMAL)
-  seatType              SeatType
-  partySize             Int
-  arrivalTime           String?
-  name                  String
-  phone                 String
-  note                  String?
-  status                ReservationStatus            @default(CONFIRMED)
-  lineUserId            String?
-  lineReminderSentAt    DateTime?
-  lineReminderStatus    String?
-  lineReminderError     String?
-  lineLinkedAt          DateTime?
-  lineLinkSource        String?
-  linePushStatus        String?
-  linePushCheckedAt     DateTime?
-  createdAt             DateTime                     @default(now())
-  updatedAt             DateTime                     @updatedAt
-  privateBlockAuditLogs PrivateBlockAuditLog[]
-  lineLinkTokens        ReservationLineLinkToken[]
-  notificationEvents    NotificationEvent[]
+  id                     String                      @id @default(cuid())
+  date                   String
+  servicePeriod          ServicePeriod
+  reservationType        ReservationType             @default(NORMAL)
+  seatType               SeatType
+  partySize              Int
+  arrivalTime            String?
+  name                   String
+  phone                  String
+  note                   String?
+  status                 ReservationStatus           @default(CONFIRMED)
+  lineUserId             String?
+  lineReminderSentAt     DateTime?
+  lineReminderStatus     String?
+  lineReminderError      String?
+  lineClaimTokenHash     String?
+  lineClaimExpiresAt     DateTime?
+  lineConfirmationSentAt DateTime?
+  lineLinkedAt           DateTime?
+  lineLinkSource         String?
+  linePushStatus         String?
+  linePushCheckedAt      DateTime?
+  createdAt              DateTime                    @default(now())
+  updatedAt              DateTime                    @updatedAt
+  privateBlockAuditLogs  PrivateBlockAuditLog[]
+  statusAuditLogs        ReservationStatusAuditLog[]
+  lineLinkTokens         ReservationLineLinkToken[]
+  notificationEvents     NotificationEvent[]
 
   @@index([date, servicePeriod])
   @@index([date, servicePeriod, reservationType])
   @@index([lineReminderSentAt])
+}
+
+model ReservationStatusAuditLog {
+  id             String            @id @default(cuid())
+  reservationId  String
+  reservation    Reservation       @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  actorName      String?
+  requestId      String
+  ipAddress      String?
+  userAgent      String?
+  previousStatus ReservationStatus
+  nextStatus     ReservationStatus
+  reason         String?
+  createdAt      DateTime          @default(now())
+
+  @@index([reservationId, createdAt])
+  @@index([createdAt])
 }
 
 model ReservationLineLinkToken {

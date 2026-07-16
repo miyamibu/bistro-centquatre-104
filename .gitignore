@@ -39,6 +39,8 @@ tmp-*.png
 /.oracle/
 /.codex/
 /.codex-audit*/
+/.agents/
+/.playwright-cli/
 /output/
 /artifacts/
 /deliverables/

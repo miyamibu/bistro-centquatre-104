@@ -279,3 +279,55 @@ export async function processOrderConfirmationOutboxForOrder(input: {
 
   return { processed: true, sent: true, reason: "SENT" as const, durableState: true };
 }
+
+export async function processOrderNotificationOutbox(input: {
+  requestId: string;
+  limit?: number;
+}) {
+  const staleBefore = new Date(Date.now() - PROCESSING_STALE_AFTER_MS).toISOString();
+  const limit = Math.max(1, Math.min(input.limit ?? 20, 100));
+  const { data, error } = await supabaseServer
+    .from("order_notification_outbox")
+    .select("id, order_id, attempts, error_code")
+    .eq("type", "ORDER_CONFIRMATION")
+    .or(eligibleOutboxFilter(staleBefore))
+    .order("created_at", { ascending: true })
+    .limit(limit);
+
+  if (error) {
+    logError("crons.order_notification_outbox.lookup_failed", {
+      requestId: input.requestId,
+      route: "/api/crons/process-order-notifications",
+      errorCode: "CRON_ORDER_NOTIFICATION_OUTBOX_LOOKUP_FAILED",
+      context: { message: error.message, limit },
+    });
+    return { scanned: 0, sent: 0, failed: 0, skipped: 0, error: "LOOKUP_FAILED" as const };
+  }
+
+  let sent = 0;
+  let failed = 0;
+  let skipped = 0;
+
+  for (const row of (data ?? []) as OrderNotificationOutboxRow[]) {
+    const result = await processOrderConfirmationOutboxForOrder({
+      orderId: row.order_id,
+      requestId: input.requestId,
+    });
+
+    if (result.sent && result.durableState !== false) {
+      sent += 1;
+    } else if (result.processed) {
+      failed += 1;
+    } else {
+      skipped += 1;
+    }
+  }
+
+  logInfo("crons.order_notification_outbox.completed", {
+    requestId: input.requestId,
+    route: "/api/crons/process-order-notifications",
+    context: { scanned: data?.length ?? 0, sent, failed, skipped, limit },
+  });
+
+  return { scanned: data?.length ?? 0, sent, failed, skipped };
+}
