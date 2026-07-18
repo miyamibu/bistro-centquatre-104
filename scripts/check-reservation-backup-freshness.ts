@@ -78,7 +78,7 @@ async function main() {
   const outputDir = resolveOutputDir(cwd, readOption(cli, "out-dir") ?? env.BACKUP_OUTPUT_DIR);
   const maxAgeHours = parsePositiveInt(
     readOption(cli, "max-age-hours") ?? env.BACKUP_FRESHNESS_MAX_AGE_HOURS,
-    36,
+    26,
     "--max-age-hours"
   );
 
