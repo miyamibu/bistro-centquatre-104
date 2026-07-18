@@ -15,7 +15,16 @@ interface ErrorPayload {
 interface WriteSecurityOptions {
   requestId?: string;
   requireRequestedWith?: boolean;
+  maxBytes?: number;
 }
+
+export const DEFAULT_JSON_BODY_LIMIT_BYTES = 64 * 1024;
+export const ORDER_JSON_BODY_LIMIT_BYTES = 128 * 1024;
+export const PDF_JSON_BODY_LIMIT_BYTES = 8 * 1024;
+
+export type JsonReadResult<T = unknown> =
+  | { ok: true; body: T }
+  | { ok: false; response: NextResponse };
 
 function resolveAllowedOrigins(request: NextRequest) {
   const origins = new Set<string>([request.nextUrl.origin]);
@@ -44,7 +53,7 @@ export function enforceWriteRequestSecurity(
   request: NextRequest,
   options: WriteSecurityOptions = {}
 ) {
-  const { requestId, requireRequestedWith = true } = options;
+  const { requestId, requireRequestedWith = true, maxBytes } = options;
   const contentType = request.headers.get("content-type") ?? "";
   if (!contentType.toLowerCase().includes("application/json")) {
     return apiError(415, {
@@ -86,5 +95,97 @@ export function enforceWriteRequestSecurity(
     }
   }
 
+  if (typeof maxBytes === "number") {
+    const contentLength = request.headers.get("content-length");
+    if (contentLength) {
+      const parsedLength = Number(contentLength);
+      if (!Number.isSafeInteger(parsedLength) || parsedLength < 0) {
+        return apiError(400, {
+          error: "Invalid Content-Length",
+          code: "INVALID_CONTENT_LENGTH",
+          requestId,
+        });
+      }
+      if (parsedLength > maxBytes) {
+        return apiError(413, {
+          error: "Request body is too large",
+          code: "BODY_TOO_LARGE",
+          requestId,
+        });
+      }
+    }
+  }
+
   return null;
+}
+
+export async function readLimitedJson<T = unknown>(
+  request: NextRequest,
+  options: WriteSecurityOptions = {}
+): Promise<JsonReadResult<T>> {
+  const maxBytes = options.maxBytes ?? DEFAULT_JSON_BODY_LIMIT_BYTES;
+  const securityError = enforceWriteRequestSecurity(request, {
+    ...options,
+    maxBytes,
+  });
+  if (securityError) {
+    return { ok: false, response: securityError };
+  }
+
+  const reader = request.body?.getReader();
+  if (!reader) {
+    return {
+      ok: false,
+      response: apiError(400, {
+        error: "JSON body is required",
+        code: "MISSING_BODY",
+        requestId: options.requestId,
+      }),
+    };
+  }
+
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    received += value.byteLength;
+    if (received > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      return {
+        ok: false,
+        response: apiError(413, {
+          error: "Request body is too large",
+          code: "BODY_TOO_LARGE",
+          requestId: options.requestId,
+        }),
+      };
+    }
+    chunks.push(value);
+  }
+
+  const raw = new TextDecoder().decode(joinChunks(chunks, received));
+  try {
+    return { ok: true, body: JSON.parse(raw) as T };
+  } catch {
+    return {
+      ok: false,
+      response: apiError(400, {
+        error: "Malformed JSON body",
+        code: "MALFORMED_JSON",
+        requestId: options.requestId,
+      }),
+    };
+  }
+}
+
+function joinChunks(chunks: Uint8Array[], totalLength: number) {
+  if (chunks.length === 1) return chunks[0]!;
+  const joined = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    joined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return joined;
 }

@@ -31,6 +31,7 @@ Store:
 Important:
 - Final store submission must be completed by a human on the destination page.
 - Do not place names, phone numbers, emails, or addresses in query strings. Put personal data in POST bodies only.
+- AI agents must not call /api/reservations directly for final booking completion.
 - Use /access for business hours, phone contact, and in-person policies.
 `;
 

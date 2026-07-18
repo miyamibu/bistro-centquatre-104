@@ -90,6 +90,21 @@ function toDisplayLastName(lastName: string) {
   return normalized || "予約";
 }
 
+function buildAdminDayAriaLabel(date: string, summary: MonthDaySummary | undefined) {
+  const parts = [formatDateWithWeekday(date)];
+  if (!summary) {
+    parts.push("状態未取得");
+    return parts.join(" ");
+  }
+  if (summary.isClosed) parts.push("休業");
+  if (summary.hasLunchPrivateBlock) parts.push("ランチ貸切");
+  if (summary.hasDinnerPrivateBlock) parts.push("ディナー貸切");
+  if (summary.normalReservationCount > 0) parts.push(`通常予約 ${summary.normalReservationCount}組`);
+  if (summary.hasConflict) parts.push("要確認");
+  if (parts.length === 1) parts.push("通常営業");
+  return parts.join(" ");
+}
+
 export default function BusinessDaysPage() {
   const initialMonth = useMemo(() => {
     const now = new Date();
@@ -451,9 +466,10 @@ export default function BusinessDaysPage() {
         {period.privateBlock.active && releasePeriod === servicePeriod ? (
           <div className="mt-3 space-y-2 rounded-md border border-[#d8c19c] bg-[#fff9ef] p-3">
             <p className="text-xs text-gray-700">{label}貸切を解除します。</p>
-            <label className="grid gap-1 text-xs text-gray-700">
+            <label htmlFor={`${servicePeriod.toLowerCase()}-operator-name`} className="grid gap-1 text-xs text-gray-700">
               担当者名
               <input
+                id={`${servicePeriod.toLowerCase()}-operator-name`}
                 value={operatorName}
                 onChange={(event) => setOperatorName(event.target.value)}
                 className="h-9 rounded border border-gray-300 px-2 text-sm"
@@ -558,7 +574,8 @@ export default function BusinessDaysPage() {
                         summary?.hasLunchPrivateBlock && !isAllPrivate ? "border-l-4 border-l-[#c77413]" : "",
                         summary?.hasDinnerPrivateBlock && !isAllPrivate ? "border-r-4 border-r-[#c77413]" : "",
                       ].join(" ")}
-                      aria-label={formatDateWithWeekday(date)}
+                      aria-label={buildAdminDayAriaLabel(date, summary)}
+                      aria-pressed={isSelected}
                     >
                       <div className="absolute left-1/2 top-1 flex -translate-x-1/2 items-start gap-1 leading-none">
                         <span className="text-sm font-semibold leading-none text-gray-900">
@@ -672,9 +689,10 @@ export default function BusinessDaysPage() {
                   この日は全日休業にする
                 </label>
 
-                <label className="grid gap-1 text-sm text-gray-800">
+                <label htmlFor="business-day-note" className="grid gap-1 text-sm text-gray-800">
                   営業メモ（スタッフ内部用）
                   <textarea
+                    id="business-day-note"
                     value={noteDraft}
                     onChange={(event) => setNoteDraft(event.target.value)}
                     className="min-h-[84px] rounded border border-gray-300 px-2 py-2 text-sm"
@@ -732,8 +750,16 @@ export default function BusinessDaysPage() {
             </div>
           ) : null}
 
-          {message ? <p className="mt-3 text-sm text-green-700">{message}</p> : null}
-          {error ? <p className="mt-3 text-sm text-red-700">{error}</p> : null}
+          {message ? (
+            <p role="status" aria-live="polite" className="mt-3 text-sm text-green-700">
+              {message}
+            </p>
+          ) : null}
+          {error ? (
+            <p role="alert" aria-live="assertive" className="mt-3 text-sm text-red-700">
+              {error}
+            </p>
+          ) : null}
         </section>
       </div>
     </div>

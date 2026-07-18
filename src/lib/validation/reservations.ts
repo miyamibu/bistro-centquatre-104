@@ -35,5 +35,15 @@ export const createPrivateBlockSchema = z.object({
   note: z.string().trim().max(2000).optional(),
 });
 
+// Body schema for POST /api/reservations/[id]/line-link.
+// `claimToken` must be the plain server-issued token returned only in the
+// /api/reservations creation response. Server compares its SHA-256 hash to the
+// stored hash in constant time.
+export const linkLineToReservationSchema = z.object({
+  claimToken: z.string().min(20).max(128),
+  lineIdToken: z.string().min(1).max(4096),
+});
+
 export type CreateReservationInput = z.infer<typeof createReservationSchema>;
 export type CreatePrivateBlockInput = z.infer<typeof createPrivateBlockSchema>;
+export type LinkLineToReservationInput = z.infer<typeof linkLineToReservationSchema>;

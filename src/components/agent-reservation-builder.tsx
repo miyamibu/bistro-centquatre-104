@@ -87,8 +87,8 @@ export function AgentReservationBuilder() {
     <div className="mt-5 rounded-2xl border border-[#cfa96d]/40 bg-[#fff7e6] p-4 text-sm text-[#4a3121]">
       <p className="font-semibold text-[#2f1b0f]">Reservation handoff builder</p>
       <p className="mt-2 leading-6">
-        Optional fallback for agents that want to hand the guest to `/booking` instead of calling
-        `POST /api/reservations` directly. Keep personal data in the POST body, not in this URL.
+        Required handoff for agents. Direct reservation API completion is launch-disabled; keep
+        personal data out of this URL and let the guest submit on `/booking`.
       </p>
       <p className="mt-2 text-xs leading-6 text-[#7b5a2d]">{RESERVATION_CUTOFF_TEXT}</p>
 

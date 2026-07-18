@@ -7,7 +7,7 @@ const sectionClassName =
   "rounded-3xl border border-[#cfa96d]/40 bg-white/90 p-6 shadow-[0_16px_48px_rgba(47,27,15,0.08)]";
 
 export default function AgentsPage() {
-  const reservationEndpoint = "POST /api/reservations";
+  const reservationEndpoint = "/booking?mode=agent";
   const storeTemplate = "/on-line-store/apron?mode=agent&qty={1-10}";
 
   return (
@@ -27,9 +27,8 @@ export default function AgentsPage() {
             /agents
           </h1>
           <p className="mx-auto max-w-3xl text-sm leading-7 text-[#4a3121] md:text-base">
-            This route is the machine-facing entry for external AI agents. Seat reservations may be
-            completed directly through the reservation API. Store flows remain warm handoffs that
-            stop before customer details, payment selection, and final order submission.
+            This route is the machine-facing entry for external AI agents. Seat reservations and
+            store flows are handoffs for human review and final submission.
           </p>
         </header>
 
@@ -40,20 +39,18 @@ export default function AgentsPage() {
             </p>
             <h2 className="mt-3 text-2xl font-semibold text-[#2f1b0f]">Seat Reservation</h2>
             <p className="mt-3 text-sm leading-7 text-[#4a3121]">
-              Agents may complete reservations end-to-end by calling the reservation API once the
-              guest&apos;s details are known. A browser handoff remains available below as an
-              optional review or manual bridge.
+              Agents must hand off reservations to the booking page for human review and final
+              submission. Direct API completion is launch-disabled until a dedicated AI
+              authentication contract exists.
             </p>
             <div className="mt-5 rounded-2xl bg-[#fff7e6] p-4 text-sm text-[#4a3121]">
-              <p className="font-semibold text-[#2f1b0f]">Direct completion endpoint</p>
+              <p className="font-semibold text-[#2f1b0f]">Required handoff entry</p>
               <code className="mt-2 block break-all rounded-xl bg-[#2f1b0f] px-3 py-2 text-xs text-[#f7ebd3]">
                 {reservationEndpoint}
               </code>
               <ul className="mt-3 space-y-1 text-xs leading-6">
-                <li>Required JSON fields: `date`, `servicePeriod`, `partySize`, `arrivalTime`, `name`, `phone`</li>
-                <li>Optional: `note`, `lineUserId`, `course`</li>
-                <li>Required header: `Content-Type: application/json`</li>
-                <li>Optional header: `X-Requested-With: XMLHttpRequest`</li>
+                <li>Final reservation submission must be completed by a human on `/booking`.</li>
+                <li>Do not put names, phone numbers, emails, or addresses in query strings.</li>
                 <li>`servicePeriod` must be `LUNCH` or `DINNER` and must match `arrivalTime`.</li>
                 <li>Closed weekdays: Monday to Wednesday</li>
                 <li>Lunch web reservations: 11:30-12:30 / Dinner: 17:30-19:30</li>
@@ -122,7 +119,7 @@ export default function AgentsPage() {
               </p>
               <h2 className="mt-3 text-2xl font-semibold text-[#2f1b0f]">Boundary Summary</h2>
               <ul className="mt-4 space-y-3 text-sm leading-7 text-[#4a3121]">
-                <li>Seat reservations may be completed directly by AI through `/api/reservations`.</li>
+                <li>Seat reservations must be handed off to `/booking` for final human submission.</li>
                 <li>Reservation handoff URLs are optional and are safe only for non-sensitive fields.</li>
                 <li>
                   Final order submission must be completed by the guest after reviewing `/on-line-store/apron`

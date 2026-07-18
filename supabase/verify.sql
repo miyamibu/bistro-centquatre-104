@@ -9,6 +9,14 @@ where table_schema = 'public'
     'order_actions',
     'human_tokens',
     'api_idempotency',
+    'order_notification_outbox',
+    'Reservation',
+    'PrivateBlockAuditLog',
+    'ReservationStatusAuditLog',
+    'ReservationRateLimitEvent',
+    'BusinessDay',
+    'MenuItem',
+    'Photo',
     'bank_account_history'
   )
 order by table_name;
@@ -27,6 +35,14 @@ where n.nspname = 'public'
     'order_actions',
     'human_tokens',
     'api_idempotency',
+    'order_notification_outbox',
+    'Reservation',
+    'PrivateBlockAuditLog',
+    'ReservationStatusAuditLog',
+    'ReservationRateLimitEvent',
+    'BusinessDay',
+    'MenuItem',
+    'Photo',
     'bank_account_history'
   )
 order by c.relname;
@@ -47,6 +63,14 @@ where schemaname = 'public'
     'order_actions',
     'human_tokens',
     'api_idempotency',
+    'order_notification_outbox',
+    'Reservation',
+    'PrivateBlockAuditLog',
+    'ReservationStatusAuditLog',
+    'ReservationRateLimitEvent',
+    'BusinessDay',
+    'MenuItem',
+    'Photo',
     'bank_account_history'
   )
 order by tablename, policyname;

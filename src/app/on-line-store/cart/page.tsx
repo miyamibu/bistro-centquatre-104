@@ -459,10 +459,11 @@ function StoreCartContent() {
 
               <div className="mb-6 grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-[#2f1b0f]">
+                  <label htmlFor="customer-name" className="mb-2 block text-sm font-semibold text-[#2f1b0f]">
                     お名前 <span className="text-red-600">*</span>
                   </label>
                   <input
+                    id="customer-name"
                     type="text"
                     name="name"
                     value={customerInfo.name}
@@ -473,10 +474,11 @@ function StoreCartContent() {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-[#2f1b0f]">
+                  <label htmlFor="customer-email" className="mb-2 block text-sm font-semibold text-[#2f1b0f]">
                     メールアドレス <span className="text-red-600">*</span>
                   </label>
                   <input
+                    id="customer-email"
                     type="email"
                     name="email"
                     value={customerInfo.email}
@@ -487,10 +489,11 @@ function StoreCartContent() {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-[#2f1b0f]">
+                  <label htmlFor="customer-phone" className="mb-2 block text-sm font-semibold text-[#2f1b0f]">
                     電話番号 <span className="text-red-600">*</span>
                   </label>
                   <input
+                    id="customer-phone"
                     type="tel"
                     name="phone"
                     value={customerInfo.phone}
@@ -501,10 +504,11 @@ function StoreCartContent() {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-[#2f1b0f]">
+                  <label htmlFor="customer-zip-code" className="mb-2 block text-sm font-semibold text-[#2f1b0f]">
                     郵便番号 <span className="text-red-600">*</span>
                   </label>
                   <input
+                    id="customer-zip-code"
                     type="text"
                     name="zipCode"
                     value={customerInfo.zipCode}
@@ -515,10 +519,11 @@ function StoreCartContent() {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-[#2f1b0f]">
+                  <label htmlFor="customer-prefecture" className="mb-2 block text-sm font-semibold text-[#2f1b0f]">
                     都道府県 <span className="text-red-600">*</span>
                   </label>
                   <select
+                    id="customer-prefecture"
                     name="prefecture"
                     value={customerInfo.prefecture}
                     onChange={handleInputChange}
@@ -534,10 +539,11 @@ function StoreCartContent() {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-[#2f1b0f]">
+                  <label htmlFor="customer-city" className="mb-2 block text-sm font-semibold text-[#2f1b0f]">
                     市区町村 <span className="text-red-600">*</span>
                   </label>
                   <input
+                    id="customer-city"
                     type="text"
                     name="city"
                     value={customerInfo.city}
@@ -548,10 +554,11 @@ function StoreCartContent() {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-[#2f1b0f]">
+                  <label htmlFor="customer-address" className="mb-2 block text-sm font-semibold text-[#2f1b0f]">
                     番地 <span className="text-red-600">*</span>
                   </label>
                   <input
+                    id="customer-address"
                     type="text"
                     name="address"
                     value={customerInfo.address}
@@ -562,10 +569,11 @@ function StoreCartContent() {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-[#2f1b0f]">
+                  <label htmlFor="customer-building" className="mb-2 block text-sm font-semibold text-[#2f1b0f]">
                     建物名・部屋番号
                   </label>
                   <input
+                    id="customer-building"
                     type="text"
                     name="building"
                     value={customerInfo.building}
@@ -581,6 +589,7 @@ function StoreCartContent() {
               <div className="mb-8 space-y-4">
                 <label className="flex cursor-pointer items-start rounded-lg border-2 border-[#2f1b0f] p-6 transition hover:bg-gray-50">
                   <input
+                    id="payment-bank-transfer"
                     type="radio"
                     name="payment"
                     value="BANK_TRANSFER"
@@ -606,6 +615,7 @@ function StoreCartContent() {
 
                 <label className="flex cursor-pointer items-start rounded-lg border-2 border-[#2f1b0f] p-6 transition hover:bg-gray-50">
                   <input
+                    id="payment-pay-in-store"
                     type="radio"
                     name="payment"
                     value="PAY_IN_STORE"
@@ -633,10 +643,11 @@ function StoreCartContent() {
               {paymentMethod === "PAY_IN_STORE" && (
                 <div className="mb-8 rounded-lg border border-[#2f1b0f] bg-[#f7ebd3] p-6">
                   <h3 className="mb-4 text-lg font-semibold text-[#2f1b0f]">来店予定日を選択</h3>
-                  <p className="mb-4 text-sm text-[#4a3121]">
+                  <p id="store-visit-date-help" className="mb-4 text-sm text-[#4a3121]">
                     ※ 注文日から2週間〜30日の営業日（木〜日）のみ選択可能です。定休日は月〜水です。
                   </p>
                   <input
+                    id="store-visit-date"
                     type="date"
                     value={storeVisitDate}
                     onChange={(e) => {
@@ -650,13 +661,18 @@ function StoreCartContent() {
                     }}
                     min={minDate}
                     max={maxDate}
+                    aria-describedby="store-visit-date-help"
                     className="w-full rounded border border-[#2f1b0f] px-4 py-2 text-[#2f1b0f]"
                   />
                 </div>
               )}
 
               {submitMessage && (
-                <p className={`mb-4 text-sm ${submitError ? "text-red-700" : "text-green-700"}`}>
+                <p
+                  role={submitError ? "alert" : "status"}
+                  aria-live={submitError ? "assertive" : "polite"}
+                  className={`mb-4 text-sm ${submitError ? "text-red-700" : "text-green-700"}`}
+                >
                   {submitMessage}
                 </p>
               )}
