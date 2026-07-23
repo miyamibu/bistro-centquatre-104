@@ -188,7 +188,7 @@ export function OrdersClient({
 
   const performOrderAction = async (
     order: Order,
-    action: "MARK_PAID" | "MARK_COLLECTED" | "MARK_SHIPPED",
+    action: "MARK_PAID" | "MARK_COLLECTED" | "MARK_SHIPPED" | "CANCEL",
     payload: Record<string, unknown>
   ): Promise<OrderMutationResult> => {
     if (pendingOrderActionRef.current) {
@@ -665,6 +665,30 @@ export function OrdersClient({
                               className="px-3 py-1 bg-green-600 text-white rounded text-xs hover:brightness-110 transition disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               {pendingOrderActionKey === `${order.id}:MARK_SHIPPED` ? "更新中..." : "発送完了"}
+                            </button>
+                          )}
+                          {(order.status === "QUOTED" || order.status === "PENDING_PAYMENT") && (
+                            <button
+                              onClick={async () => {
+                                const reasonCode = window.prompt(
+                                  "キャンセル理由コードを入力してください",
+                                  "ADMIN_CANCELLED"
+                                )?.trim();
+                                if (!reasonCode) return;
+                                if (!window.confirm("この注文をキャンセルします。続行しますか？")) return;
+
+                                const updated = await performOrderAction(order, "CANCEL", {
+                                  reasonCode,
+                                  adminNote: "管理画面からキャンセル",
+                                });
+                                if (updated === "confirmed") {
+                                  setFeedback({ type: "success", text: "注文をキャンセルしました" });
+                                }
+                              }}
+                              disabled={pendingOrderActionKey !== null || ordersNeedRefresh}
+                              className="px-3 py-1 bg-red-600 text-white rounded text-xs hover:brightness-110 transition disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {pendingOrderActionKey === `${order.id}:CANCEL` ? "更新中..." : "キャンセル"}
                             </button>
                           )}
                         </div>
