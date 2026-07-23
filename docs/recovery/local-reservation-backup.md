@@ -13,6 +13,9 @@
 - `ADMIN_BASIC_USER` / `ADMIN_BASIC_PASS` (`/api/admin/...` 経由のため必須)
 - `BISTRO_BACKUP_DIR` (任意)
   - 未指定時の標準保存先は `bistro-reservation/backups/reservation-daily-backups`
+- `BACKUP_CLEANUP_ENABLED` (任意)
+  - 指定しない場合は `false` とみなし、日次バックアップのアーカイブ移動（実質削除）を実行しません。
+  - `true` にしたうえ、かつ `--apply=true --confirm-safe-target=archive-reservation-backups` で実行した場合のみ、`cleanup` が実体移動を行います。
 
 ## Manual run
 

@@ -22,7 +22,7 @@
     "prisma:seed": "tsx prisma/seed.ts",
     "backup:reservations:pull": "tsx scripts/pull-reservation-backups.ts --out-dir=backups/reservation-daily-backups",
     "backup:reservations:status": "tsx scripts/check-reservation-backup-freshness.ts --out-dir=backups/reservation-daily-backups",
-    "backup:reservations:cleanup": "tsx scripts/cleanup-reservation-backups.ts --out-dir=backups/reservation-daily-backups",
+    "backup:reservations:cleanup": "BACKUP_CLEANUP_ENABLED=false tsx scripts/cleanup-reservation-backups.ts --out-dir=backups/reservation-daily-backups",
     "backup:reservations:run": "node scripts/run-local-reservation-backup.mjs",
     "backup:reservations": "node scripts/recovery/export-reservation-backup.mjs --out-dir=backups/manual-export-backups",
     "backup:project-snapshot": "bash scripts/recovery/create-project-snapshot.sh",

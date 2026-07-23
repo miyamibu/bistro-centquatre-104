@@ -17,6 +17,7 @@ import {
 } from "./reservation-backup-common";
 
 const APPLY_CONFIRMATION_TOKEN = "archive-reservation-backups";
+const CLEANUP_ENABLED_ENV = "BACKUP_CLEANUP_ENABLED";
 
 async function ensureDirectory(targetPath: string) {
   await fs.mkdir(targetPath, { recursive: true });
@@ -126,6 +127,14 @@ async function main() {
   const apply = readOption(cli, "apply") === "true";
   const dryRun = readOption(cli, "dry-run") !== "false" && !apply;
   const confirmation = readOption(cli, "confirm-safe-target");
+  const cleanupEnabled = env[CLEANUP_ENABLED_ENV] === "true";
+
+  if (!cleanupEnabled) {
+    console.info(
+      `[backup:cleanup] クリーンアップは現在無効です（${CLEANUP_ENABLED_ENV}=true を設定すると有効化）`
+    );
+    return;
+  }
 
   const outputDir = resolveOutputDir(cwd, readOption(cli, "out-dir") ?? env.BACKUP_OUTPUT_DIR);
   const retentionDays = parsePositiveInt(
