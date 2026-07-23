@@ -1,17 +1,27 @@
 import "@/lib/css/liftkitvars.css";
 import { Tangerine } from "next/font/google";
-import { formatJst, getJstMonthKey, jstDateFromString, startOfJstMonth } from "@/lib/dates";
+import {
+  addJstMonths,
+  formatJst,
+  getJstMonthKey,
+  jstDateFromString,
+  startOfJstMonth,
+} from "@/lib/dates";
 import { getNextBookableReservationDate } from "@/lib/booking-rules";
 import { ReserveForm } from "@/components/reserve-form";
 import { getAvailability, getMonthlyAvailability } from "@/lib/availability";
 import { prisma } from "@/lib/prisma";
 import { ensureReservationSchemaReady } from "@/lib/reservation-compat";
+import { RESERVATION_CONFIG } from "@/lib/reservation-config";
 import {
+  findFirstWebBookableDate,
+  isExplicitReservationDateUsable,
   sanitizeArrivalTime,
   sanitizeCourse,
   sanitizeDate,
   sanitizePartySize,
   sanitizeServicePeriod,
+  shouldSearchFutureAvailability,
 } from "@/lib/reservation-form-defaults";
 
 const tangerine = Tangerine({
@@ -33,7 +43,11 @@ export default async function ReservePage({ searchParams }: { searchParams?: Sea
   const defaultDate = formatJst(getNextBookableReservationDate());
   const reservePageSpacing = { topMobile: 113, topDesktop: 150 }; // 上余白の微調整(px)
   const isAgentMode = getFirstParam(resolvedSearchParams.mode) === "agent";
-  const initialDate = sanitizeDate(getFirstParam(resolvedSearchParams.date), defaultDate);
+  const requestedDate = getFirstParam(resolvedSearchParams.date);
+  const hasValidExplicitDate = isExplicitReservationDateUsable(requestedDate);
+  let initialDate = hasValidExplicitDate
+    ? requestedDate
+    : sanitizeDate(requestedDate, defaultDate);
   const initialServicePeriod = sanitizeServicePeriod(
     getFirstParam(resolvedSearchParams.servicePeriod),
     getFirstParam(resolvedSearchParams.course),
@@ -61,7 +75,7 @@ export default async function ReservePage({ searchParams }: { searchParams?: Sea
   try {
     await ensureReservationSchemaReady(prisma);
 
-    const [dailyAvailability, lunchMonthly, dinnerMonthly] = await Promise.all([
+    const [provisionalDailyAvailability, initialSelectedPeriodMonthly] = await Promise.all([
       getAvailability(
         {
           date: initialDate,
@@ -73,26 +87,70 @@ export default async function ReservePage({ searchParams }: { searchParams?: Sea
       getMonthlyAvailability(
         {
           month: getJstMonthKey(initialCalendarMonth),
-          servicePeriod: "LUNCH",
-          partySize: initialPartySize,
-        },
-        prisma
-      ),
-      getMonthlyAvailability(
-        {
-          month: getJstMonthKey(initialCalendarMonth),
-          servicePeriod: "DINNER",
+          servicePeriod: initialServicePeriod,
           partySize: initialPartySize,
         },
         prisma
       ),
     ]);
 
-    initialAvailability = dailyAvailability;
-    initialMonthlyAvailabilityByPeriod = {
-      LUNCH: lunchMonthly,
-      DINNER: dinnerMonthly,
-    };
+    let selectedCalendarMonth = initialCalendarMonth;
+    let selectedMonthlyAvailability = initialSelectedPeriodMonthly;
+    let confirmedInitialDate = !hasValidExplicitDate && shouldSearchFutureAvailability(initialPartySize)
+      ? findFirstWebBookableDate(
+          selectedMonthlyAvailability,
+          initialDate
+        )
+      : null;
+
+    for (
+      let monthOffset = 1;
+      !hasValidExplicitDate &&
+      shouldSearchFutureAvailability(initialPartySize) &&
+      confirmedInitialDate == null &&
+      monthOffset <= RESERVATION_CONFIG.bookingWindowMonths;
+      monthOffset += 1
+    ) {
+      const candidateMonth = addJstMonths(initialCalendarMonth, monthOffset);
+      const candidateMonthlyAvailability = await getMonthlyAvailability(
+        {
+          month: getJstMonthKey(candidateMonth),
+          servicePeriod: initialServicePeriod,
+          partySize: initialPartySize,
+        },
+        prisma
+      );
+      const candidateDate = findFirstWebBookableDate(candidateMonthlyAvailability, initialDate);
+
+      if (candidateDate) {
+        confirmedInitialDate = candidateDate;
+        selectedCalendarMonth = candidateMonth;
+        selectedMonthlyAvailability = candidateMonthlyAvailability;
+      }
+    }
+
+    const oppositeServicePeriod = initialServicePeriod === "LUNCH" ? "DINNER" : "LUNCH";
+    const oppositeMonthlyAvailability = await getMonthlyAvailability(
+      {
+        month: getJstMonthKey(selectedCalendarMonth),
+        servicePeriod: oppositeServicePeriod,
+        partySize: initialPartySize,
+      },
+      prisma
+    );
+    initialMonthlyAvailabilityByPeriod =
+      initialServicePeriod === "LUNCH"
+        ? { LUNCH: selectedMonthlyAvailability, DINNER: oppositeMonthlyAvailability }
+        : { LUNCH: oppositeMonthlyAvailability, DINNER: selectedMonthlyAvailability };
+
+    if (confirmedInitialDate && confirmedInitialDate !== initialDate) {
+      initialDate = confirmedInitialDate;
+      initialAvailability =
+        selectedMonthlyAvailability[confirmedInitialDate] ??
+        provisionalDailyAvailability;
+    } else {
+      initialAvailability = provisionalDailyAvailability;
+    }
   } catch {
     // Fall back to client-side loading when the initial server fetch is unavailable.
   }

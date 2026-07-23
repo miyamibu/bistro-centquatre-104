@@ -66,6 +66,40 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const validatedItems = input.items.map((clientItem) => {
+      const product = getPublishedStoreProduct(clientItem.id);
+      if (!product) {
+        throw new Error("INVALID_MENU_ITEM");
+      }
+
+      return {
+        id: product.id,
+        name: product.name,
+        price: product.priceYen,
+        image: product.image,
+        quantity: clientItem.quantity,
+      };
+    });
+
+    const calculatedTotal = validatedItems.reduce(
+      (sum, item) => sum + item.price * item.quantity,
+      0,
+    );
+
+    if (calculatedTotal !== input.total) {
+      logWarn("orders.total.mismatch", {
+        requestId,
+        route,
+        errorCode: "ORDER_TOTAL_MISMATCH",
+        context: {
+          clientTotal: input.total,
+          calculatedTotal,
+          items: input.items,
+        },
+      });
+      throw new Error("ORDER_TOTAL_MISMATCH");
+    }
+
     const actorKey = `order-create:${input.customerInfo.email.toLowerCase()}:${input.customerInfo.phone}`;
     const requestHash = buildIdempotencyHash({
       items: input.items,
@@ -82,39 +116,6 @@ export async function POST(request: NextRequest) {
       requestHash,
       successStatus: 201,
       execute: async () => {
-        const validatedItems = input.items.map((clientItem) => {
-          const product = getPublishedStoreProduct(clientItem.id);
-          if (!product) {
-            throw new Error("INVALID_MENU_ITEM");
-          }
-
-          return {
-            id: product.id,
-            name: product.name,
-            price: product.priceYen,
-            quantity: clientItem.quantity,
-          };
-        });
-
-        const calculatedTotal = validatedItems.reduce(
-          (sum, item) => sum + item.price * item.quantity,
-          0,
-        );
-
-        if (calculatedTotal !== input.total) {
-          logWarn("orders.total.mismatch", {
-            requestId,
-            route,
-            errorCode: "ORDER_TOTAL_MISMATCH",
-            context: {
-              clientTotal: input.total,
-              calculatedTotal,
-              items: input.items,
-            },
-          });
-          throw new Error("ORDER_TOTAL_MISMATCH");
-        }
-
         const holdExpiresAt = createQuotedHoldExpiry();
 
         const humanToken = randomBytes(24).toString("base64url");
@@ -152,6 +153,7 @@ export async function POST(request: NextRequest) {
             version: Number(order.version ?? 0),
             total: Number(order.total ?? calculatedTotal),
             holdExpiresAt,
+            items: validatedItems,
           },
           paymentSetup: {
             orderId: String(order.id),

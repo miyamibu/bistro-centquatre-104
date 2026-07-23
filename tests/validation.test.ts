@@ -21,6 +21,19 @@ describe("Validation schemas", () => {
     expect(parsed.success).toBe(true);
   });
 
+  it("rejects a reservation date that does not exist", () => {
+    const parsed = createReservationSchema.safeParse({
+      date: "2026-02-31",
+      servicePeriod: "DINNER",
+      partySize: 2,
+      arrivalTime: "18:30",
+      name: "山田 太郎",
+      phone: "090-1111-2222",
+      course: "ディナー",
+    });
+    expect(parsed.success).toBe(false);
+  });
+
   it("rejects invalid reservation party size", () => {
     const parsed = createReservationSchema.safeParse({
       date: "2026-03-15",

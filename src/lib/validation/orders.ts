@@ -10,20 +10,31 @@ export const orderStatusSchema = z.enum([
   "CANCELLED",
 ]);
 
+export const ORDER_CUSTOMER_INFO_LIMITS = {
+  name: 100,
+  phoneMin: 6,
+  phone: 32,
+  zipCode: 16,
+  prefecture: 32,
+  city: 120,
+  address: 180,
+  building: 120,
+} as const;
+
 export const orderItemInputSchema = z.object({
   id: z.string().min(1),
   quantity: z.coerce.number().int().min(1).max(99),
 });
 
 export const customerInfoSchema = z.object({
-  name: z.string().trim().min(1).max(100),
+  name: z.string().trim().min(1).max(ORDER_CUSTOMER_INFO_LIMITS.name),
   email: z.string().trim().email(),
-  phone: z.string().trim().min(6).max(32),
-  zipCode: z.string().trim().min(1).max(16),
-  prefecture: z.string().trim().min(1).max(32),
-  city: z.string().trim().min(1).max(120),
-  address: z.string().trim().min(1).max(180),
-  building: z.string().trim().max(120).optional().or(z.literal("")),
+  phone: z.string().trim().min(ORDER_CUSTOMER_INFO_LIMITS.phoneMin).max(ORDER_CUSTOMER_INFO_LIMITS.phone),
+  zipCode: z.string().trim().min(1).max(ORDER_CUSTOMER_INFO_LIMITS.zipCode),
+  prefecture: z.string().trim().min(1).max(ORDER_CUSTOMER_INFO_LIMITS.prefecture),
+  city: z.string().trim().min(1).max(ORDER_CUSTOMER_INFO_LIMITS.city),
+  address: z.string().trim().min(1).max(ORDER_CUSTOMER_INFO_LIMITS.address),
+  building: z.string().trim().max(ORDER_CUSTOMER_INFO_LIMITS.building).optional().or(z.literal("")),
 });
 
 export const createOrderSchema = z

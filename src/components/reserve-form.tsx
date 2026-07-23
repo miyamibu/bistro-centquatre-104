@@ -72,6 +72,7 @@ interface LineNotificationResponse {
 const reservationFieldLabels: Record<string, string> = {
   date: "来店日",
   servicePeriod: "時間帯",
+  time: "来店時間",
   partySize: "人数",
   arrivalTime: "来店時間",
   course: "コース",
@@ -93,6 +94,40 @@ function parseReservationFieldErrors(value: unknown): Record<string, string> {
     return errors;
   }, {});
 }
+
+function getReservationFieldError(
+  errors: Record<string, string>,
+  ...keys: string[]
+): string | undefined {
+  return keys.map((key) => errors[key]).find((message) => Boolean(message));
+}
+
+function InlineFieldError({ id, message }: { id: string; message?: string }) {
+  return message ? (
+    <p id={id} className="text-xs leading-5 text-[#8f2a2a]">
+      {message}
+    </p>
+  ) : null;
+}
+
+const reservationFieldTargetIds: Record<string, string> = {
+  date: "reservation-calendar",
+  servicePeriod: "time-top",
+  time: "time-top",
+  arrivalTime: "time-top",
+  partySize: "party-size",
+  course: "course",
+  name: "last-name",
+  lastName: "last-name",
+  firstName: "first-name",
+  phone: "phone",
+  note: "note",
+};
+
+const servicePeriodLabels: Record<ReservationServicePeriodKey, string> = {
+  LUNCH: "ランチ",
+  DINNER: "ディナー",
+};
 
 type AvailabilityState = Omit<AvailabilityResponse, "reason"> & {
   reason: AvailabilityResponse["reason"] | "CHECKING" | "ERROR";
@@ -116,6 +151,40 @@ const nonSelectableReasons = new Set([
 ]);
 const servicePeriods: ReservationServicePeriodKey[] = ["LUNCH", "DINNER"];
 const LIFF_OPERATION_TIMEOUT_MS = 10_000;
+const AVAILABILITY_REQUEST_TIMEOUT_MS = 10_000;
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+async function fetchAvailabilityJson<T>(url: string, externalSignal?: AbortSignal) {
+  const controller = new AbortController();
+  let didTimeout = false;
+  const timeoutId = setTimeout(() => {
+    didTimeout = true;
+    controller.abort();
+  }, AVAILABILITY_REQUEST_TIMEOUT_MS);
+  const abortFromExternalSignal = () => controller.abort();
+  if (externalSignal?.aborted) {
+    controller.abort();
+  } else {
+    externalSignal?.addEventListener("abort", abortFromExternalSignal, { once: true });
+  }
+
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    const data = (await response.json().catch(() => null)) as T | null;
+    return { response, data };
+  } catch (error) {
+    if (didTimeout) {
+      throw new Error("AVAILABILITY_REQUEST_TIMEOUT");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+    externalSignal?.removeEventListener("abort", abortFromExternalSignal);
+  }
+}
 
 function withLiffTimeout<T>(promise: Promise<T>, operation: string): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -187,6 +256,7 @@ export function ReserveForm({
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [autoAdjustmentMessage, setAutoAdjustmentMessage] = useState<string | null>(null);
   const [submittedReservation, setSubmittedReservation] =
     useState<SubmittedReservationSummary | null>(null);
   const [lineNotification, setLineNotification] =
@@ -215,6 +285,14 @@ export function ReserveForm({
   const [resolvedMonthlyAvailabilityKey, setResolvedMonthlyAvailabilityKey] = useState<
     string | null
   >(initialMonthlyKey);
+  const [monthlyAvailabilityError, setMonthlyAvailabilityError] = useState(false);
+  const [monthlyAvailabilityLoading, setMonthlyAvailabilityLoading] = useState(false);
+  const [availabilityRetryNonce, setAvailabilityRetryNonce] = useState(0);
+  const currentMonthlyRequestKey = `${getJstMonthKey(startOfJstMonth(calendarMonth))}:${form.partySize}`;
+  const monthlyAvailabilityReady =
+    !monthlyAvailabilityLoading &&
+    !monthlyAvailabilityError &&
+    resolvedMonthlyAvailabilityKey === currentMonthlyRequestKey;
 
   const partyMin = 1;
   const partyMax = RESERVATION_CONFIG.maxPartySize;
@@ -268,15 +346,18 @@ export function ReserveForm({
   async function loadDailyAvailability(
     date: string,
     servicePeriod: ReservationServicePeriodKey,
-    partySize: number
+    partySize: number,
+    signal?: AbortSignal
   ) {
     const params = new URLSearchParams({
       date,
       servicePeriod,
       partySize: String(partySize),
     });
-    const response = await fetch(`/api/availability?${params.toString()}`);
-    const data = await response.json().catch(() => null);
+    const { response, data } = await fetchAvailabilityJson<AvailabilityState>(
+      `/api/availability?${params.toString()}`,
+      signal
+    );
 
     if (!response.ok || !data) {
       throw new Error("DAILY_AVAILABILITY_FETCH_FAILED");
@@ -288,15 +369,17 @@ export function ReserveForm({
   async function loadMonthlyAvailability(
     monthStartDate: Date,
     servicePeriod: ReservationServicePeriodKey,
-    partySize: number
+    partySize: number,
+    signal?: AbortSignal
   ) {
     const params = new URLSearchParams({
       month: getJstMonthKey(startOfJstMonth(monthStartDate)),
       servicePeriod,
       partySize: String(partySize),
     });
-    const response = await fetch(`/api/availability/monthly?${params.toString()}`);
-    const data = await response.json().catch(() => null);
+    const { response, data } = await fetchAvailabilityJson<{
+      days?: MonthlyAvailabilityMap;
+    }>(`/api/availability/monthly?${params.toString()}`, signal);
 
     if (!response.ok || !data?.days) {
       throw new Error("MONTHLY_AVAILABILITY_FETCH_FAILED");
@@ -316,12 +399,16 @@ export function ReserveForm({
       }
 
       const daily = getDateAvailability(date, period);
-      return daily != null && !nonSelectableReasons.has(daily.reason);
+      return daily?.webBookable === true;
     });
   }
 
-  function switchToServicePeriod(period: ReservationServicePeriodKey) {
-    const nextCourse = getReservationCoursesForServicePeriod(period)[0]?.value ?? "";
+  function switchToServicePeriod(
+    period: ReservationServicePeriodKey,
+    previousPeriod: ReservationServicePeriodKey
+  ) {
+    const nextCourseOption = getReservationCoursesForServicePeriod(period)[0];
+    const nextCourse = nextCourseOption?.value ?? "";
     const nextArrivalTime = getDefaultArrivalTimeForCourse(undefined, period);
 
     setForm((prev) => ({
@@ -329,20 +416,35 @@ export function ReserveForm({
       course: nextCourse,
       arrivalTime: nextArrivalTime,
     }));
+    setAutoAdjustmentMessage(
+      `選択した日付では${servicePeriodLabels[previousPeriod]}が利用できないため、${servicePeriodLabels[period]}へ自動変更しました。来店時間は${nextArrivalTime}、コースは「${nextCourseOption?.label ?? nextCourse}」に切り替えています。時間とコースを確認してから予約してください。`
+    );
   }
 
   function updateDate(date: string) {
+    setAutoAdjustmentMessage(null);
     updateField("date", date);
 
     const currentDaily = getDateAvailability(date, currentServicePeriod);
-    if (currentDaily != null && !nonSelectableReasons.has(currentDaily.reason)) {
+    if (currentDaily?.webBookable === true) {
       return;
     }
 
     const fallbackPeriod = getSelectableFallbackPeriod(date, currentServicePeriod);
     if (fallbackPeriod) {
-      switchToServicePeriod(fallbackPeriod);
+      switchToServicePeriod(fallbackPeriod, currentServicePeriod);
     }
+  }
+
+  function retryAvailability() {
+    setResolvedAvailabilityKey(null);
+    setResolvedMonthlyAvailabilityKey(null);
+    setAvailability(checkingAvailability);
+    setMonthlyAvailabilityError(false);
+    setMonthlyAvailabilityLoading(true);
+    setAutoAdjustmentMessage(null);
+    setError(null);
+    setAvailabilityRetryNonce((current) => current + 1);
   }
 
   useEffect(() => {
@@ -378,6 +480,7 @@ export function ReserveForm({
 
   useEffect(() => {
     let active = true;
+    const controller = new AbortController();
     const requestKey = `${form.date}:${activeServicePeriod}:${form.partySize}`;
     if (resolvedAvailabilityKey === requestKey) {
       return;
@@ -385,34 +488,44 @@ export function ReserveForm({
 
     setAvailability((prev) => ({ ...prev, reason: "CHECKING" }));
 
-    loadDailyAvailability(form.date, activeServicePeriod, form.partySize)
+    loadDailyAvailability(form.date, activeServicePeriod, form.partySize, controller.signal)
       .then((data) => {
         if (!active) return;
         setAvailability(data);
         setResolvedAvailabilityKey(requestKey);
       })
-      .catch(() => {
-        if (!active) return;
+      .catch((error) => {
+        if (!active || isAbortError(error)) return;
         setAvailability({ ...checkingAvailability, reason: "ERROR" });
-        setResolvedAvailabilityKey(null);
+        setResolvedAvailabilityKey(requestKey);
       });
 
     return () => {
       active = false;
+      controller.abort();
     };
-  }, [activeServicePeriod, form.date, form.partySize, resolvedAvailabilityKey]);
+  }, [
+    activeServicePeriod,
+    availabilityRetryNonce,
+    form.date,
+    form.partySize,
+    resolvedAvailabilityKey,
+  ]);
 
   useEffect(() => {
     let active = true;
+    const controller = new AbortController();
     const requestKey = `${getJstMonthKey(startOfJstMonth(calendarMonth))}:${form.partySize}`;
     if (resolvedMonthlyAvailabilityKey === requestKey) {
       return;
     }
 
+    setMonthlyAvailabilityError(false);
+    setMonthlyAvailabilityLoading(true);
     Promise.all(
       servicePeriods.map(async (period) => [
         period,
-        await loadMonthlyAvailability(calendarMonth, period, form.partySize),
+        await loadMonthlyAvailability(calendarMonth, period, form.partySize, controller.signal),
       ])
     )
       .then((entries) => {
@@ -423,24 +536,38 @@ export function ReserveForm({
           ...Object.fromEntries(entries),
         } as MonthlyAvailabilityByPeriod);
         setResolvedMonthlyAvailabilityKey(requestKey);
+        setMonthlyAvailabilityError(false);
+        setMonthlyAvailabilityLoading(false);
       })
-      .catch(() => {
-        if (!active) return;
+      .catch((error) => {
+        if (!active || isAbortError(error)) return;
         setMonthlyAvailabilityByPeriod({
           LUNCH: {},
           DINNER: {},
         });
-        setResolvedMonthlyAvailabilityKey(null);
+        setResolvedMonthlyAvailabilityKey(requestKey);
+        setMonthlyAvailabilityError(true);
+        setMonthlyAvailabilityLoading(false);
       });
 
     return () => {
       active = false;
+      controller.abort();
     };
-  }, [calendarMonth, form.partySize, resolvedMonthlyAvailabilityKey]);
+  }, [
+    availabilityRetryNonce,
+    calendarMonth,
+    form.partySize,
+    resolvedMonthlyAvailabilityKey,
+  ]);
 
   useEffect(() => {
+    if (!monthlyAvailabilityReady) {
+      return;
+    }
+
     const currentDaily = monthlyAvailabilityByPeriod[currentServicePeriod][form.date] ?? null;
-    if (currentDaily == null || !nonSelectableReasons.has(currentDaily.reason)) {
+    if (currentDaily == null || currentDaily.webBookable === true) {
       return;
     }
 
@@ -450,22 +577,35 @@ export function ReserveForm({
       }
 
       const daily = monthlyAvailabilityByPeriod[period][form.date] ?? null;
-      return daily != null && !nonSelectableReasons.has(daily.reason);
+      return daily?.webBookable === true;
     });
     if (fallbackPeriod) {
-      const nextCourse = getReservationCoursesForServicePeriod(fallbackPeriod)[0]?.value ?? "";
-      const nextArrivalTime = getDefaultArrivalTimeForCourse(undefined, fallbackPeriod);
-
-      setForm((prev) => ({
-        ...prev,
-        course: nextCourse,
-        arrivalTime: nextArrivalTime,
-      }));
+      switchToServicePeriod(fallbackPeriod, currentServicePeriod);
     }
-  }, [currentServicePeriod, form.date, monthlyAvailabilityByPeriod]);
+  }, [
+    currentServicePeriod,
+    form.date,
+    monthlyAvailabilityByPeriod,
+    monthlyAvailabilityReady,
+  ]);
 
   function updateField<T extends keyof typeof form>(key: T, value: (typeof form)[T]) {
+    if (key === "date" || key === "partySize" || key === "course" || key === "arrivalTime") {
+      setAutoAdjustmentMessage(null);
+    }
+    setError(null);
     setForm((prev) => ({ ...prev, [key]: value }));
+    const fieldErrorKeys =
+      key === "lastName" || key === "firstName"
+        ? ["name", "lastName", "firstName"]
+        : key === "arrivalTime"
+          ? ["time", "arrivalTime", "servicePeriod"]
+          : [key];
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      fieldErrorKeys.forEach((field) => delete next[field]);
+      return next;
+    });
   }
 
   async function handleLineLink() {
@@ -611,8 +751,39 @@ export function ReserveForm({
           `${getJstMonthKey(startOfJstMonth(calendarMonth))}:${form.partySize}`
         );
       } else {
-        setFieldErrors(parseReservationFieldErrors(data.fields));
-        setError(data.error ?? data.reason ?? "予約に失敗しました。お電話ください。");
+        const parsedFieldErrors = parseReservationFieldErrors(data.fields);
+        const apiErrorMessage =
+          typeof data.error === "string" && data.error.trim()
+            ? data.error
+            : typeof data.reason === "string" && data.reason.trim()
+              ? data.reason
+              : "入力内容を確認してください。";
+        if (
+          data.code === "INVALID_ARRIVAL_TIME" &&
+          !getReservationFieldError(parsedFieldErrors, "time", "arrivalTime", "servicePeriod")
+        ) {
+          parsedFieldErrors.time = apiErrorMessage;
+        }
+        if (data.code === "COURSE_TIME_MISMATCH" && !parsedFieldErrors.course) {
+          parsedFieldErrors.course = apiErrorMessage;
+        }
+        setFieldErrors(parsedFieldErrors);
+        setError(
+          Object.keys(parsedFieldErrors).length > 0
+            ? null
+            : data.error ?? data.reason ?? "予約に失敗しました。お電話ください。"
+        );
+        const firstFieldTarget = Object.keys(parsedFieldErrors)
+          .map((field) => reservationFieldTargetIds[field])
+          .find((targetId) => Boolean(targetId));
+        if (firstFieldTarget) {
+          window.requestAnimationFrame(() => {
+            const target = document.getElementById(firstFieldTarget);
+            if (!(target instanceof HTMLElement)) return;
+            target.focus();
+            target.scrollIntoView({ block: "center", behavior: "smooth" });
+          });
+        }
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
@@ -630,8 +801,7 @@ export function ReserveForm({
   const monthStart = startOfJstMonth(calendarMonth);
   const monthDays = getDaysInJstMonth(monthStart);
   const firstWeekday = getJstWeekday(monthStart);
-  const calendarDayCircleSize = 28;
-  const calendarDayCellWidth = 40;
+  const calendarDayCircleSize = 44;
   const calendarDayMarkerNormalFontSize = 13;
   const calendarDayCallMarkerFontSize = 13;
   const calendarDayMarkerNormalFontWeight = 900;
@@ -639,9 +809,9 @@ export function ReserveForm({
   const calendarDayMarkerShadow =
     "0.35px 0 currentColor, -0.35px 0 currentColor, 0 0.35px currentColor, 0 -0.35px currentColor";
   const calendarDayMarkerTopMargin = 8;
-  const calendarDayGapX = 3;
+  const calendarDayGapX = 0;
   const calendarDayGapY = 3;
-  const calendarMonthNavButtonSize = 36;
+  const calendarMonthNavButtonSize = 44;
   const calendarMonthNavArrowFontSize = 28;
   const calendarMonthNavArrowFontWeight = 600;
   const calendarMonthNavArrowOffsetY = "-0.1cm";
@@ -686,6 +856,19 @@ export function ReserveForm({
     : null;
   const submittedServiceLabel =
     submittedReservation?.servicePeriod === "LUNCH" ? "ランチ" : "ディナー";
+  const dateFieldError = getReservationFieldError(fieldErrors, "date");
+  const timeFieldError = getReservationFieldError(
+    fieldErrors,
+    "time",
+    "arrivalTime",
+    "servicePeriod"
+  );
+  const partySizeFieldError = getReservationFieldError(fieldErrors, "partySize");
+  const courseFieldError = getReservationFieldError(fieldErrors, "course");
+  const nameFieldError = getReservationFieldError(fieldErrors, "name", "lastName", "firstName");
+  const phoneFieldError = getReservationFieldError(fieldErrors, "phone");
+  const noteFieldError = getReservationFieldError(fieldErrors, "note");
+  const calendarErrorAttributes = dateFieldError ? { "aria-invalid": true } : {};
 
   return (
     <form onSubmit={submit} className="rounded-xl bg-white p-6 space-y-4">
@@ -699,8 +882,8 @@ export function ReserveForm({
 
       {availabilityStatusMessage ? (
         <div
-          role="status"
-          aria-live="polite"
+          role={availability.reason === "ERROR" ? "alert" : "status"}
+          aria-live={availability.reason === "ERROR" ? "assertive" : "polite"}
           className={[
             "rounded-xl border px-4 py-3 text-sm leading-6",
             availability.reason === "ERROR"
@@ -710,7 +893,27 @@ export function ReserveForm({
               : "border-[#cfa96d]/30 bg-[#fffdfa] text-[#6b5644]",
           ].join(" ")}
         >
-          {availabilityStatusMessage}
+          <p>{availabilityStatusMessage}</p>
+          {availability.reason === "ERROR" || availability.reason === "CHECKING" ? (
+            <button
+              type="button"
+              onClick={retryAvailability}
+              disabled={isCheckingAvailability}
+              className="mt-2 inline-flex min-h-10 items-center justify-center rounded-full border border-current px-4 py-2 text-sm font-semibold transition hover:bg-white/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8f2a2a]/30"
+            >
+              {isCheckingAvailability ? "再取得中..." : "空席情報を再取得"}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {autoAdjustmentMessage ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className="rounded-xl border border-[#c7a357]/40 bg-[#fff8eb] px-4 py-3 text-sm leading-6 text-[#6b4b2b]"
+        >
+          {autoAdjustmentMessage}
         </div>
       ) : null}
 
@@ -734,18 +937,46 @@ export function ReserveForm({
       <section className="space-y-4 px-0 py-2 md:p-4">
         <div className="grid gap-6 md:grid-cols-[auto,minmax(0,1fr)] md:items-stretch">
           <div
-            className="mx-auto mt-[-0.5cm] w-full max-w-[20.5rem] space-y-4 md:mx-0 md:mt-0 md:max-w-none"
+            className="mx-auto mt-[-0.5cm] w-full min-w-0 max-w-[21rem] space-y-4 md:mx-0 md:mt-0 md:max-w-none"
           >
-              <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3">
               <p id="reservation-calendar-label" className="text-sm font-semibold text-[#2f1b0f]">
                 来店日
               </p>
             </div>
 
+            {(monthlyAvailabilityError || monthlyAvailabilityLoading) && availability.reason !== "ERROR" ? (
+              <div
+                role={monthlyAvailabilityLoading ? "status" : "alert"}
+                aria-live={monthlyAvailabilityLoading ? "polite" : "assertive"}
+                aria-busy={monthlyAvailabilityLoading}
+                className="rounded-xl border border-[#b32626]/20 bg-[#fff1f1] px-4 py-3 text-sm leading-6 text-[#8f2a2a]"
+              >
+                <p>
+                  {monthlyAvailabilityLoading
+                    ? "カレンダーの空席情報を確認しています。"
+                    : "カレンダーの空席情報を取得できませんでした。"}
+                </p>
+                <button
+                  type="button"
+                  onClick={retryAvailability}
+                  disabled={monthlyAvailabilityLoading}
+                  className="mt-2 inline-flex min-h-10 items-center justify-center rounded-full border border-current px-4 py-2 text-sm font-semibold transition hover:bg-white/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8f2a2a]/30"
+                >
+                  {monthlyAvailabilityLoading ? "再取得中..." : "カレンダーを再取得"}
+                </button>
+              </div>
+            ) : null}
+
             <div
               role="group"
               aria-labelledby="reservation-calendar-label"
-              className="mx-auto max-w-[19rem] rounded-md border-0 bg-white p-3"
+              id="reservation-calendar"
+              tabIndex={-1}
+              aria-busy={!monthlyAvailabilityReady}
+              {...calendarErrorAttributes}
+              aria-describedby={dateFieldError ? "reservation-error-date" : undefined}
+              className="relative left-1/2 mx-0 w-screen max-w-none -translate-x-1/2 rounded-md border-0 bg-white p-1.5 md:static md:left-auto md:mx-auto md:w-full md:max-w-[21rem] md:translate-x-0 md:p-3"
             >
               <div className="mb-2 flex items-center justify-between">
                 <button
@@ -784,11 +1015,10 @@ export function ReserveForm({
               </div>
 
               <div
-                className="grid text-center text-xs text-[#7b6b5b]"
+                className="grid w-full text-center text-xs text-[#7b6b5b]"
                 style={{
-                  gridTemplateColumns: `repeat(7, ${calendarDayCellWidth}px)`,
+                  gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
                   columnGap: `${calendarDayGapX}px`,
-                  justifyContent: "center",
                 }}
               >
                 {dayLabels.map((label) => (
@@ -804,15 +1034,19 @@ export function ReserveForm({
                 <span><strong className="text-[#b32626]">△</strong> 電話確認</span>
                 <span><strong className="text-[#b32626]">休</strong> 休業</span>
                 <span><strong className="text-[#b32626]">貸切</strong> 貸切・時間帯制限</span>
+                {!monthlyAvailabilityReady ? (
+                  <span><strong className="text-[#7b6b5b]">—</strong> 未確認</span>
+                ) : null}
               </div>
 
+              <div className="mt-1 overflow-x-auto">
               <div
-                className="mt-1 grid"
+                className="grid w-full"
                 style={{
-                  gridTemplateColumns: `repeat(7, ${calendarDayCellWidth}px)`,
+                  gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
                   columnGap: `${calendarDayGapX}px`,
                   rowGap: `${calendarDayGapY}px`,
-                  justifyContent: "center",
+                  minWidth: `${calendarMonthNavButtonSize * 7 + calendarDayGapX * 6}px`,
                 }}
               >
                 {calendarCells.map((cell, idx) => {
@@ -821,7 +1055,7 @@ export function ReserveForm({
                       <div
                         key={`empty-${idx}`}
                         style={{
-                          width: `${calendarDayCellWidth}px`,
+                          width: "100%",
                           height: `${calendarDayCellHeight}px`,
                         }}
                       />
@@ -844,13 +1078,18 @@ export function ReserveForm({
                   const hasPhoneOnlyPeriod = dailyStates.some((daily) => daily.reason === "PHONE_ONLY");
                   const isClosedDay =
                     dailyStates.length > 0 && dailyStates.every((daily) => daily.reason === "CLOSED");
+                  const isUnconfirmedDate = !isSelected && !monthlyAvailabilityReady;
                   const isDateDisabled =
                     isSameOrPast ||
-                    (dailyStates.length > 0 &&
+                    isUnconfirmedDate ||
+                    (monthlyAvailabilityReady &&
+                      dailyStates.length > 0 &&
                       dailyStates.every((daily) => nonSelectableReasons.has(daily.reason)));
 
                   let markerText = "";
-                  if (privateBlockMarkerText) {
+                  if (isUnconfirmedDate) {
+                    markerText = "—";
+                  } else if (privateBlockMarkerText) {
                     markerText = privateBlockMarkerText;
                   } else if (hasBookablePeriod) {
                     markerText = "○";
@@ -883,7 +1122,9 @@ export function ReserveForm({
                       ? "#b32626"
                       : "#7a5528";
                   const markerAriaLabel =
-                    markerText === "○"
+                    markerText === "—"
+                      ? "空席未確認"
+                      : markerText === "○"
                       ? "Web予約可"
                       : markerText === "△"
                       ? "電話確認"
@@ -900,7 +1141,7 @@ export function ReserveForm({
                       key={cell.value}
                       className="flex flex-col items-center justify-start"
                       style={{
-                        width: `${calendarDayCellWidth}px`,
+                        width: "100%",
                         height: `${calendarDayCellHeight}px`,
                       }}
                     >
@@ -922,7 +1163,7 @@ export function ReserveForm({
                           height: `${calendarDayCircleSize}px`,
                         }}
                         aria-label={`${formatJstMonthDay(cell.dateObj)}${isDateDisabled ? " 予約不可" : ""}${markerAriaLabel ? ` ${markerAriaLabel}` : ""}`}
-                        aria-current={isSelected ? "date" : undefined}
+                        aria-pressed={isSelected}
                       >
                         {getJstDayOfMonth(cell.dateObj)}
                       </button>
@@ -944,12 +1185,14 @@ export function ReserveForm({
                               : undefined,
                         }}
                       >
-                        {markerText}
+                        <span aria-hidden="true">{markerText}</span>
                       </span>
                     </div>
                   );
                 })}
               </div>
+              </div>
+              <InlineFieldError id="reservation-error-date" message={dateFieldError} />
             </div>
           </div>
 
@@ -971,8 +1214,10 @@ export function ReserveForm({
                   id="time-top"
                   value={form.arrivalTime}
                   onChange={(e) => updateField("arrivalTime", e.target.value)}
-                  className="h-10 w-full rounded-md border border-black bg-white px-3 text-sm text-[#2f1b0f] focus:outline-none focus:ring-2 focus:ring-black/20"
+                  className="min-h-11 w-full rounded-md border border-black bg-white px-3 text-sm text-[#2f1b0f] focus:outline-none focus:ring-2 focus:ring-black/20"
                   style={{ borderRadius: `${formFieldRadius}px` }}
+                  aria-invalid={timeFieldError ? true : undefined}
+                  aria-describedby={timeFieldError ? "reservation-error-time" : undefined}
                   required
                 >
                   {arrivalTimeOptions.map((option) => (
@@ -991,6 +1236,7 @@ export function ReserveForm({
                     ディナーは貸し切り営業のため、ランチのみご予約いただけます。
                   </p>
                 ) : null}
+                <InlineFieldError id="reservation-error-time" message={timeFieldError} />
               </div>
 
               <div className="grid min-w-0" style={{ rowGap: `${fieldLabelGap}px` }}>
@@ -999,8 +1245,10 @@ export function ReserveForm({
                   id="party-size"
                   value={form.partySize}
                   onChange={(e) => updateField("partySize", Number(e.target.value))}
-                  className="h-10 w-full rounded-md border border-black bg-white px-3 text-sm text-[#2f1b0f] focus:outline-none focus:ring-2 focus:ring-black/20"
+                  className="min-h-11 w-full rounded-md border border-black bg-white px-3 text-sm text-[#2f1b0f] focus:outline-none focus:ring-2 focus:ring-black/20"
                   style={{ borderRadius: `${formFieldRadius}px` }}
+                  aria-invalid={partySizeFieldError ? true : undefined}
+                  aria-describedby={partySizeFieldError ? "reservation-error-party-size" : undefined}
                   required
                 >
                   {Array.from({ length: partyMax - partyMin + 1 }, (_, i) => partyMin + i).map((n) => (
@@ -1009,6 +1257,7 @@ export function ReserveForm({
                     </option>
                   ))}
                 </select>
+                <InlineFieldError id="reservation-error-party-size" message={partySizeFieldError} />
               </div>
 
               <div className="grid min-w-0" style={{ rowGap: `${fieldLabelGap}px` }}>
@@ -1017,8 +1266,10 @@ export function ReserveForm({
                   id="course"
                   value={form.course}
                   onChange={(e) => updateField("course", e.target.value)}
-                  className="h-10 w-full rounded-md border border-black bg-white px-3 text-sm text-[#2f1b0f] focus:outline-none focus:ring-2 focus:ring-black/20"
+                  className="min-h-11 w-full rounded-md border border-black bg-white px-3 text-sm text-[#2f1b0f] focus:outline-none focus:ring-2 focus:ring-black/20"
                   style={{ borderRadius: `${formFieldRadius}px` }}
+                  aria-invalid={courseFieldError ? true : undefined}
+                  aria-describedby={courseFieldError ? "reservation-error-course" : undefined}
                   required
                 >
                   {courseOptions.map((item) => (
@@ -1027,6 +1278,7 @@ export function ReserveForm({
                     </option>
                   ))}
                 </select>
+                <InlineFieldError id="reservation-error-course" message={courseFieldError} />
               </div>
             </div>
 
@@ -1046,6 +1298,8 @@ export function ReserveForm({
                     placeholder="姓"
                     autoComplete="family-name"
                     aria-label="姓"
+                    aria-invalid={nameFieldError ? true : undefined}
+                    aria-describedby={nameFieldError ? "reservation-error-name" : undefined}
                     required
                   />
                   <Input
@@ -1057,9 +1311,12 @@ export function ReserveForm({
                     placeholder="名"
                     autoComplete="given-name"
                     aria-label="名"
+                    aria-invalid={nameFieldError ? true : undefined}
+                    aria-describedby={nameFieldError ? "reservation-error-name" : undefined}
                     required
                   />
                 </div>
+                <InlineFieldError id="reservation-error-name" message={nameFieldError} />
               </div>
               <div className="grid" style={{ rowGap: `${fieldLabelGap}px` }}>
                 <Label htmlFor="phone">電話番号</Label>
@@ -1071,8 +1328,11 @@ export function ReserveForm({
                   autoComplete="tel"
                   className="border-black focus:ring-black/20 focus:border-black"
                   style={{ borderRadius: `${formFieldRadius}px` }}
+                  aria-invalid={phoneFieldError ? true : undefined}
+                  aria-describedby={phoneFieldError ? "reservation-error-phone" : undefined}
                   required
                 />
+                <InlineFieldError id="reservation-error-phone" message={phoneFieldError} />
               </div>
             </div>
 
@@ -1084,7 +1344,10 @@ export function ReserveForm({
                 onChange={(e) => updateField("note", e.target.value)}
                 className="min-h-[7.5rem] w-full border-black focus:ring-black/20 focus:border-black md:min-h-[6.5rem]"
                 placeholder="アレルギーや記念日のご希望など"
+                aria-invalid={noteFieldError ? true : undefined}
+                aria-describedby={noteFieldError ? "reservation-error-note" : undefined}
               />
+              <InlineFieldError id="reservation-error-note" message={noteFieldError} />
             </div>
 
             <div className="hidden md:-mt-[1cm] md:block">

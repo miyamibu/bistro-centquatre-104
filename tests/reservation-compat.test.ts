@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { ReservationStatus } from "@prisma/client";
 import {
   ensureReservationSchemaReady,
   isReservationSchemaNotReadyError,
+  updateReservationStatusCompat,
 } from "@/lib/reservation-compat";
 
 describe("reservation schema compatibility checks", () => {
@@ -18,5 +20,45 @@ describe("reservation schema compatibility checks", () => {
       isReservationSchemaNotReadyError(error)
     );
     expect(calls).toBe(1);
+  });
+
+  it("updates reservation status with the previously read status as a CAS predicate", async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const findUnique = vi.fn().mockResolvedValue({
+      id: "res-1",
+      status: ReservationStatus.DONE,
+    });
+    const client = { reservation: { updateMany, findUnique } };
+
+    await expect(
+      updateReservationStatusCompat(
+        client as never,
+        "res-1",
+        ReservationStatus.CONFIRMED,
+        ReservationStatus.DONE,
+      ),
+    ).resolves.toMatchObject({ id: "res-1", status: ReservationStatus.DONE });
+
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: "res-1", status: ReservationStatus.CONFIRMED },
+      data: { status: ReservationStatus.DONE },
+    });
+    expect(findUnique).toHaveBeenCalledWith({ where: { id: "res-1" } });
+  });
+
+  it("returns null when the CAS predicate no longer matches", async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 0 });
+    const findUnique = vi.fn();
+    const client = { reservation: { updateMany, findUnique } };
+
+    await expect(
+      updateReservationStatusCompat(
+        client as never,
+        "res-1",
+        ReservationStatus.CONFIRMED,
+        ReservationStatus.DONE,
+      ),
+    ).resolves.toBeNull();
+    expect(findUnique).not.toHaveBeenCalled();
   });
 });

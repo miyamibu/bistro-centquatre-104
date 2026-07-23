@@ -116,9 +116,9 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         throw new Error("MISSING_OPERATOR_NAME");
       }
 
-      const next = await updateReservationStatusCompat(tx, id, parsed.data.status);
+      const next = await updateReservationStatusCompat(tx, id, current.status, parsed.data.status);
       if (!next) {
-        return null;
+        throw new Error("RESERVATION_STATUS_CONFLICT");
       }
 
       await tx.reservationStatusAuditLog.create({
@@ -193,6 +193,14 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       return apiError(409, {
         error: "終端状態の予約はこの画面から再変更できません",
         code: "TERMINAL_STATUS_TRANSITION_NOT_ALLOWED",
+        requestId,
+      });
+    }
+
+    if (error instanceof Error && error.message === "RESERVATION_STATUS_CONFLICT") {
+      return apiError(409, {
+        error: "予約の状態が別の操作で変更されたため、更新できません。最新状態を確認してください",
+        code: "RESERVATION_STATUS_CONFLICT",
         requestId,
       });
     }

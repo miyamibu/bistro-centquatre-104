@@ -4,6 +4,17 @@ import { formatJst, isBusinessDay, jstDateFromString, todayJst } from "@/lib/dat
 export const STORE_VISIT_MIN_DAYS = 14;
 export const STORE_VISIT_MAX_DAYS = 30;
 
+export function getStoreVisitDateRange(): { minDate: string; maxDate: string } {
+  const today = todayJst();
+  const minDate = addDays(today, STORE_VISIT_MIN_DAYS);
+  const maxDate = addDays(today, STORE_VISIT_MAX_DAYS);
+
+  return {
+    minDate: formatJst(minDate),
+    maxDate: formatJst(maxDate),
+  };
+}
+
 type StoreVisitValidationResult =
   | { ok: true }
   | {
@@ -25,6 +36,13 @@ export function validatePayInStoreVisitDate(storeVisitDateInput: string | null |
   let storeVisitDate: Date;
   try {
     storeVisitDate = jstDateFromString(storeVisitDateInput);
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(storeVisitDateInput) ||
+      Number.isNaN(storeVisitDate.getTime()) ||
+      formatJst(storeVisitDate) !== storeVisitDateInput
+    ) {
+      throw new Error("INVALID_STORE_VISIT_DATE");
+    }
   } catch {
     return {
       ok: false,
@@ -56,4 +74,33 @@ export function validatePayInStoreVisitDate(storeVisitDateInput: string | null |
   }
 
   return { ok: true };
+}
+
+export function getPayInStoreVisitDateLiveError(
+  storeVisitDateInput: string | null | undefined,
+  range: { minDate: string; maxDate: string },
+): string | null {
+  if (!storeVisitDateInput || !/^\d{4}-\d{2}-\d{2}$/.test(storeVisitDateInput)) {
+    return null;
+  }
+
+  let storeVisitDate: Date;
+  try {
+    storeVisitDate = jstDateFromString(storeVisitDateInput);
+  } catch {
+    return null;
+  }
+
+  if (
+    !Number.isFinite(storeVisitDate.getTime()) ||
+    formatJst(storeVisitDate) !== storeVisitDateInput ||
+    storeVisitDateInput < range.minDate ||
+    storeVisitDateInput > range.maxDate
+  ) {
+    return null;
+  }
+
+  return isBusinessDay(storeVisitDate)
+    ? null
+    : "来店日は営業日（木〜日）を選択してください";
 }

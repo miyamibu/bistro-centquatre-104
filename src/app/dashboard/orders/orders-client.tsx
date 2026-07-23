@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Noto_Serif_JP, Tangerine } from "next/font/google";
+import { reduceOrdersNeedRefresh } from "@/lib/order-action-state";
 
 const headingFont = Tangerine({
   subsets: ["latin"],
@@ -63,6 +64,10 @@ interface OrdersClientProps {
   initialBankAccountError?: string | null;
 }
 
+type OrderMutationResult = "mutation_failed" | "mutation_succeeded_refresh_failed" | "confirmed";
+const ORDER_ACTION_TIMEOUT_MS = 20_000;
+const ORDER_LIST_TIMEOUT_MS = 20_000;
+
 export function OrdersClient({
   initialOrders,
   initialOrdersError = null,
@@ -73,10 +78,12 @@ export function OrdersClient({
   const [ordersError, setOrdersError] = useState<string | null>(initialOrdersError);
   const [bankAccount, setBankAccount] = useState<BankAccount | null>(initialBankAccount);
   const [bankAccountError, setBankAccountError] = useState<string | null>(initialBankAccountError);
-  const [isLoading, setIsLoading] = useState(false);
   const [showBankForm, setShowBankForm] = useState(false);
   const [editingBank, setEditingBank] = useState<BankAccount | null>(null);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [pendingOrderActionKey, setPendingOrderActionKey] = useState<string | null>(null);
+  const [ordersNeedRefresh, setOrdersNeedRefresh] = useState(false);
+  const [isRefreshingOrders, setIsRefreshingOrders] = useState(false);
 
   useEffect(() => {
     setFeedback(null);
@@ -84,6 +91,13 @@ export function OrdersClient({
 
   const ordersRequestIdRef = useRef(0);
   const bankAccountRequestIdRef = useRef(0);
+  const pendingOrderActionRef = useRef<string | null>(null);
+  const ordersRefreshButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!ordersNeedRefresh) return;
+    window.requestAnimationFrame(() => ordersRefreshButtonRef.current?.focus());
+  }, [ordersNeedRefresh]);
 
   const createIdempotencyKey = () => {
     if (typeof globalThis.crypto?.randomUUID === "function") {
@@ -95,10 +109,14 @@ export function OrdersClient({
   const loadOrders = async () => {
     const requestId = ordersRequestIdRef.current + 1;
     ordersRequestIdRef.current = requestId;
+    let timeoutId: number | null = null;
 
     try {
+      const controller = new AbortController();
+      timeoutId = window.setTimeout(() => controller.abort(), ORDER_LIST_TIMEOUT_MS);
       const response = await fetch("/dashboard/api/orders", {
         method: "GET",
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -106,7 +124,7 @@ export function OrdersClient({
       }
 
       const data = await response.json();
-      if (ordersRequestIdRef.current !== requestId) return;
+      if (ordersRequestIdRef.current !== requestId) return false;
       setOrders(data || []);
       setOrdersError(null);
       setFeedback((current) =>
@@ -114,15 +132,33 @@ export function OrdersClient({
           ? null
           : current
       );
+      return true;
     } catch (error) {
-      if (ordersRequestIdRef.current !== requestId) return;
+      if (ordersRequestIdRef.current !== requestId) return false;
       console.error("Failed to load orders:", error);
       setOrdersError("注文一覧を取得できませんでした。時間をおいて再確認してください。");
       setFeedback({ type: "error", text: "注文一覧の読み込みに失敗しました" });
+      return false;
     } finally {
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
       if (ordersRequestIdRef.current === requestId) {
-        setIsLoading(false);
+        setIsRefreshingOrders(false);
       }
+    }
+  };
+
+  const refreshOrders = async () => {
+    setIsRefreshingOrders(true);
+    const refreshed = await loadOrders();
+    if (refreshed) {
+      setOrdersNeedRefresh((current) =>
+        reduceOrdersNeedRefresh(current, { type: "refresh-succeeded" }),
+      );
+      setFeedback({ type: "success", text: "注文一覧を再取得しました" });
+    } else {
+      setOrdersNeedRefresh((current) =>
+        reduceOrdersNeedRefresh(current, { type: "refresh-failed" }),
+      );
     }
   };
 
@@ -154,8 +190,22 @@ export function OrdersClient({
     order: Order,
     action: "MARK_PAID" | "MARK_COLLECTED" | "MARK_SHIPPED",
     payload: Record<string, unknown>
-  ) => {
+  ): Promise<OrderMutationResult> => {
+    if (pendingOrderActionRef.current) {
+      return "mutation_failed";
+    }
+
+    const actionKey = `${order.id}:${action}`;
+    pendingOrderActionRef.current = actionKey;
+    setPendingOrderActionKey(actionKey);
+    setFeedback(null);
+    let timeoutId: number | null = null;
+    let receivedResponse = false;
+    let responseStatus: number | null = null;
+
     try {
+      const controller = new AbortController();
+      timeoutId = window.setTimeout(() => controller.abort(), ORDER_ACTION_TIMEOUT_MS);
       const response = await fetch(`/api/orders/${order.id}/actions`, {
         method: "POST",
         headers: {
@@ -168,20 +218,70 @@ export function OrdersClient({
           expectedVersion: order.version ?? 0,
           payload,
         }),
+        signal: controller.signal,
       });
+      receivedResponse = true;
+      responseStatus = response.status;
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error ?? "Failed to update order");
+        const errorData = (await response.json().catch(() => ({}))) as { error?: unknown };
+        const errorMessage =
+          typeof errorData.error === "string"
+            ? errorData.error
+            : "ステータスの更新に失敗しました";
+        throw new Error(errorMessage);
       }
 
-      await loadOrders();
+      const refreshed = await loadOrders();
+      if (!refreshed) {
+        setOrdersNeedRefresh((current) =>
+          reduceOrdersNeedRefresh(current, { type: "mutation-succeeded-refresh-failed" }),
+        );
+        setFeedback({
+          type: "error",
+          text: "更新は受理されましたが一覧の再取得に失敗しました。再読み込みして状態を確認してください。",
+        });
+        return "mutation_succeeded_refresh_failed";
+      }
+
+      setOrdersNeedRefresh((current) =>
+        reduceOrdersNeedRefresh(current, { type: "refresh-succeeded" }),
+      );
+      return "confirmed";
     } catch (error) {
       console.error("Failed to update order status:", error);
+      if (!receivedResponse) {
+        setOrdersNeedRefresh((current) =>
+          reduceOrdersNeedRefresh(current, { type: "transport-unknown" }),
+        );
+        setFeedback({
+          type: "error",
+          text:
+            error instanceof DOMException && error.name === "AbortError"
+              ? "通信がタイムアウトしました。サーバー側で処理された可能性があります。再送せず、注文一覧を再取得して状態を確認してください。"
+              : "通信に失敗しました。サーバー側で処理された可能性があります。再送せず、注文一覧を再取得して状態を確認してください。",
+        });
+        return "mutation_failed";
+      }
+      if (responseStatus !== null) {
+        setOrdersNeedRefresh((current) =>
+          reduceOrdersNeedRefresh(current, {
+            type: "mutation-response",
+            status: responseStatus ?? 0,
+          }),
+        );
+      }
       setFeedback({
         type: "error",
         text: error instanceof Error ? error.message : "ステータスの更新に失敗しました",
       });
+      return "mutation_failed";
+    } finally {
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+      if (pendingOrderActionRef.current === actionKey) {
+        pendingOrderActionRef.current = null;
+        setPendingOrderActionKey(null);
+      }
     }
   };
 
@@ -246,14 +346,6 @@ export function OrdersClient({
     return "未選択";
   };
 
-  if (isLoading) {
-    return (
-      <section className="min-h-screen px-8 pb-8 pt-12">
-        <div className="text-center">読み込み中...</div>
-      </section>
-    );
-  }
-
   return (
     <section className="min-h-screen px-8 pb-8 pt-12">
       <div className="max-w-7xl mx-auto">
@@ -264,10 +356,26 @@ export function OrdersClient({
             注文管理ダッシュボード
           </h1>
           {feedback && (
-            <p className={`text-sm ${feedback.type === "error" ? "text-red-700" : "text-green-700"}`}>
+            <p
+              role={feedback.type === "error" ? "alert" : "status"}
+              aria-live={feedback.type === "error" ? "assertive" : "polite"}
+              className={`text-sm ${feedback.type === "error" ? "text-red-700" : "text-green-700"}`}
+            >
               {feedback.text}
             </p>
           )}
+          {ordersNeedRefresh ? (
+            <button
+              ref={ordersRefreshButtonRef}
+              type="button"
+              onClick={refreshOrders}
+              disabled={isRefreshingOrders || pendingOrderActionKey !== null}
+              aria-busy={isRefreshingOrders}
+              className="mt-3 rounded border border-[#2f1b0f] px-4 py-2 text-sm font-semibold text-[#2f1b0f] transition hover:bg-white/60 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isRefreshingOrders ? "再取得中..." : "注文一覧を再取得"}
+            </button>
+          ) : null}
         </header>
 
         {/* 銀行情報セクション */}
@@ -503,14 +611,18 @@ export function OrdersClient({
                                   setFeedback({ type: "error", text: "入金額が不正です" });
                                   return;
                                 }
-                                await performOrderAction(order, "MARK_PAID", {
+                                const updated = await performOrderAction(order, "MARK_PAID", {
                                   paymentReference,
                                   receivedAmount,
                                 });
+                                if (updated === "confirmed") {
+                                  setFeedback({ type: "success", text: "入金済みに更新しました" });
+                                }
                               }}
-                              className="px-3 py-1 bg-yellow-500 text-white rounded text-xs hover:brightness-110 transition"
+                              disabled={pendingOrderActionKey !== null || ordersNeedRefresh}
+                              className="px-3 py-1 bg-yellow-500 text-white rounded text-xs hover:brightness-110 transition disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                              入金確認
+                              {pendingOrderActionKey === `${order.id}:MARK_PAID` ? "更新中..." : "入金確認"}
                             </button>
                           )}
                           {order.status === "PENDING_PAYMENT" &&
@@ -528,24 +640,31 @@ export function OrdersClient({
                                   setFeedback({ type: "error", text: "受領額が不正です" });
                                   return;
                                 }
-                                await performOrderAction(order, "MARK_COLLECTED", {
+                                const updated = await performOrderAction(order, "MARK_COLLECTED", {
                                   receivedAmount,
                                 });
+                                if (updated === "confirmed") {
+                                  setFeedback({ type: "success", text: "受領済みに更新しました" });
+                                }
                               }}
-                              className="px-3 py-1 bg-blue-500 text-white rounded text-xs hover:brightness-110 transition"
+                              disabled={pendingOrderActionKey !== null || ordersNeedRefresh}
+                              className="px-3 py-1 bg-blue-500 text-white rounded text-xs hover:brightness-110 transition disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                              受領済み
+                              {pendingOrderActionKey === `${order.id}:MARK_COLLECTED` ? "更新中..." : "受領済み"}
                             </button>
                           )}
                           {order.status === "PAID" && (
                             <button
                               onClick={async () => {
-                                await performOrderAction(order, "MARK_SHIPPED", {});
-                                setFeedback({ type: "success", text: "発送済みに更新しました" });
+                                const updated = await performOrderAction(order, "MARK_SHIPPED", {});
+                                if (updated === "confirmed") {
+                                  setFeedback({ type: "success", text: "発送済みに更新しました" });
+                                }
                               }}
-                              className="px-3 py-1 bg-green-600 text-white rounded text-xs hover:brightness-110 transition"
+                              disabled={pendingOrderActionKey !== null || ordersNeedRefresh}
+                              className="px-3 py-1 bg-green-600 text-white rounded text-xs hover:brightness-110 transition disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                              発送完了
+                              {pendingOrderActionKey === `${order.id}:MARK_SHIPPED` ? "更新中..." : "発送完了"}
                             </button>
                           )}
                         </div>

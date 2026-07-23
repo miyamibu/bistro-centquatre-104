@@ -41,19 +41,57 @@ export function getCartItems(): StoreCartItem[] {
 /**
  * Save cart items to localStorage
  */
-function saveCart(items: StoreCartItem[]): void {
+function saveCart(items: StoreCartItem[]): boolean {
   if (typeof window === "undefined") {
-    return;
+    return false;
   }
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    const serialized = JSON.stringify(items);
+    localStorage.setItem(STORAGE_KEY, serialized);
+    return localStorage.getItem(STORAGE_KEY) === serialized;
   } catch {
     console.error("Failed to save cart to localStorage");
+    return false;
   }
 }
 
-export function restoreCartItems(items: StoreCartItem[]): void {
-  saveCart(items);
+export function restoreCartItems(items: StoreCartItem[]): boolean {
+  return saveCart(items);
+}
+
+export type StoredCartReadResult =
+  | { ok: true; items: StoreCartItem[] }
+  | { ok: false };
+
+export function readStoredCartItemsForRestore(): StoredCartReadResult {
+  if (typeof window === "undefined") return { ok: false };
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return { ok: true, items: [] };
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return { ok: false };
+
+    const items: StoreCartItem[] = [];
+    for (const item of parsed) {
+      if (
+        !item ||
+        typeof item !== "object" ||
+        typeof item.id !== "string" ||
+        typeof item.name !== "string" ||
+        typeof item.price !== "number" ||
+        !Number.isFinite(item.price) ||
+        typeof item.image !== "string" ||
+        typeof item.quantity !== "number" ||
+        !Number.isInteger(item.quantity)
+      ) {
+        return { ok: false };
+      }
+      items.push(item as StoreCartItem);
+    }
+    return { ok: true, items };
+  } catch {
+    return { ok: false };
+  }
 }
 
 /**
@@ -90,8 +128,8 @@ export function removeFromCart(itemId: string): void {
 /**
  * Clear all items from cart
  */
-export function clearCart(): void {
-  saveCart([]);
+export function clearCart(): boolean {
+  return saveCart([]);
 }
 
 /**

@@ -2,7 +2,7 @@
 
 import type { Route } from "next";
 import type { CSSProperties } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Tangerine } from "next/font/google";
@@ -10,6 +10,7 @@ import {
   appetizerSections,
   APPETIZER_SURCHARGE_NOTE,
 } from "@/lib/appetizer-data";
+import { getReservationCoursesForServicePeriod } from "@/lib/reservation-config";
 
 const tangerine = Tangerine({
   subsets: ["latin"],
@@ -56,7 +57,7 @@ const courseTabs: readonly CourseTab[] = [
     items: [
       {
         headingHtml:
-          '<span class="menu-tab-main">一口前菜<span class="menu-tab-badge menu-tab-sub">　2 種</span></span>',
+          '<span class="menu-tab-main">一口前菜</span>',
       },
       {
         headingHtml:
@@ -83,7 +84,7 @@ const courseTabs: readonly CourseTab[] = [
     items: [
       {
         headingHtml:
-          '<span class="menu-tab-main">一口前菜<span class="menu-tab-badge menu-tab-sub">　3 種</span></span>',
+          '<span class="menu-tab-main">一口前菜</span>',
       },
       {
         headingHtml:
@@ -120,7 +121,7 @@ const courseTabs: readonly CourseTab[] = [
     items: [
       {
         headingHtml:
-          '<span class="menu-tab-main">一口前菜<span class="menu-tab-badge menu-tab-sub">　3 種</span></span>',
+          '<span class="menu-tab-main">一口前菜</span>',
       },
       {
         headingHtml:
@@ -162,6 +163,25 @@ const courseTabs: readonly CourseTab[] = [
   },
 ];
 
+function getBookingHref(courseId: CourseTabId): Route {
+  const servicePeriod = courseId === "petite" ? "LUNCH" : "DINNER";
+  const courseLabel =
+    courseId === "petite"
+      ? "プティラ"
+      : courseId === "joie"
+        ? "ジョワ"
+        : "サンキャトル";
+  const course = getReservationCoursesForServicePeriod(servicePeriod).find((option) =>
+    option.label.startsWith(courseLabel)
+  )?.value;
+  const params = new URLSearchParams({
+    servicePeriod,
+    course: course ?? "",
+  });
+
+  return `/booking?${params.toString()}` as Route;
+}
+
 function useIsMobileLayout(breakpointPx = 767) {
   const [isMobile, setIsMobile] = useState(false);
 
@@ -196,6 +216,7 @@ export default function MenuPage() {
     : TOP_GAP_PX;
   const courseAnchorScrollMarginPx = topGapPx + 24;
   const activeCourse = courseTabs.find((course) => course.id === activeTab) ?? courseTabs[0];
+  const bookingHref = useMemo(() => getBookingHref(activeCourse.id), [activeCourse.id]);
   const hasDesktopSlide = activeCourse.id === "petite";
   const hasAppetizerPanel = activeCourse.id === "joie" || activeCourse.id === "cent-quatre";
   const effectiveSlideHeightPx = panelHeightPx || DESKTOP_SLIDE_HEIGHT_PX;
@@ -286,7 +307,7 @@ export default function MenuPage() {
     >
       <div className="sticky bottom-4 z-40 mx-auto flex w-full max-w-[22rem] justify-center px-4 md:hidden">
         <Link
-          href="/booking"
+          href={bookingHref}
           className="inline-flex h-12 w-full items-center justify-center rounded-full bg-[#b32626] px-6 text-sm font-semibold tracking-[0.22em] text-white shadow-lg transition hover:brightness-[1.05] active:brightness-[0.98]"
         >
           予約する
@@ -312,7 +333,7 @@ export default function MenuPage() {
           </h1>
           <div className="flex flex-col items-center justify-center gap-3 pt-2 md:flex-row">
             <Link
-              href="/booking"
+              href={bookingHref}
               className="inline-flex h-11 items-center justify-center rounded-full bg-[#b32626] px-7 text-sm font-semibold tracking-[0.2em] text-white shadow-lg transition hover:brightness-[1.05] active:brightness-[0.98]"
             >
               コースを見て予約する
@@ -461,7 +482,7 @@ export default function MenuPage() {
                               item.detailLink.mobileOnly ? "md:hidden" : ""
                             }`}
                           >
-                            <Link href={item.detailLink.href} className="menu-tab-linklike">
+                            <Link href={item.detailLink.href} className="menu-tab-linklike inline-flex min-h-11 items-center px-3">
                               別の前菜を見る
                             </Link>
                           </div>
@@ -607,7 +628,7 @@ export default function MenuPage() {
             </div>
             <div className="flex flex-col gap-3 md:items-end">
               <Link
-                href="/booking"
+                href={bookingHref}
                 className="inline-flex h-12 items-center justify-center rounded-full bg-[#b32626] px-8 text-sm font-semibold tracking-[0.2em] text-white shadow-lg transition hover:brightness-[1.05] active:brightness-[0.98]"
               >
                 予約フォームへ

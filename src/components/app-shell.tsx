@@ -90,13 +90,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <p>bistro centquatre 104</p>
             <div className="flex flex-wrap gap-x-4 gap-y-2">
-              <Link href="/privacy" className="underline underline-offset-2">
+              <Link href="/privacy" className="inline-flex min-h-11 items-center underline underline-offset-2">
                 プライバシーポリシー
               </Link>
-              <Link href="/legal" className="underline underline-offset-2">
+              <Link href="/legal" className="inline-flex min-h-11 items-center underline underline-offset-2">
                 特定商取引法に基づく表記
               </Link>
-              <Link href="/faq" className="underline underline-offset-2">
+              <Link href="/faq" className="inline-flex min-h-11 items-center underline underline-offset-2">
                 ご予約・キャンセル案内
               </Link>
             </div>

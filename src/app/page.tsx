@@ -497,7 +497,7 @@ const readMoreButtonClassName = `
   z-20
   pointer-events-auto
   cursor-pointer
-  inline-flex h-10 items-center whitespace-nowrap
+  inline-flex min-h-11 items-center whitespace-nowrap
   rounded-[2px]
   border border-[#c7a357]
   bg-gradient-to-b from-[#e6d0a2] to-[#d2ab66]
@@ -863,7 +863,7 @@ const readMoreButtonStyle = {
         onClick={() => setMenuKind(k)}
         aria-pressed={active}
         className={[
-          "h-10 rounded-[2px] px-6 text-sm tracking-[0.18em] transition select-none",
+          "h-11 rounded-[2px] px-6 text-sm tracking-[0.18em] transition select-none",
           active
             ? "bg-[#2f1b0f] text-white shadow"
             : "bg-[#f5e7ce] text-[#2f1b0f] border border-[#cfa96d]/40 hover:brightness-[0.98]",
@@ -1051,12 +1051,12 @@ const readMoreButtonStyle = {
               </div>
               <div className="flex w-full flex-wrap items-center gap-2 pl-[38px] text-[14px] font-normal text-black md:flex-nowrap md:pl-0 md:text-lg">
                 <span>連絡先：</span>
-                <a className="whitespace-nowrap underline text-black" href={CONTACT_TEL_LINK}>
+                <a className="inline-flex min-h-11 items-center whitespace-nowrap px-2 -mx-2 underline text-black" href={CONTACT_TEL_LINK}>
                   {CONTACT_PHONE_DISPLAY}
                 </a>
                 <Link
                   href="/contact"
-                  className="inline-flex h-9 items-center justify-center rounded-full border border-[#c7a357] bg-white px-4 text-[11px] font-medium tracking-[0.14em] text-[#2f1b0f] shadow-[0_1px_0_rgba(0,0,0,0.06)] transition hover:bg-[#f8f2e6] active:brightness-[0.98] md:h-10 md:px-6 md:text-[12px] md:tracking-[0.18em]"
+                  className="inline-flex h-11 items-center justify-center rounded-full border border-[#c7a357] bg-white px-4 text-[11px] font-medium tracking-[0.14em] text-[#2f1b0f] shadow-[0_1px_0_rgba(0,0,0,0.06)] transition hover:bg-[#f8f2e6] active:brightness-[0.98] md:h-10 md:px-6 md:text-[12px] md:tracking-[0.18em]"
                 >
                   お問い合わせ
                 </Link>

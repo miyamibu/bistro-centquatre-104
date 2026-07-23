@@ -133,6 +133,10 @@ export function normalizeReservationDateInput(value: string | undefined, fallbac
     return fallback;
   }
 
+  if (Number.isNaN(parsed.getTime()) || formatJst(parsed) !== value) {
+    return fallback;
+  }
+
   if (canAcceptWebReservation(parsed)) {
     return value;
   }

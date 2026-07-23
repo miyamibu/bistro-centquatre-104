@@ -2,24 +2,73 @@ import {
   getDefaultArrivalTimeForCourse,
   inferReservationServicePeriodFromArrivalTime,
   inferReservationServicePeriodFromCourse,
+  isBeforeOpeningReservationDate,
   isArrivalTimeAllowed,
   normalizeReservationDateInput,
 } from "@/lib/booking-rules";
-import { jstDateFromString } from "@/lib/dates";
+import { addMonths } from "date-fns";
+import {
+  formatJst,
+  jstDateFromString,
+  todayJst,
+} from "@/lib/dates";
 import {
   getReservationCoursesForServicePeriod,
   RESERVATION_CONFIG,
   type ReservationServicePeriodKey,
 } from "@/lib/reservation-config";
 
-export function sanitizeDate(value: string | undefined, fallback: string) {
+export function sanitizeDate(value: string | undefined, fallback: string): string {
+  if (isExplicitReservationDateUsable(value)) {
+    return value;
+  }
+
   const normalized = normalizeReservationDateInput(value, fallback);
   try {
     const parsed = jstDateFromString(normalized);
-    return Number.isNaN(parsed.getTime()) ? fallback : normalized;
+    return Number.isNaN(parsed.getTime()) || formatJst(parsed) !== normalized ? fallback : normalized;
   } catch {
     return fallback;
   }
+}
+
+export function isExplicitReservationDateUsable(
+  value: string | undefined,
+  referenceDate: Date = todayJst()
+): value is string {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+
+  try {
+    const parsed = jstDateFromString(value);
+    if (!Number.isFinite(parsed.getTime()) || formatJst(parsed) !== value) {
+      return false;
+    }
+
+    const referenceDateKey = formatJst(referenceDate);
+    const maxDateKey = formatJst(addMonths(referenceDate, RESERVATION_CONFIG.bookingWindowMonths));
+    return (
+      !isBeforeOpeningReservationDate(parsed) &&
+      value > referenceDateKey &&
+      value <= maxDateKey
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function shouldSearchFutureAvailability(partySize: number) {
+  return partySize < 9;
+}
+
+export function findFirstWebBookableDate(
+  availabilityByDate: Record<string, { webBookable: boolean } | undefined>,
+  notBefore: string
+) {
+  return Object.keys(availabilityByDate)
+    .filter((date) => date >= notBefore && availabilityByDate[date]?.webBookable === true)
+    .sort()[0] ?? null;
 }
 
 export function sanitizePartySize(value: string | undefined) {

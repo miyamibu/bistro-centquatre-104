@@ -7,6 +7,11 @@ const auditLogCreateMock = vi.hoisted(() => vi.fn());
 const ensureReservationSchemaReadyMock = vi.hoisted(() => vi.fn());
 const findReservationByIdCompatMock = vi.hoisted(() => vi.fn());
 const updateReservationStatusCompatMock = vi.hoisted(() => vi.fn());
+const txClient = {
+  reservationStatusAuditLog: {
+    create: auditLogCreateMock,
+  },
+};
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -35,13 +40,7 @@ beforeEach(() => {
     RATE_LIMIT_HASH_SECRET: "test-rate-limit-hash-secret-32chars",
   };
   ensureReservationSchemaReadyMock.mockResolvedValue(undefined);
-  transactionMock.mockImplementation(async (callback: (tx: unknown) => unknown) =>
-    callback({
-      reservationStatusAuditLog: {
-        create: auditLogCreateMock,
-      },
-    })
-  );
+  transactionMock.mockImplementation(async (callback: (tx: unknown) => unknown) => callback(txClient));
   findReservationByIdCompatMock.mockReset();
   updateReservationStatusCompatMock.mockReset();
   auditLogCreateMock.mockReset();
@@ -115,10 +114,12 @@ describe("admin reservation status transitions", () => {
 
     expect(response.status).toBe(200);
     expect(updateReservationStatusCompatMock).toHaveBeenCalledWith(
-      expect.anything(),
+      txClient,
       "res-1",
+      ReservationStatus.CONFIRMED,
       ReservationStatus.DONE
     );
+    expect(findReservationByIdCompatMock).toHaveBeenCalledWith(txClient, "res-1");
     expect(auditLogCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         reservationId: "res-1",
@@ -127,5 +128,18 @@ describe("admin reservation status transitions", () => {
         reason: null,
       }),
     });
+  });
+
+  it("returns a conflict when the compare-and-set update loses a race", async () => {
+    findReservationByIdCompatMock.mockResolvedValue(reservation(ReservationStatus.CONFIRMED));
+    updateReservationStatusCompatMock.mockResolvedValue(null);
+
+    const response = await patch(ReservationStatus.DONE);
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "RESERVATION_STATUS_CONFLICT",
+    });
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 });

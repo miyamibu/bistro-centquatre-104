@@ -321,15 +321,6 @@ export async function runIdempotentMutation<TBody>(input: {
       };
     }
 
-    const { error: cleanupError } = await supabaseServer
-      .from("api_idempotency")
-      .delete()
-      .eq("id", claim.record.id);
-
-    if (cleanupError) {
-      throw createActionError(500, "IDEMPOTENCY_CLEANUP_FAILED", "Idempotency cleanup failed");
-    }
-
     throw error;
   }
 }

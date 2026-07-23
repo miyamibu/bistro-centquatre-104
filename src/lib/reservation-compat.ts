@@ -210,13 +210,17 @@ export async function createReservationCompat(
 export async function updateReservationStatusCompat(
   client: ReservationClient,
   id: string,
+  currentStatus: ReservationStatus,
   status: ReservationStatus
 ) {
   try {
-    return await client.reservation.update({
-      where: { id },
+    const result = await client.reservation.updateMany({
+      where: { id, status: currentStatus },
       data: { status },
     });
+    if (result.count === 0) return null;
+
+    return await client.reservation.findUnique({ where: { id } });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
       return null;
