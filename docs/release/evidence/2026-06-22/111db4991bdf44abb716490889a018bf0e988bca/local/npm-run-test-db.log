@@ -1,0 +1,13 @@
+
+> bistro-reservation@0.1.0 test:db
+> vitest run tests/*-db.test.ts --maxWorkers=1
+
+
+ RUN  v4.1.9 /Users/mimac/Desktop/レストラン予約サイト_本体とバックアップ/bistro-reservation-go-implementation
+
+
+ Test Files  2 passed (2)
+      Tests  7 passed (7)
+   Start at  08:38:24
+   Duration  658ms (transform 103ms, setup 0ms, import 167ms, tests 277ms, environment 0ms)
+

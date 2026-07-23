@@ -1,0 +1,13 @@
+
+> bistro-reservation@0.1.0 test
+> vitest run
+
+
+ RUN  v4.1.9 /Users/mimac/Desktop/レストラン予約サイト_本体とバックアップ/bistro-reservation-go-implementation
+
+
+ Test Files  20 passed | 2 skipped (22)
+      Tests  132 passed | 7 skipped (139)
+   Start at  08:32:59
+   Duration  544ms (transform 1.03s, setup 0ms, import 1.52s, tests 1.05s, environment 1ms)
+

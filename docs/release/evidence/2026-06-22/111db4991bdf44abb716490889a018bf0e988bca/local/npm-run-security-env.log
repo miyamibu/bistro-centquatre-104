@@ -1,0 +1,7 @@
+
+> bistro-reservation@0.1.0 security:env
+> node scripts/security/check-env-permissions.mjs
+
+[security:env] .env.local が存在しないため権限チェックをスキップしました
+[security:env] .env.local は Git 管理対象ではありません
+[security:env] チェックを完了しました

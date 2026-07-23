@@ -1,0 +1,664 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<AppiumAUT>
+  <XCUIElementTypeApplication type="XCUIElementTypeApplication" name="Safari" label="Safari" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="" processId="9141" bundleId="com.apple.mobilesafari">
+    <XCUIElementTypeWindow type="XCUIElementTypeWindow" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+      <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+        <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+          <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                    <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                      <XCUIElementTypeOther type="XCUIElementTypeOther" name="SafariWindow?View=Narrow&amp;BarsKeptMinimized=false&amp;UUID=4007E92D-C79A-406A-B6F4-85C74EE7F313&amp;UsingLoweredBar=true&amp;IsSecure=true&amp;IsTabBarAvailable=false" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                        <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                          <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="34" index="0" traits="">
+                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="34" index="0" traits=""/>
+                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="34" index="1" traits=""/>
+                            </XCUIElementTypeOther>
+                            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="47" index="1" traits=""/>
+                            <XCUIElementTypeScrollView type="XCUIElementTypeScrollView" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="844" index="2" traits="">
+                              <XCUIElementTypeOther type="XCUIElementTypeOther" name="TabDocument?IsLoadedUsingDesktopUserAgent=false&amp;InReaderMode=false&amp;UUID=5A48A9B4-D693-4300-A56B-B9D32557664C&amp;IsPrivate=false&amp;IsPageLoaded=true&amp;WebViewProcessID=9142" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                                <XCUIElementTypeWebView type="XCUIElementTypeWebView" name="WebView" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                                  <XCUIElementTypeWebView type="XCUIElementTypeWebView" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                                    <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="844" index="0" traits=""/>
+                                    <XCUIElementTypeWebView type="XCUIElementTypeWebView" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="844" index="1" traits="">
+                                      <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                                        <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                                          <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="-329" width="390" height="844" index="0" traits="">
+                                            <XCUIElementTypeOther type="XCUIElementTypeOther" name="Wでオトク！お友達紹介でそれぞれにカーシェアeチケットプレゼント | カーシェアリングのタイムズカー（旧：タイムズカーシェア）" label="Wでオトク！お友達紹介でそれぞれにカーシェアeチケットプレゼント | カーシェアリングのタイムズカー（旧：タイムズカーシェア）" enabled="true" visible="false" accessible="false" x="0" y="-329" width="390" height="4496" index="0" traits="">
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" name="バナー" label="バナー" enabled="true" visible="false" accessible="false" x="0" y="-329" width="390" height="56" index="0" traits="">
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="-325" width="181" height="47" index="0" traits="">
+                                                  <XCUIElementTypeLink type="XCUIElementTypeLink" name="Times CAR" label="Times CAR" enabled="true" visible="false" accessible="false" x="5" y="-320" width="136" height="42" index="0" traits="Link">
+                                                    <XCUIElementTypeImage type="XCUIElementTypeImage" name="Times CAR" label="Times CAR" enabled="true" visible="false" accessible="true" x="5" y="-320" width="136" height="42" index="0" traits="Link, Image"/>
+                                                  </XCUIElementTypeLink>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="219" y="-325" width="171" height="51" index="1" traits="">
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="219" y="-325" width="57" height="51" index="0" traits="">
+                                                    <XCUIElementTypeLink type="XCUIElementTypeLink" name="ログイン" label="ログイン" enabled="true" visible="false" accessible="true" x="220" y="-318" width="56" height="33" index="0" traits="Link"/>
+                                                  </XCUIElementTypeOther>
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="276" y="-325" width="57" height="51" index="1" traits="">
+                                                    <XCUIElementTypeLink type="XCUIElementTypeLink" name="FAQ" label="FAQ" enabled="true" visible="false" accessible="true" x="277" y="-318" width="56" height="33" index="0" traits="Link"/>
+                                                  </XCUIElementTypeOther>
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="333" y="-325" width="57" height="51" index="2" traits="">
+                                                    <XCUIElementTypeLink type="XCUIElementTypeLink" name="メニュー" label="メニュー" enabled="true" visible="false" accessible="true" x="334" y="-318" width="56" height="33" index="0" traits="Link"/>
+                                                  </XCUIElementTypeOther>
+                                                </XCUIElementTypeOther>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" value="1" name="お友達紹介 カーシェアeチケットプレゼント" label="お友達紹介 カーシェアeチケットプレゼント" enabled="true" visible="false" accessible="false" x="0" y="-243" width="390" height="201" index="1" traits="Header">
+                                                <XCUIElementTypeImage type="XCUIElementTypeImage" value="1" name="お友達紹介 カーシェアeチケットプレゼント" label="お友達紹介 カーシェアeチケットプレゼント" enabled="true" visible="false" accessible="true" x="0" y="-243" width="390" height="201" index="0" traits="Header, Image"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" value="2" name="概要" label="概要" enabled="true" visible="false" accessible="false" x="0" y="-22" width="390" height="52" index="2" traits="Header">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="概要" name="概要" label="概要" enabled="true" visible="false" accessible="true" x="179" y="-12" width="32" height="21" index="0" traits="Header, StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="9" y="-22" width="372" height="159" index="3" traits="">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="タイムズカー会員様にも、ご入会を検討中の方にもオトクなお知らせです。" name="タイムズカー会員様にも、ご入会を検討中の方にもオトクなお知らせです。" label="タイムズカー会員様にも、ご入会を検討中の方にもオトクなお知らせです。" enabled="true" visible="true" accessible="true" x="9" y="34" width="360" height="34" index="0" traits="StaticText"/>
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="会員様の紹介でタイムズカーにご入会の場合、紹介者様と入会者様のそれぞれにカーシェアeチケット（電子優待券）をプレゼントします。" name="会員様の紹介でタイムズカーにご入会の場合、紹介者様と入会者様のそれぞれにカーシェアeチケット（電子優待券）をプレゼントします。" label="会員様の紹介でタイムズカーにご入会の場合、紹介者様と入会者様のそれぞれにカーシェアeチケット（電子優待券）をプレゼントします。" enabled="true" visible="true" accessible="true" x="9" y="68" width="367" height="51" index="1" traits="StaticText"/>
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="紹介者様にはさらに30カーシェアポイントプレゼント！" name="紹介者様にはさらに30カーシェアポイントプレゼント！" label="紹介者様にはさらに30カーシェアポイントプレゼント！" enabled="true" visible="true" accessible="true" x="9" y="102" width="362" height="34" index="2" traits="StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" value="3" name="【期間限定】お友達紹介キャンペーン実施中！" label="【期間限定】お友達紹介キャンペーン実施中！" enabled="true" visible="true" accessible="false" x="9" y="156" width="372" height="41" index="4" traits="Header">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="【期間限定】お友達紹介キャンペーン実施中！" name="【期間限定】お友達紹介キャンペーン実施中！" label="【期間限定】お友達紹介キャンペーン実施中！" enabled="true" visible="true" accessible="true" x="33" y="166" width="324" height="21" index="0" traits="Header, StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" value="4" name="対象期間" label="対象期間" enabled="true" visible="true" accessible="false" x="27" y="216" width="336" height="21" index="5" traits="Header">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="対象期間" name="対象期間" label="対象期間" enabled="true" visible="true" accessible="true" x="27" y="216" width="53" height="18" index="0" traits="Header, StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="27" y="241" width="336" height="18" index="6" traits="">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="2026年6月1日（月）～2026年8月31日（月）" name="2026年6月1日（月）～2026年8月31日（月）" label="2026年6月1日（月）～2026年8月31日（月）" enabled="true" visible="true" accessible="true" x="27" y="241" width="273" height="17" index="0" traits="StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" value="4" name="キャンペーン特典" label="キャンペーン特典" enabled="true" visible="true" accessible="false" x="27" y="278" width="336" height="21" index="7" traits="Header">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="キャンペーン特典" name="キャンペーン特典" label="キャンペーン特典" enabled="true" visible="true" accessible="true" x="27" y="278" width="105" height="18" index="0" traits="Header, StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="27" y="303" width="336" height="52" index="8" traits="">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="通常の特典に加えて、抽選で" name="通常の特典に加えて、抽選で" label="通常の特典に加えて、抽選で" enabled="true" visible="true" accessible="true" x="27" y="303" width="167" height="17" index="0" traits="StaticText"/>
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="紹介者様・入会者様のペア100組200名様" name="紹介者様・入会者様のペア100組200名様" label="紹介者様・入会者様のペア100組200名様" enabled="true" visible="true" accessible="true" x="27" y="303" width="321" height="34" index="1" traits="StaticText"/>
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="に" name="に" label="に" enabled="true" visible="true" accessible="true" x="120" y="320" width="14" height="17" index="2" traits="StaticText"/>
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="60分カーシェアeチケットをもう1枚プレゼント！" name="60分カーシェアeチケットをもう1枚プレゼント！" label="60分カーシェアeチケットをもう1枚プレゼント！" enabled="true" visible="true" accessible="true" x="27" y="320" width="335" height="34" index="3" traits="StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" value="4" name="注意事項" label="注意事項" enabled="true" visible="true" accessible="false" x="27" y="374" width="336" height="21" index="9" traits="Header">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="注意事項" name="注意事項" label="注意事項" enabled="true" visible="true" accessible="true" x="27" y="374" width="53" height="18" index="0" traits="Header, StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="27" y="399" width="336" height="137" index="10" traits="">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="・「家族プラン」の家族運転者登録は対象外です。" name="・「家族プラン」の家族運転者登録は対象外です。" label="・「家族プラン」の家族運転者登録は対象外です。" enabled="true" visible="true" accessible="true" x="27" y="399" width="294" height="17" index="0" traits="StaticText"/>
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="・当選者の発表は、特典の進呈をもってかえさせていただきます。" name="・当選者の発表は、特典の進呈をもってかえさせていただきます。" label="・当選者の発表は、特典の進呈をもってかえさせていただきます。" enabled="true" visible="true" accessible="true" x="27" y="416" width="334" height="34" index="1" traits="StaticText"/>
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="・キャンペーン特典のeチケットは9月末に進呈予定です（有効期限：2026年10月末まで）。" name="・キャンペーン特典のeチケットは9月末に進呈予定です（有効期限：2026年10月末まで）。" label="・キャンペーン特典のeチケットは9月末に進呈予定です（有効期限：2026年10月末まで）。" enabled="true" visible="true" accessible="true" x="27" y="450" width="324" height="34" index="2" traits="StaticText"/>
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="・「インターネット入会」の場合、各種必要書類のアップロード期限は2026年8月31日（月）、郵送の場合は2026年9月2日（水）必着です。" name="・「インターネット入会」の場合、各種必要書類のアップロード期限は2026年8月31日（月）、郵送の場合は2026年9月2日（水）必着です。" label="・「インターネット入会」の場合、各種必要書類のアップロード期限は2026年8月31日（月）、郵送の場合は2026年9月2日（水）必着です。" enabled="true" visible="true" accessible="true" x="27" y="484" width="334" height="51" index="3" traits="StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="42" y="565" width="306" height="18" index="11" traits="">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="＼入会キャンペーン実施中／" name="＼入会キャンペーン実施中／" label="＼入会キャンペーン実施中／" enabled="true" visible="true" accessible="true" x="111" y="565" width="168" height="17" index="0" traits="StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="42" y="587" width="306" height="69" index="12" traits="">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="タイムズカーに入会すると、月額基本料金（880円/月）が2カ月無料！さらに、抽選で2,200円カーシェアeチケットが当たります。この機会をお見逃しなく！" name="タイムズカーに入会すると、月額基本料金（880円/月）が2カ月無料！さらに、抽選で2,200円カーシェアeチケットが当たります。この機会をお見逃しなく！" label="タイムズカーに入会すると、月額基本料金（880円/月）が2カ月無料！さらに、抽選で2,200円カーシェアeチケットが当たります。この機会をお見逃しなく！" enabled="true" visible="true" accessible="true" x="42" y="587" width="303" height="68" index="0" traits="StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeLink type="XCUIElementTypeLink" name="「入会キャンペーン」についてはこちら" label="「入会キャンペーン」についてはこちら" enabled="true" visible="true" accessible="false" x="52" y="660" width="231" height="17" index="13" traits="Link">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="「入会キャンペーン」についてはこちら" name="「入会キャンペーン」についてはこちら" label="「入会キャンペーン」についてはこちら" enabled="true" visible="true" accessible="true" x="52" y="660" width="231" height="17" index="0" traits="Link, StaticText"/>
+                                              </XCUIElementTypeLink>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" value="2" name="お友達紹介はカンタン3STEP！" label="お友達紹介はカンタン3STEP！" enabled="true" visible="false" accessible="false" x="0" y="745" width="390" height="52" index="14" traits="Header">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="お友達紹介はカンタン3STEP！" name="お友達紹介はカンタン3STEP！" label="お友達紹介はカンタン3STEP！" enabled="true" visible="false" accessible="true" x="83" y="755" width="224" height="21" index="0" traits="Header, StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="9" y="801" width="374" height="595" index="15" traits="">
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="25" y="816" width="69" height="29" index="0" traits="">
+                                                  <XCUIElementTypeImage type="XCUIElementTypeImage" name="STEP1" label="STEP1" enabled="true" visible="false" accessible="true" x="25" y="816" width="69" height="29" index="0" traits="Image"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="107" y="815" width="260" height="26" index="1" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="IC管理番号を教える" name="IC管理番号を教える" label="IC管理番号を教える" enabled="true" visible="false" accessible="true" x="107" y="815" width="179" height="26" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="25" y="859" width="69" height="155" index="2" traits="">
+                                                  <XCUIElementTypeImage type="XCUIElementTypeImage" name="紹介者" label="紹介者" enabled="true" visible="false" accessible="true" x="25" y="859" width="69" height="89" index="0" traits="Image"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="入会者様にタイムズカー会員番号（IC管理番号）を教えます。" name="入会者様にタイムズカー会員番号（IC管理番号）を教えます。" label="入会者様にタイムズカー会員番号（IC管理番号）を教えます。" enabled="true" visible="false" accessible="true" x="107" y="858" width="231" height="40" index="3" traits="StaticText"/>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="107" y="912" width="260" height="52" index="4" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="※会員カードをお持ちでない場合は、マイページにて会員番号をご確認ください。" name="※会員カードをお持ちでない場合は、マイページにて会員番号をご確認ください。" label="※会員カードをお持ちでない場合は、マイページにて会員番号をご確認ください。" enabled="true" visible="false" accessible="true" x="107" y="917" width="259" height="32" index="0" traits="StaticText"/>
+                                                  <XCUIElementTypeLink type="XCUIElementTypeLink" name="マイページはこちら" label="マイページはこちら" enabled="true" visible="false" accessible="false" x="117" y="947" width="111" height="17" index="1" traits="Link">
+                                                    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="マイページはこちら" name="マイページはこちら" label="マイページはこちら" enabled="true" visible="false" accessible="true" x="117" y="947" width="111" height="17" index="0" traits="Link, StaticText"/>
+                                                  </XCUIElementTypeLink>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="107" y="967" width="260" height="47" index="5" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="※入会者様へは「-」（ハイフン）を抜いた10桁のIC管理番号（半角数字）をお教えください。" name="※入会者様へは「-」（ハイフン）を抜いた10桁のIC管理番号（半角数字）をお教えください。" label="※入会者様へは「-」（ハイフン）を抜いた10桁のIC管理番号（半角数字）をお教えください。" enabled="true" visible="false" accessible="true" x="107" y="967" width="256" height="47" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="25" y="1028" width="342" height="352" index="6" traits="">
+                                                  <XCUIElementTypeImage type="XCUIElementTypeImage" name="会員カード裏面 IC管理番号の記載箇所" label="会員カード裏面 IC管理番号の記載箇所" enabled="true" visible="false" accessible="true" x="25" y="1028" width="342" height="172" index="0" traits="Image"/>
+                                                  <XCUIElementTypeImage type="XCUIElementTypeImage" name="マイページ 会員番号" label="マイページ 会員番号" enabled="true" visible="false" accessible="true" x="25" y="1209" width="342" height="171" index="1" traits="Image"/>
+                                                </XCUIElementTypeOther>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="9" y="1398" width="372" height="30" index="16" traits="">
+                                                <XCUIElementTypeImage type="XCUIElementTypeImage" name="▼" label="▼" enabled="true" visible="false" accessible="true" x="169" y="1398" width="52" height="30" index="0" traits="Image"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="9" y="1430" width="374" height="387" index="17" traits="">
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="25" y="1446" width="69" height="29" index="0" traits="">
+                                                  <XCUIElementTypeImage type="XCUIElementTypeImage" name="STEP2" label="STEP2" enabled="true" visible="false" accessible="true" x="25" y="1446" width="69" height="29" index="0" traits="Image"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="107" y="1445" width="260" height="49" index="1" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="入会時に紹介者コードを入力する" name="入会時に紹介者コードを入力する" label="入会時に紹介者コードを入力する" enabled="true" visible="false" accessible="true" x="107" y="1445" width="250" height="49" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="25" y="1507" width="69" height="109" index="2" traits="">
+                                                  <XCUIElementTypeImage type="XCUIElementTypeImage" name="入会者" label="入会者" enabled="true" visible="false" accessible="true" x="25" y="1507" width="69" height="89" index="0" traits="Image"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="入会申込時、紹介者コード欄に紹介者のタイムズカー会員番号（IC管理番号）を入力します。" name="入会申込時、紹介者コード欄に紹介者のタイムズカー会員番号（IC管理番号）を入力します。" label="入会申込時、紹介者コード欄に紹介者のタイムズカー会員番号（IC管理番号）を入力します。" enabled="true" visible="false" accessible="true" x="107" y="1506" width="248" height="59" index="3" traits="StaticText"/>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="107" y="1579" width="260" height="37" index="4" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="※紹介者コードは10桁の半角数字です。" name="※紹介者コードは10桁の半角数字です。" label="※紹介者コードは10桁の半角数字です。" enabled="true" visible="false" accessible="true" x="107" y="1584" width="224" height="17" index="0" traits="StaticText"/>
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="「-」（ハイフン）の入力は必要ありません。" name="「-」（ハイフン）の入力は必要ありません。" label="「-」（ハイフン）の入力は必要ありません。" enabled="true" visible="false" accessible="true" x="107" y="1599" width="252" height="17" index="1" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="25" y="1630" width="342" height="171" index="5" traits="">
+                                                  <XCUIElementTypeImage type="XCUIElementTypeImage" name="入会申込フォーム 紹介者コード欄" label="入会申込フォーム 紹介者コード欄" enabled="true" visible="false" accessible="true" x="25" y="1630" width="342" height="171" index="0" traits="Image"/>
+                                                </XCUIElementTypeOther>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="9" y="1819" width="372" height="30" index="18" traits="">
+                                                <XCUIElementTypeImage type="XCUIElementTypeImage" name="▼" label="▼" enabled="true" visible="false" accessible="true" x="169" y="1819" width="52" height="30" index="0" traits="Image"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="9" y="1851" width="374" height="374" index="19" traits="">
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="25" y="1867" width="69" height="29" index="0" traits="">
+                                                  <XCUIElementTypeImage type="XCUIElementTypeImage" name="STEP3" label="STEP3" enabled="true" visible="false" accessible="true" x="25" y="1867" width="69" height="29" index="0" traits="Image"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="107" y="1866" width="260" height="49" index="1" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="入会完了後、タイムズカーを利用する" name="入会完了後、タイムズカーを利用する" label="入会完了後、タイムズカーを利用する" enabled="true" visible="false" accessible="true" x="107" y="1866" width="250" height="49" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="25" y="1928" width="69" height="96" index="2" traits="">
+                                                  <XCUIElementTypeImage type="XCUIElementTypeImage" name="入会者" label="入会者" enabled="true" visible="false" accessible="true" x="25" y="1928" width="69" height="89" index="0" traits="Image"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="107" y="1927" width="260" height="97" index="3" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="「スグ乗り入会」ならすぐに、「クイック入会・インターネット入会」なら会員カードを受け取った日からタイムズカーをご利用いただけます。" name="「スグ乗り入会」ならすぐに、「クイック入会・インターネット入会」なら会員カードを受け取った日からタイムズカーをご利用いただけます。" label="「スグ乗り入会」ならすぐに、「クイック入会・インターネット入会」なら会員カードを受け取った日からタイムズカーをご利用いただけます。" enabled="true" visible="false" accessible="true" x="107" y="1927" width="247" height="97" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="25" y="2038" width="342" height="171" index="4" traits=""/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="9" y="2227" width="372" height="30" index="20" traits="">
+                                                <XCUIElementTypeImage type="XCUIElementTypeImage" name="▼" label="▼" enabled="true" visible="false" accessible="true" x="169" y="2227" width="52" height="30" index="0" traits="Image"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="9" y="2241" width="372" height="411" index="21" traits="">
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="9" y="2241" width="372" height="209" index="0" traits="">
+                                                  <XCUIElementTypeImage type="XCUIElementTypeImage" name="紹介特典" label="紹介特典" enabled="true" visible="false" accessible="true" x="9" y="2241" width="372" height="204" index="0" traits="Image"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="9" y="2449" width="372" height="203" index="1" traits="">
+                                                  <XCUIElementTypeImage type="XCUIElementTypeImage" name="入会特典" label="入会特典" enabled="true" visible="false" accessible="true" x="9" y="2449" width="372" height="203" index="0" traits="Image"/>
+                                                </XCUIElementTypeOther>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="65" y="2686" width="260" height="41" index="22" traits="">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="このページをお友達に紹介する" name="このページをお友達に紹介する" label="このページをお友達に紹介する" enabled="true" visible="false" accessible="true" x="92" y="2696" width="206" height="20" index="0" traits="StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="2734" width="390" height="39" index="23" traits="">
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="59" y="2743" width="84" height="30" index="0" traits="">
+                                                  <XCUIElementTypeLink type="XCUIElementTypeLink" name="LINEで送る" label="LINEで送る" enabled="true" visible="false" accessible="false" x="59" y="2743" width="84" height="30" index="0" traits="Link">
+                                                    <XCUIElementTypeImage type="XCUIElementTypeImage" name="LINEで送る" label="LINEで送る" enabled="true" visible="false" accessible="true" x="59" y="2743" width="84" height="30" index="0" traits="Link, Image"/>
+                                                  </XCUIElementTypeLink>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="153" y="2742" width="84" height="31" index="1" traits="">
+                                                  <XCUIElementTypeLink type="XCUIElementTypeLink" name="Xポスト" label="Xポスト" enabled="true" visible="false" accessible="false" x="153" y="2742" width="84" height="31" index="0" traits="Link">
+                                                    <XCUIElementTypeImage type="XCUIElementTypeImage" name="Xポスト" label="Xポスト" enabled="true" visible="false" accessible="true" x="153" y="2742" width="84" height="31" index="0" traits="Link, Image"/>
+                                                  </XCUIElementTypeLink>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="247" y="2742" width="84" height="31" index="2" traits="">
+                                                  <XCUIElementTypeLink type="XCUIElementTypeLink" name="facebookシェア" label="facebookシェア" enabled="true" visible="false" accessible="false" x="247" y="2742" width="84" height="31" index="0" traits="Link">
+                                                    <XCUIElementTypeImage type="XCUIElementTypeImage" name="facebookシェア" label="facebookシェア" enabled="true" visible="false" accessible="true" x="247" y="2742" width="84" height="31" index="0" traits="Link, Image"/>
+                                                  </XCUIElementTypeLink>
+                                                </XCUIElementTypeOther>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="65" y="2802" width="260" height="41" index="24" traits="">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="お友達から紹介を受けて入会する" name="お友達から紹介を受けて入会する" label="お友達から紹介を受けて入会する" enabled="true" visible="false" accessible="true" x="84" y="2812" width="222" height="20" index="0" traits="StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeLink type="XCUIElementTypeLink" name="入会申込はこちら" label="入会申込はこちら" enabled="true" visible="false" accessible="false" x="130" y="2872" width="129" height="22" index="25" traits="Link">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="入会申込はこちら" name="入会申込はこちら" label="入会申込はこちら" enabled="true" visible="false" accessible="true" x="130" y="2872" width="129" height="22" index="0" traits="Link, StaticText"/>
+                                              </XCUIElementTypeLink>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" value="2" name="タイムズカーのおすすめポイント" label="タイムズカーのおすすめポイント" enabled="true" visible="false" accessible="false" x="9" y="2963" width="372" height="56" index="26" traits="Header">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="タイムズカーのおすすめポイント" name="タイムズカーのおすすめポイント" label="タイムズカーのおすすめポイント" enabled="true" visible="false" accessible="true" x="45" y="2964" width="300" height="27" index="0" traits="Header, StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="9" y="3001" width="372" height="101" index="27" traits="">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="タイムズカーは、24時間365日、クルマを使いたい時に使いたい分だけ使えるベンリなカーシェアサービスです。" name="タイムズカーは、24時間365日、クルマを使いたい時に使いたい分だけ使えるベンリなカーシェアサービスです。" label="タイムズカーは、24時間365日、クルマを使いたい時に使いたい分だけ使えるベンリなカーシェアサービスです。" enabled="true" visible="false" accessible="true" x="31" y="3003" width="324" height="57" index="0" traits="StaticText"/>
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="ちょっとした外出やお買い物からレジャーまで、シーンに合わせてスマートに利用できます。" name="ちょっとした外出やお買い物からレジャーまで、シーンに合わせてスマートに利用できます。" label="ちょっとした外出やお買い物からレジャーまで、シーンに合わせてスマートに利用できます。" enabled="true" visible="false" accessible="true" x="31" y="3063" width="320" height="37" index="1" traits="StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeImage type="XCUIElementTypeImage" name="車のアイコン" label="車のアイコン" enabled="true" visible="false" accessible="true" x="9" y="3121" width="125" height="81" index="28" traits="Image"/>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="9" y="3210" width="125" height="17" index="29" traits="">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="豊富な車種" name="豊富な車種" label="豊富な車種" enabled="true" visible="false" accessible="true" x="41" y="3210" width="61" height="17" index="0" traits="StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeImage type="XCUIElementTypeImage" name="都道府県アイコン" label="都道府県アイコン" enabled="true" visible="false" accessible="true" x="133" y="3121" width="124" height="81" index="30" traits="Image"/>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="133" y="3210" width="124" height="31" index="31" traits="">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="全国各地で" name="全国各地で" label="全国各地で" enabled="true" visible="false" accessible="true" x="164" y="3210" width="61" height="17" index="0" traits="StaticText"/>
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="使える" name="使える" label="使える" enabled="true" visible="false" accessible="true" x="176" y="3224" width="37" height="17" index="1" traits="StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeImage type="XCUIElementTypeImage" name="利用料金220円/15分～のアイコン" label="利用料金220円/15分～のアイコン" enabled="true" visible="false" accessible="true" x="256" y="3121" width="125" height="81" index="32" traits="Image"/>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="256" y="3210" width="125" height="31" index="33" traits="">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="利用料金" name="利用料金" label="利用料金" enabled="true" visible="false" accessible="true" x="294" y="3210" width="49" height="17" index="0" traits="StaticText"/>
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="220円/15分～" name="220円/15分～" label="220円/15分～" enabled="true" visible="false" accessible="true" x="275" y="3224" width="87" height="17" index="1" traits="StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="9" y="3254" width="372" height="21" index="34" traits="">
+                                                <XCUIElementTypeLink type="XCUIElementTypeLink" name="タイムズカーについて詳しくはこちら" label="タイムズカーについて詳しくはこちら" enabled="true" visible="false" accessible="false" x="91" y="3256" width="218" height="17" index="0" traits="Link">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="タイムズカーについて詳しくはこちら" name="タイムズカーについて詳しくはこちら" label="タイムズカーについて詳しくはこちら" enabled="true" visible="false" accessible="true" x="91" y="3256" width="218" height="17" index="0" traits="Link, StaticText"/>
+                                                </XCUIElementTypeLink>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" value="2" name="注意事項" label="注意事項" enabled="true" visible="false" accessible="false" x="0" y="3334" width="390" height="52" index="35" traits="Header">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="注意事項" name="注意事項" label="注意事項" enabled="true" visible="false" accessible="true" x="164" y="3344" width="62" height="21" index="0" traits="Header, StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" value="3" name="適用条件について" label="適用条件について" enabled="true" visible="false" accessible="false" x="9" y="3388" width="372" height="21" index="36" traits="Header">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="適用条件について" name="適用条件について" label="適用条件について" enabled="true" visible="false" accessible="true" x="23" y="3388" width="124" height="21" index="0" traits="Header, StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="9" y="3417" width="372" height="35" index="37" traits="">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="※ご入会翌月時点で、紹介者様、入会者様ともに有効な個人会員である場合のみ対象です。" name="※ご入会翌月時点で、紹介者様、入会者様ともに有効な個人会員である場合のみ対象です。" label="※ご入会翌月時点で、紹介者様、入会者様ともに有効な個人会員である場合のみ対象です。" enabled="true" visible="false" accessible="true" x="9" y="3417" width="359" height="34" index="0" traits="StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="9" y="3451" width="372" height="18" index="38" traits="">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="※過去にご入会されていた方は対象外です。" name="※過去にご入会されていた方は対象外です。" label="※過去にご入会されていた方は対象外です。" enabled="true" visible="false" accessible="true" x="9" y="3451" width="256" height="17" index="0" traits="StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="9" y="3468" width="372" height="18" index="39" traits="">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="※家族プランの家族運転者追加登録は対象外です。" name="※家族プランの家族運転者追加登録は対象外です。" label="※家族プランの家族運転者追加登録は対象外です。" enabled="true" visible="false" accessible="true" x="9" y="3468" width="294" height="17" index="0" traits="StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" value="3" name="特典について" label="特典について" enabled="true" visible="false" accessible="false" x="9" y="3508" width="372" height="21" index="40" traits="Header">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="特典について" name="特典について" label="特典について" enabled="true" visible="false" accessible="true" x="23" y="3508" width="93" height="21" index="0" traits="Header, StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="9" y="3537" width="372" height="35" index="41" traits="">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="※紹介特典は入会1名様ごとに進呈します。何名様でもご紹介いただけます。" name="※紹介特典は入会1名様ごとに進呈します。何名様でもご紹介いただけます。" label="※紹介特典は入会1名様ごとに進呈します。何名様でもご紹介いただけます。" enabled="true" visible="false" accessible="true" x="9" y="3537" width="367" height="34" index="0" traits="StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="9" y="3571" width="372" height="35" index="42" traits="">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="※入会者様が家族プランで複数名入会された場合、紹介特典は1名様分、入会特典は主契約者様のみの進呈です。" name="※入会者様が家族プランで複数名入会された場合、紹介特典は1名様分、入会特典は主契約者様のみの進呈です。" label="※入会者様が家族プランで複数名入会された場合、紹介特典は1名様分、入会特典は主契約者様のみの進呈です。" enabled="true" visible="false" accessible="true" x="9" y="3571" width="368" height="34" index="0" traits="StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="9" y="3605" width="372" height="35" index="43" traits="">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="※紹介特典および入会特典は、入会者様のご入会完了（登録完了メール到着）翌月の中旬に進呈します。" name="※紹介特典および入会特典は、入会者様のご入会完了（登録完了メール到着）翌月の中旬に進呈します。" label="※紹介特典および入会特典は、入会者様のご入会完了（登録完了メール到着）翌月の中旬に進呈します。" enabled="true" visible="false" accessible="true" x="9" y="3605" width="360" height="34" index="0" traits="StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="9" y="3639" width="372" height="35" index="44" traits="">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="※特典のカーシェアeチケットの有効期限は進呈した月の翌月末までです。" name="※特典のカーシェアeチケットの有効期限は進呈した月の翌月末までです。" label="※特典のカーシェアeチケットの有効期限は進呈した月の翌月末までです。" enabled="true" visible="false" accessible="true" x="9" y="3639" width="367" height="34" index="0" traits="StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="9" y="3673" width="372" height="52" index="45" traits="">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="※入会申込時に紹介者コード欄へ紹介者様のIC管理番号のご入力がない、もしくは、誤入力された場合、紹介特典および入会特典は適用されません。" name="※入会申込時に紹介者コード欄へ紹介者様のIC管理番号のご入力がない、もしくは、誤入力された場合、紹介特典および入会特典は適用されません。" label="※入会申込時に紹介者コード欄へ紹介者様のIC管理番号のご入力がない、もしくは、誤入力された場合、紹介特典および入会特典は適用されません。" enabled="true" visible="false" accessible="true" x="9" y="3673" width="361" height="51" index="0" traits="StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="9" y="3724" width="372" height="52" index="46" traits="">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="※カーシェアeチケットとは、タイムズカーで使える電子優待券です。" name="※カーシェアeチケットとは、タイムズカーで使える電子優待券です。" label="※カーシェアeチケットとは、タイムズカーで使える電子優待券です。" enabled="true" visible="false" accessible="true" x="9" y="3724" width="367" height="34" index="0" traits="StaticText"/>
+                                                <XCUIElementTypeLink type="XCUIElementTypeLink" name="カーシェアeチケットについて詳しくはこちら" label="カーシェアeチケットについて詳しくはこちら" enabled="true" visible="false" accessible="false" x="19" y="3759" width="239" height="16" index="1" traits="Link">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="カーシェアeチケットについて詳しくはこちら" name="カーシェアeチケットについて詳しくはこちら" label="カーシェアeチケットについて詳しくはこちら" enabled="true" visible="false" accessible="true" x="19" y="3759" width="239" height="16" index="0" traits="Link, StaticText"/>
+                                                </XCUIElementTypeLink>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="9" y="3775" width="372" height="69" index="47" traits="">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="※カーシェアポイントとは、会員様向け優遇サービス「タイムズカープログラム」のステージを決める基準となるポイントです。" name="※カーシェアポイントとは、会員様向け優遇サービス「タイムズカープログラム」のステージを決める基準となるポイントです。" label="※カーシェアポイントとは、会員様向け優遇サービス「タイムズカープログラム」のステージを決める基準となるポイントです。" enabled="true" visible="false" accessible="true" x="9" y="3775" width="360" height="51" index="0" traits="StaticText"/>
+                                                <XCUIElementTypeLink type="XCUIElementTypeLink" name="タイムズカープログラムについて詳しくはこちら" label="タイムズカープログラムについて詳しくはこちら" enabled="true" visible="false" accessible="false" x="19" y="3827" width="255" height="16" index="1" traits="Link">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="タイムズカープログラムについて詳しくはこちら" name="タイムズカープログラムについて詳しくはこちら" label="タイムズカープログラムについて詳しくはこちら" enabled="true" visible="false" accessible="true" x="19" y="3827" width="255" height="16" index="0" traits="Link, StaticText"/>
+                                                </XCUIElementTypeLink>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" value="3" name="その他" label="その他" enabled="true" visible="false" accessible="false" x="9" y="3866" width="372" height="21" index="48" traits="Header">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="その他" name="その他" label="その他" enabled="true" visible="false" accessible="true" x="23" y="3866" width="47" height="21" index="0" traits="Header, StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="9" y="3895" width="372" height="35" index="49" traits="">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="※入会者様以外からのご入会手続き状況などに関するお問い合わせについては、お答えすることはできません。" name="※入会者様以外からのご入会手続き状況などに関するお問い合わせについては、お答えすることはできません。" label="※入会者様以外からのご入会手続き状況などに関するお問い合わせについては、お答えすることはできません。" enabled="true" visible="false" accessible="true" x="9" y="3895" width="360" height="34" index="0" traits="StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="9" y="3929" width="372" height="35" index="50" traits="">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="※紹介者コードを利用した他キャンペーンとの併用はできません。" name="※紹介者コードを利用した他キャンペーンとの併用はできません。" label="※紹介者コードを利用した他キャンペーンとの併用はできません。" enabled="true" visible="false" accessible="true" x="9" y="3929" width="359" height="34" index="0" traits="StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="9" y="3963" width="372" height="18" index="51" traits="">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="※本ページの特典は予告なく変更・終了する場合があります。" name="※本ページの特典は予告なく変更・終了する場合があります。" label="※本ページの特典は予告なく変更・終了する場合があります。" enabled="true" visible="false" accessible="true" x="9" y="3963" width="358" height="17" index="0" traits="StaticText"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" name="ナビゲーション" label="ナビゲーション" enabled="true" visible="false" accessible="false" x="0" y="4025" width="390" height="100" index="52" traits="">
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="4025" width="390" height="100" index="0" traits="">
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="79" y="4040" width="134" height="17" index="0" traits="">
+                                                    <XCUIElementTypeLink type="XCUIElementTypeLink" name="サイトのご利用にあたって" label="サイトのご利用にあたって" enabled="true" visible="false" accessible="false" x="79" y="4041" width="117" height="14" index="0" traits="Link">
+                                                      <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="サイトのご利用にあたって" name="サイトのご利用にあたって" label="サイトのご利用にあたって" enabled="true" visible="false" accessible="true" x="79" y="4041" width="117" height="14" index="0" traits="Link, StaticText"/>
+                                                    </XCUIElementTypeLink>
+                                                    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="|" name="|" label="|" enabled="true" visible="false" accessible="true" x="203" y="4041" width="5" height="14" index="1" traits="StaticText"/>
+                                                  </XCUIElementTypeOther>
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="215" y="4040" width="96" height="17" index="1" traits="">
+                                                    <XCUIElementTypeLink type="XCUIElementTypeLink" name="個人情報保護方針" label="個人情報保護方針" enabled="true" visible="false" accessible="false" x="215" y="4041" width="78" height="14" index="0" traits="Link">
+                                                      <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="個人情報保護方針" name="個人情報保護方針" label="個人情報保護方針" enabled="true" visible="false" accessible="true" x="215" y="4041" width="78" height="14" index="0" traits="Link, StaticText"/>
+                                                    </XCUIElementTypeLink>
+                                                    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="|" name="|" label="|" enabled="true" visible="false" accessible="true" x="300" y="4041" width="6" height="14" index="1" traits="StaticText"/>
+                                                  </XCUIElementTypeOther>
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="59" y="4068" width="134" height="17" index="2" traits="">
+                                                    <XCUIElementTypeLink type="XCUIElementTypeLink" name="個人情報の取扱いについて" label="個人情報の取扱いについて" enabled="true" visible="false" accessible="false" x="59" y="4069" width="117" height="14" index="0" traits="Link">
+                                                      <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="個人情報の取扱いについて" name="個人情報の取扱いについて" label="個人情報の取扱いについて" enabled="true" visible="false" accessible="true" x="59" y="4069" width="117" height="14" index="0" traits="Link, StaticText"/>
+                                                    </XCUIElementTypeLink>
+                                                    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="|" name="|" label="|" enabled="true" visible="false" accessible="true" x="183" y="4069" width="5" height="14" index="1" traits="StaticText"/>
+                                                  </XCUIElementTypeOther>
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="195" y="4068" width="57" height="17" index="3" traits="">
+                                                    <XCUIElementTypeLink type="XCUIElementTypeLink" name="貸渡約款" label="貸渡約款" enabled="true" visible="false" accessible="false" x="195" y="4069" width="40" height="14" index="0" traits="Link">
+                                                      <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="貸渡約款" name="貸渡約款" label="貸渡約款" enabled="true" visible="false" accessible="true" x="195" y="4069" width="40" height="14" index="0" traits="Link, StaticText"/>
+                                                    </XCUIElementTypeLink>
+                                                    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="|" name="|" label="|" enabled="true" visible="false" accessible="true" x="242" y="4069" width="5" height="14" index="1" traits="StaticText"/>
+                                                  </XCUIElementTypeOther>
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="255" y="4068" width="76" height="17" index="4" traits="">
+                                                    <XCUIElementTypeLink type="XCUIElementTypeLink" name="お問い合わせ" label="お問い合わせ" enabled="true" visible="false" accessible="false" x="255" y="4069" width="58" height="14" index="0" traits="Link">
+                                                      <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="お問い合わせ" name="お問い合わせ" label="お問い合わせ" enabled="true" visible="false" accessible="true" x="255" y="4069" width="58" height="14" index="0" traits="Link, StaticText"/>
+                                                    </XCUIElementTypeLink>
+                                                    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="|" name="|" label="|" enabled="true" visible="false" accessible="true" x="320" y="4069" width="6" height="14" index="1" traits="StaticText"/>
+                                                  </XCUIElementTypeOther>
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="42" y="4096" width="124" height="17" index="5" traits="">
+                                                    <XCUIElementTypeLink type="XCUIElementTypeLink" name="特定商取引に基づく表記" label="特定商取引に基づく表記" enabled="true" visible="false" accessible="false" x="42" y="4097" width="107" height="14" index="0" traits="Link">
+                                                      <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="特定商取引に基づく表記" name="特定商取引に基づく表記" label="特定商取引に基づく表記" enabled="true" visible="false" accessible="true" x="42" y="4097" width="107" height="14" index="0" traits="Link, StaticText"/>
+                                                    </XCUIElementTypeLink>
+                                                    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="|" name="|" label="|" enabled="true" visible="false" accessible="true" x="156" y="4097" width="5" height="14" index="1" traits="StaticText"/>
+                                                  </XCUIElementTypeOther>
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="168" y="4096" width="86" height="17" index="6" traits="">
+                                                    <XCUIElementTypeLink type="XCUIElementTypeLink" name="ユーザーガイド" label="ユーザーガイド" enabled="true" visible="false" accessible="false" x="168" y="4097" width="68" height="14" index="0" traits="Link">
+                                                      <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="ユーザーガイド" name="ユーザーガイド" label="ユーザーガイド" enabled="true" visible="false" accessible="true" x="168" y="4097" width="68" height="14" index="0" traits="Link, StaticText"/>
+                                                    </XCUIElementTypeLink>
+                                                    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="|" name="|" label="|" enabled="true" visible="false" accessible="true" x="243" y="4097" width="6" height="14" index="1" traits="StaticText"/>
+                                                  </XCUIElementTypeOther>
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="256" y="4096" width="57" height="17" index="7" traits="">
+                                                    <XCUIElementTypeLink type="XCUIElementTypeLink" name="採用情報" label="採用情報" enabled="true" visible="false" accessible="false" x="256" y="4097" width="40" height="14" index="0" traits="Link">
+                                                      <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="採用情報" name="採用情報" label="採用情報" enabled="true" visible="false" accessible="true" x="256" y="4097" width="40" height="14" index="0" traits="Link, StaticText"/>
+                                                    </XCUIElementTypeLink>
+                                                    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="|" name="|" label="|" enabled="true" visible="false" accessible="true" x="303" y="4097" width="5" height="14" index="1" traits="StaticText"/>
+                                                  </XCUIElementTypeOther>
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="315" y="4096" width="33" height="17" index="8" traits="">
+                                                    <XCUIElementTypeLink type="XCUIElementTypeLink" name="PC版へ" label="PC版へ" enabled="true" visible="false" accessible="false" x="315" y="4097" width="33" height="14" index="0" traits="Link">
+                                                      <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="PC版へ" name="PC版へ" label="PC版へ" enabled="true" visible="false" accessible="true" x="315" y="4097" width="33" height="14" index="0" traits="Link, StaticText"/>
+                                                    </XCUIElementTypeLink>
+                                                  </XCUIElementTypeOther>
+                                                </XCUIElementTypeOther>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="4138" width="390" height="15" index="53" traits="">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="(C) TIMES MOBILITY CO., LTD. All rights reserved." name="(C) TIMES MOBILITY CO., LTD. All rights reserved." label="(C) TIMES MOBILITY CO., LTD. All rights reserved." enabled="true" visible="false" accessible="true" x="56" y="4138" width="278" height="15" index="0" traits="StaticText"/>
+                                              </XCUIElementTypeOther>
+                                            </XCUIElementTypeOther>
+                                          </XCUIElementTypeOther>
+                                        </XCUIElementTypeOther>
+                                      </XCUIElementTypeOther>
+                                    </XCUIElementTypeWebView>
+                                    <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="844" index="2" traits="">
+                                      <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="99" index="0" traits="">
+                                        <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="99" index="0" traits="">
+                                          <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="99" index="0" traits=""/>
+                                        </XCUIElementTypeOther>
+                                        <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="99" index="1" traits="">
+                                          <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="99" index="0" traits=""/>
+                                          <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="99" index="1" traits=""/>
+                                        </XCUIElementTypeOther>
+                                      </XCUIElementTypeOther>
+                                    </XCUIElementTypeOther>
+                                    <XCUIElementTypeOther type="XCUIElementTypeOther" value="10%" name="垂直スクロールバー, 7ページ" label="垂直スクロールバー, 7ページ" enabled="true" visible="false" accessible="false" x="357" y="47" width="30" height="393" index="3" traits="Adjustable">
+                                      <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="384" y="81" width="3" height="71" index="0" traits=""/>
+                                    </XCUIElementTypeOther>
+                                    <XCUIElementTypeOther type="XCUIElementTypeOther" value="0%" name="水平スクロールバー, 1ページ" label="水平スクロールバー, 1ページ" enabled="true" visible="false" accessible="false" x="47" y="407" width="296" height="30" index="4" traits="Adjustable">
+                                      <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="50" y="434" width="290" height="3" index="0" traits=""/>
+                                    </XCUIElementTypeOther>
+                                    <XCUIElementTypeOther type="XCUIElementTypeOther" value="10%" name="垂直スクロールバー, 7ページ" label="垂直スクロールバー, 7ページ" enabled="true" visible="false" accessible="false" x="357" y="47" width="30" height="393" index="5" traits="Adjustable">
+                                      <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="384" y="81" width="3" height="71" index="0" traits=""/>
+                                    </XCUIElementTypeOther>
+                                    <XCUIElementTypeOther type="XCUIElementTypeOther" value="0%" name="水平スクロールバー, 1ページ" label="水平スクロールバー, 1ページ" enabled="true" visible="false" accessible="false" x="47" y="407" width="296" height="30" index="6" traits="Adjustable">
+                                      <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="50" y="434" width="290" height="3" index="0" traits=""/>
+                                    </XCUIElementTypeOther>
+                                  </XCUIElementTypeWebView>
+                                </XCUIElementTypeWebView>
+                              </XCUIElementTypeOther>
+                              <XCUIElementTypeOther type="XCUIElementTypeOther" value="0%" name="水平スクロールバー, 1ページ" label="水平スクロールバー, 1ページ" enabled="true" visible="false" accessible="false" x="47" y="811" width="296" height="30" index="1" traits="Adjustable">
+                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="44" y="838" width="302" height="3" index="0" traits=""/>
+                              </XCUIElementTypeOther>
+                              <XCUIElementTypeOther type="XCUIElementTypeOther" value="0%" name="水平スクロールバー, 1ページ" label="水平スクロールバー, 1ページ" enabled="true" visible="false" accessible="false" x="47" y="811" width="296" height="30" index="2" traits="Adjustable">
+                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="44" y="838" width="302" height="3" index="0" traits=""/>
+                              </XCUIElementTypeOther>
+                            </XCUIElementTypeScrollView>
+                            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="3" traits="">
+                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                                <XCUIElementTypeImage type="XCUIElementTypeImage" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="Image"/>
+                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="1" traits="">
+                                  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                                    <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                                      <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                                        <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="844" index="0" traits=""/>
+                                        <XCUIElementTypeCollectionView type="XCUIElementTypeCollectionView" name="StartPageCollectionView" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="1" traits="">
+                                          <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                                            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="387" width="390" height="118" index="0" traits=""/>
+                                          </XCUIElementTypeOther>
+                                          <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="1" traits="">
+                                            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="387" width="390" height="118" index="0" traits="">
+                                              <XCUIElementTypeImage type="XCUIElementTypeImage" name="AdditionalDimmingOverlay" enabled="true" visible="true" accessible="false" x="-120" y="392" width="630" height="226" index="0" traits="Image"/>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="387" width="390" height="118" index="1" traits="">
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="387" width="390" height="118" index="0" traits=""/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="387" width="390" height="118" index="2" traits="">
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="387" width="390" height="118" index="0" traits=""/>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="387" width="390" height="118" index="1" traits=""/>
+                                              </XCUIElementTypeOther>
+                                            </XCUIElementTypeOther>
+                                          </XCUIElementTypeOther>
+                                          <XCUIElementTypeCell type="XCUIElementTypeCell" name="onboardingItemIdentifierContent-SetDefaultSearchEngine" enabled="true" visible="true" accessible="false" x="16" y="51" width="358" height="361" index="2" traits="">
+                                            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="16" y="51" width="358" height="361" index="0" traits="">
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="16" y="51" width="358" height="361" index="0" traits=""/>
+                                            </XCUIElementTypeOther>
+                                            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="16" y="51" width="358" height="361" index="1" traits="">
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="36" y="71" width="318" height="321" index="0" traits="">
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="デフォルトの検索エンジン" name="デフォルトの検索エンジン" label="デフォルトの検索エンジン" enabled="true" visible="true" accessible="true" x="99" y="71" width="192" height="21" index="0" traits="StaticText"/>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="46" y="103" width="298" height="131" index="1" traits="">
+                                                  <XCUIElementTypeImage type="XCUIElementTypeImage" name="SafariOnboardingSearchEngineChoice" enabled="true" visible="true" accessible="false" x="46" y="103" width="298" height="131" index="0" traits="Image"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="iOSでは、デフォルトで使用する検索エンジンを自由に選べます。この設定は、“設定”でいつでも変更できます。" name="iOSでは、デフォルトで使用する検索エンジンを自由に選べます。この設定は、“設定”でいつでも変更できます。" label="iOSでは、デフォルトで使用する検索エンジンを自由に選べます。この設定は、“設定”でいつでも変更できます。" enabled="true" visible="true" accessible="true" x="36" y="245" width="318" height="59" index="2" traits="StaticText"/>
+                                                <XCUIElementTypeButton type="XCUIElementTypeButton" name="onboardingButton-SetDefaultSearchEngine" label="検索エンジンを選択" enabled="true" visible="true" accessible="true" x="36" y="315" width="318" height="35" index="3" traits="Button">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="検索エンジンを選択" name="検索エンジンを選択" label="検索エンジンを選択" enabled="true" visible="true" accessible="false" x="123" y="322" width="144" height="21" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeButton>
+                                                <XCUIElementTypeButton type="XCUIElementTypeButton" name="deferButton-SetDefaultSearchEngine" label="あとで設定" enabled="true" visible="true" accessible="true" x="36" y="357" width="318" height="35" index="4" traits="Button">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="あとで設定" name="あとで設定" label="あとで設定" enabled="true" visible="true" accessible="false" x="155" y="364" width="80" height="21" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeButton>
+                                              </XCUIElementTypeOther>
+                                            </XCUIElementTypeOther>
+                                          </XCUIElementTypeCell>
+                                          <XCUIElementTypeOther type="XCUIElementTypeOther" name="favoritesItemIdentifierHeader" enabled="true" visible="true" accessible="false" x="16" y="442" width="358" height="37" index="3" traits="Header">
+                                            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="16" y="442" width="132" height="27" index="0" traits="">
+                                              <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="お気に入り" name="お気に入り" label="お気に入り" enabled="true" visible="true" accessible="true" x="16" y="442" width="132" height="27" index="0" traits="StaticText"/>
+                                            </XCUIElementTypeOther>
+                                          </XCUIElementTypeOther>
+                                          <XCUIElementTypeCell type="XCUIElementTypeCell" name="favoritesItemIdentifierContent" label="Apple" enabled="true" visible="true" accessible="true" x="16" y="478" width="72" height="109" index="4" traits="Button">
+                                            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="16" y="478" width="72" height="109" index="0" traits="">
+                                              <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Apple" name="Apple" label="Apple" enabled="true" visible="false" accessible="false" x="10" y="558" width="84" height="15" index="0" traits="StaticText"/>
+                                            </XCUIElementTypeOther>
+                                          </XCUIElementTypeCell>
+                                          <XCUIElementTypeCell type="XCUIElementTypeCell" name="favoritesItemIdentifierContent" label="Google" enabled="true" visible="false" accessible="true" x="111" y="478" width="73" height="109" index="5" traits="Button">
+                                            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="111" y="478" width="73" height="109" index="0" traits="">
+                                              <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Google" name="Google" label="Google" enabled="true" visible="false" accessible="false" x="105" y="558" width="84" height="15" index="0" traits="StaticText"/>
+                                            </XCUIElementTypeOther>
+                                          </XCUIElementTypeCell>
+                                          <XCUIElementTypeCell type="XCUIElementTypeCell" name="favoritesItemIdentifierContent" label="Yahoo" enabled="true" visible="false" accessible="true" x="206" y="478" width="73" height="109" index="6" traits="Button">
+                                            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="206" y="478" width="73" height="109" index="0" traits="">
+                                              <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Yahoo" name="Yahoo" label="Yahoo" enabled="true" visible="false" accessible="false" x="201" y="558" width="83" height="15" index="0" traits="StaticText"/>
+                                            </XCUIElementTypeOther>
+                                          </XCUIElementTypeCell>
+                                          <XCUIElementTypeCell type="XCUIElementTypeCell" name="favoritesItemIdentifierContent" label="Skip:Go - Anything Anywhere" enabled="true" visible="false" accessible="true" x="302" y="478" width="72" height="109" index="7" traits="Button">
+                                            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="302" y="478" width="72" height="109" index="0" traits="">
+                                              <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Skip:Go - Anything Anywhere" name="Skip:Go - Anything Anywhere" label="Skip:Go - Anything Anywhere" enabled="true" visible="false" accessible="false" x="296" y="558" width="84" height="29" index="0" traits="StaticText"/>
+                                            </XCUIElementTypeOther>
+                                          </XCUIElementTypeCell>
+                                          <XCUIElementTypeOther type="XCUIElementTypeOther" name="suggestionsItemIdentifierHeader" enabled="true" visible="false" accessible="false" x="16" y="616" width="358" height="37" index="8" traits="Header">
+                                            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="16" y="616" width="42" height="27" index="0" traits="">
+                                              <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="候補" name="候補" label="候補" enabled="true" visible="false" accessible="true" x="16" y="616" width="42" height="27" index="0" traits="StaticText"/>
+                                            </XCUIElementTypeOther>
+                                          </XCUIElementTypeOther>
+                                          <XCUIElementTypeScrollView type="XCUIElementTypeScrollView" enabled="true" visible="false" accessible="false" x="16" y="653" width="358" height="172" index="9" traits="">
+                                            <XCUIElementTypeCell type="XCUIElementTypeCell" name="suggestionsItemIdentifierContent" label="Wでオトク！お友達紹介でそれぞれにカーシェアeチケットプレゼント | カーシェアリングのタイムズカー（旧：タイムズカーシェア）, share.timescar.jp, 1個の画像" enabled="true" visible="false" accessible="true" x="16" y="653" width="172" height="172" index="0" traits="Button">
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="16" y="653" width="172" height="172" index="0" traits="">
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="16" y="653" width="172" height="172" index="0" traits=""/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="16" y="653" width="172" height="172" index="1" traits="">
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="16" y="653" width="172" height="172" index="0" traits="">
+                                                  <XCUIElementTypeLink type="XCUIElementTypeLink" name="Wでオトク！お友達紹介でそれぞれにカーシェアeチケットプレゼント | カーシェアリングのタイムズカー（旧：タイムズカーシェア）, share.timescar.jp, 1個の画像" label="Wでオトク！お友達紹介でそれぞれにカーシェアeチケットプレゼント | カーシェアリングのタイムズカー（旧：タイムズカーシェア）, share.timescar.jp, 1個の画像" enabled="true" visible="false" accessible="false" x="16" y="653" width="172" height="172" index="0" traits="Link">
+                                                    <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="16" y="653" width="172" height="172" index="0" traits="">
+                                                      <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="16" y="653" width="172" height="136" index="0" traits="">
+                                                        <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="16" y="653" width="172" height="83" index="0" traits="">
+                                                          <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="16" y="653" width="172" height="83" index="0" traits="">
+                                                            <XCUIElementTypeImage type="XCUIElementTypeImage" enabled="true" visible="false" accessible="false" x="76" y="669" width="51" height="51" index="0" traits="Image"/>
+                                                          </XCUIElementTypeOther>
+                                                        </XCUIElementTypeOther>
+                                                        <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="16" y="735" width="172" height="54" index="1" traits="">
+                                                          <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="28" y="735" width="148" height="54" index="0" traits="">
+                                                            <XCUIElementTypeOther type="XCUIElementTypeOther" name="LP.CaptionBar.TopCaption" label="Wでオトク！お友達紹介でそれぞれにカーシェアeチケットプレゼント | カーシェアリングのタイムズカー（旧：タイムズカーシェア）" enabled="true" visible="false" accessible="false" x="28" y="743" width="148" height="19" index="0" traits=""/>
+                                                            <XCUIElementTypeOther type="XCUIElementTypeOther" name="LP.CaptionBar.BottomCaption" label="share.timescar.jp" enabled="true" visible="false" accessible="false" x="28" y="763" width="148" height="17" index="1" traits=""/>
+                                                          </XCUIElementTypeOther>
+                                                        </XCUIElementTypeOther>
+                                                      </XCUIElementTypeOther>
+                                                    </XCUIElementTypeOther>
+                                                  </XCUIElementTypeLink>
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="今日" name="今日" label="今日" enabled="true" visible="false" accessible="false" x="28" y="799" width="148" height="14" index="1" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                              </XCUIElementTypeOther>
+                                            </XCUIElementTypeCell>
+                                            <XCUIElementTypeCell type="XCUIElementTypeCell" name="suggestionsItemIdentifierContent" label="インスタグラムの複数の画像を保存するツール | awakest.net, awakest.net, 1個の画像" enabled="true" visible="false" accessible="true" x="195" y="653" width="172" height="172" index="1" traits="Button">
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="195" y="653" width="172" height="172" index="0" traits="">
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="195" y="653" width="172" height="172" index="0" traits=""/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="195" y="653" width="172" height="172" index="1" traits="">
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="195" y="653" width="172" height="172" index="0" traits="">
+                                                  <XCUIElementTypeLink type="XCUIElementTypeLink" name="インスタグラムの複数の画像を保存するツール | awakest.net, awakest.net, 1個の画像" label="インスタグラムの複数の画像を保存するツール | awakest.net, awakest.net, 1個の画像" enabled="true" visible="false" accessible="false" x="195" y="653" width="172" height="172" index="0" traits="Link">
+                                                    <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="195" y="653" width="172" height="172" index="0" traits="">
+                                                      <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="195" y="653" width="172" height="136" index="0" traits="">
+                                                        <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="195" y="653" width="172" height="83" index="0" traits="">
+                                                          <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="195" y="653" width="172" height="83" index="0" traits="">
+                                                            <XCUIElementTypeImage type="XCUIElementTypeImage" enabled="true" visible="false" accessible="false" x="195" y="653" width="172" height="83" index="0" traits="Image"/>
+                                                          </XCUIElementTypeOther>
+                                                        </XCUIElementTypeOther>
+                                                        <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="195" y="735" width="172" height="54" index="1" traits="">
+                                                          <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="207" y="735" width="148" height="54" index="0" traits="">
+                                                            <XCUIElementTypeOther type="XCUIElementTypeOther" name="LP.CaptionBar.TopCaption" label="インスタグラムの複数の画像を保存するツール | awakest.net" enabled="true" visible="false" accessible="false" x="207" y="743" width="148" height="19" index="0" traits=""/>
+                                                            <XCUIElementTypeOther type="XCUIElementTypeOther" name="LP.CaptionBar.BottomCaption" label="awakest.net" enabled="true" visible="false" accessible="false" x="207" y="763" width="148" height="17" index="1" traits=""/>
+                                                          </XCUIElementTypeOther>
+                                                        </XCUIElementTypeOther>
+                                                      </XCUIElementTypeOther>
+                                                    </XCUIElementTypeOther>
+                                                  </XCUIElementTypeLink>
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="先週" name="先週" label="先週" enabled="true" visible="false" accessible="false" x="207" y="799" width="148" height="14" index="1" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                              </XCUIElementTypeOther>
+                                            </XCUIElementTypeCell>
+                                          </XCUIElementTypeScrollView>
+                                          <XCUIElementTypeOther type="XCUIElementTypeOther" value="0%" name="垂直スクロールバー, 4ページ" label="垂直スクロールバー, 4ページ" enabled="true" visible="true" accessible="false" x="357" y="47" width="30" height="330" index="10" traits="Adjustable">
+                                            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="384" y="366" width="3" height="7" index="0" traits=""/>
+                                          </XCUIElementTypeOther>
+                                          <XCUIElementTypeOther type="XCUIElementTypeOther" value="0%" name="水平スクロールバー, 1ページ" label="水平スクロールバー, 1ページ" enabled="true" visible="false" accessible="false" x="47" y="713" width="296" height="30" index="11" traits="Adjustable">
+                                            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="50" y="740" width="290" height="3" index="0" traits=""/>
+                                          </XCUIElementTypeOther>
+                                          <XCUIElementTypeOther type="XCUIElementTypeOther" value="0%" name="垂直スクロールバー, 4ページ" label="垂直スクロールバー, 4ページ" enabled="true" visible="true" accessible="false" x="357" y="47" width="30" height="330" index="12" traits="Adjustable">
+                                            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="384" y="366" width="3" height="7" index="0" traits=""/>
+                                          </XCUIElementTypeOther>
+                                          <XCUIElementTypeOther type="XCUIElementTypeOther" value="0%" name="水平スクロールバー, 1ページ" label="水平スクロールバー, 1ページ" enabled="true" visible="false" accessible="false" x="47" y="713" width="296" height="30" index="13" traits="Adjustable">
+                                            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="50" y="740" width="290" height="3" index="0" traits=""/>
+                                          </XCUIElementTypeOther>
+                                        </XCUIElementTypeCollectionView>
+                                      </XCUIElementTypeOther>
+                                    </XCUIElementTypeOther>
+                                  </XCUIElementTypeOther>
+                                  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="844" index="1" traits="">
+                                    <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="844" index="0" traits=""/>
+                                  </XCUIElementTypeOther>
+                                </XCUIElementTypeOther>
+                              </XCUIElementTypeOther>
+                            </XCUIElementTypeOther>
+                          </XCUIElementTypeOther>
+                        </XCUIElementTypeOther>
+                        <XCUIElementTypeOther type="XCUIElementTypeOther" name="CapsuleViewController" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="1" traits="">
+                          <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="452" width="390" height="392" index="0" traits="">
+                            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="452" width="390" height="392" index="0" traits="">
+                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="452" width="390" height="392" index="0" traits="">
+                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="452" width="390" height="392" index="0" traits="">
+                                  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="452" width="390" height="392" index="0" traits="">
+                                    <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="452" width="390" height="392" index="0" traits="">
+                                      <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="452" width="390" height="98" index="0" traits=""/>
+                                    </XCUIElementTypeOther>
+                                  </XCUIElementTypeOther>
+                                  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="452" width="390" height="392" index="1" traits="">
+                                    <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="452" width="390" height="98" index="0" traits=""/>
+                                  </XCUIElementTypeOther>
+                                </XCUIElementTypeOther>
+                              </XCUIElementTypeOther>
+                            </XCUIElementTypeOther>
+                            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="8" y="452" width="374" height="48" index="1" traits="">
+                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="8" y="452" width="318" height="48" index="0" traits="">
+                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="8" y="452" width="318" height="48" index="0" traits="">
+                                  <XCUIElementTypeOther type="XCUIElementTypeOther" name="CapsuleNavigationBar?isSelected=true" enabled="true" visible="true" accessible="false" x="8" y="452" width="318" height="48" index="0" traits="">
+                                    <XCUIElementTypeTextField type="XCUIElementTypeTextField" value="https://share.timescar.jp/campaign/friend/" name="URL" label="アドレス" enabled="true" visible="true" accessible="true" x="20" y="452" width="262" height="48" index="0" placeholderValue="検索/Webサイト名入力" traits=""/>
+                                    <XCUIElementTypeButton type="XCUIElementTypeButton" name="ClearTextButton" label="テキストを消去" enabled="true" visible="true" accessible="true" x="282" y="452" width="44" height="48" index="1" traits="Button"/>
+                                    <XCUIElementTypeButton type="XCUIElementTypeButton" name="VoiceSearchButton" label="音声検索" enabled="false" visible="false" accessible="false" x="282" y="452" width="44" height="48" index="2" traits="NotEnabled, Button"/>
+                                  </XCUIElementTypeOther>
+                                </XCUIElementTypeOther>
+                              </XCUIElementTypeOther>
+                              <XCUIElementTypeButton type="XCUIElementTypeButton" name="CancelBarItemButton" label="閉じる" enabled="true" visible="true" accessible="true" x="334" y="452" width="48" height="48" index="1" traits="Button"/>
+                            </XCUIElementTypeOther>
+                          </XCUIElementTypeOther>
+                        </XCUIElementTypeOther>
+                      </XCUIElementTypeOther>
+                    </XCUIElementTypeOther>
+                  </XCUIElementTypeOther>
+                  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="844" index="1" traits="">
+                    <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="844" index="0" traits=""/>
+                  </XCUIElementTypeOther>
+                </XCUIElementTypeOther>
+              </XCUIElementTypeOther>
+            </XCUIElementTypeOther>
+            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="1" traits="">
+              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits=""/>
+            </XCUIElementTypeOther>
+          </XCUIElementTypeOther>
+        </XCUIElementTypeOther>
+      </XCUIElementTypeOther>
+    </XCUIElementTypeWindow>
+    <XCUIElementTypeWindow type="XCUIElementTypeWindow" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="844" index="1" traits="">
+      <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+        <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="844" index="0" traits=""/>
+        <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="440" width="390" height="404" index="1" traits="">
+          <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="440" width="390" height="68" index="0" traits=""/>
+          <XCUIElementTypeOther type="XCUIElementTypeOther" name="inputView" enabled="true" visible="false" accessible="false" x="0" y="508" width="390" height="336" index="1" traits=""/>
+        </XCUIElementTypeOther>
+      </XCUIElementTypeOther>
+    </XCUIElementTypeWindow>
+    <XCUIElementTypeWindow type="XCUIElementTypeWindow" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="2" traits="">
+      <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+        <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="440" width="390" height="404" index="0" traits="">
+          <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="440" width="390" height="68" index="0" traits=""/>
+          <XCUIElementTypeOther type="XCUIElementTypeOther" name="SystemInputAssistantView" enabled="true" visible="true" accessible="false" x="0" y="508" width="390" height="45" index="1" traits="">
+            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="508" width="390" height="45" index="0" traits="">
+              <XCUIElementTypeOther type="XCUIElementTypeOther" name="CenterPageView" enabled="true" visible="true" accessible="false" x="0" y="508" width="390" height="45" index="0" traits="">
+                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="-92" width="390" height="1245" index="0" traits="">
+                  <XCUIElementTypeScrollView type="XCUIElementTypeScrollView" enabled="true" visible="false" accessible="false" x="0" y="508" width="390" height="45" index="0" traits=""/>
+                </XCUIElementTypeOther>
+                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="508" width="390" height="45" index="1" traits="">
+                  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="508" width="390" height="45" index="0" traits="">
+                    <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="508" width="390" height="55" index="0" traits="">
+                      <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="508" width="390" height="55" index="0" traits="">
+                        <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="508" width="390" height="55" index="0" traits="">
+                          <XCUIElementTypeCollectionView type="XCUIElementTypeCollectionView" enabled="true" visible="true" accessible="false" x="0" y="508" width="390" height="55" index="0" traits=""/>
+                        </XCUIElementTypeOther>
+                      </XCUIElementTypeOther>
+                    </XCUIElementTypeOther>
+                  </XCUIElementTypeOther>
+                </XCUIElementTypeOther>
+              </XCUIElementTypeOther>
+            </XCUIElementTypeOther>
+          </XCUIElementTypeOther>
+          <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="508" width="390" height="336" index="2" traits="">
+            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="508" width="390" height="336" index="0" traits="">
+              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="508" width="390" height="336" index="0" traits=""/>
+            </XCUIElementTypeOther>
+          </XCUIElementTypeOther>
+          <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="553" width="390" height="233" index="3" traits="">
+            <XCUIElementTypeKeyboard type="XCUIElementTypeKeyboard" enabled="true" visible="true" accessible="false" x="0" y="553" width="390" height="233" index="0" traits="">
+              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="553" width="390" height="233" index="0" traits="">
+                <XCUIElementTypeOther type="XCUIElementTypeOther" name="UIKeyboardLayoutStar Preview" enabled="true" visible="true" accessible="false" x="0" y="553" width="390" height="233" index="0" traits="">
+                  <XCUIElementTypeKey type="XCUIElementTypeKey" name="数字" label="数字" enabled="true" visible="true" accessible="true" x="70" y="560" width="64" height="54" index="0" traits="PlaysSound, KeyboardKey"/>
+                  <XCUIElementTypeKey type="XCUIElementTypeKey" name="あ" label="あ" enabled="true" visible="true" accessible="true" x="134" y="560" width="64" height="54" index="1" traits="PlaysSound, KeyboardKey"/>
+                  <XCUIElementTypeKey type="XCUIElementTypeKey" name="か" label="か" enabled="true" visible="true" accessible="true" x="198" y="560" width="64" height="54" index="2" traits="PlaysSound, KeyboardKey"/>
+                  <XCUIElementTypeKey type="XCUIElementTypeKey" name="さ" label="さ" enabled="true" visible="true" accessible="true" x="262" y="560" width="64" height="54" index="3" traits="PlaysSound, KeyboardKey"/>
+                  <XCUIElementTypeKey type="XCUIElementTypeKey" name="delete" label="削除" enabled="true" visible="true" accessible="true" x="326" y="560" width="64" height="54" index="4" traits="PlaysSound, KeyboardKey"/>
+                  <XCUIElementTypeKey type="XCUIElementTypeKey" name="文字" label="文字" enabled="true" visible="true" accessible="true" x="70" y="614" width="64" height="54" index="5" traits="PlaysSound, KeyboardKey"/>
+                  <XCUIElementTypeKey type="XCUIElementTypeKey" name="た" label="た" enabled="true" visible="true" accessible="true" x="134" y="614" width="64" height="54" index="6" traits="PlaysSound, KeyboardKey"/>
+                  <XCUIElementTypeKey type="XCUIElementTypeKey" name="な" label="な" enabled="true" visible="true" accessible="true" x="198" y="614" width="64" height="54" index="7" traits="PlaysSound, KeyboardKey"/>
+                  <XCUIElementTypeKey type="XCUIElementTypeKey" name="は" label="は" enabled="true" visible="true" accessible="true" x="262" y="614" width="64" height="54" index="8" traits="PlaysSound, KeyboardKey"/>
+                  <XCUIElementTypeKey type="XCUIElementTypeKey" name="　" label="　" enabled="true" visible="true" accessible="true" x="326" y="614" width="64" height="54" index="9" traits="PlaysSound, KeyboardKey"/>
+                  <XCUIElementTypeKey type="XCUIElementTypeKey" name="かな" label="かな" enabled="true" visible="true" accessible="true" x="70" y="668" width="64" height="54" index="10" traits="PlaysSound, KeyboardKey"/>
+                  <XCUIElementTypeKey type="XCUIElementTypeKey" name="ま" label="ま" enabled="true" visible="true" accessible="true" x="134" y="668" width="64" height="54" index="11" traits="PlaysSound, KeyboardKey"/>
+                  <XCUIElementTypeKey type="XCUIElementTypeKey" name="や" label="や" enabled="true" visible="true" accessible="true" x="198" y="668" width="64" height="54" index="12" traits="PlaysSound, KeyboardKey"/>
+                  <XCUIElementTypeKey type="XCUIElementTypeKey" name="ら" label="ら" enabled="true" visible="true" accessible="true" x="262" y="668" width="64" height="54" index="13" traits="PlaysSound, KeyboardKey"/>
+                  <XCUIElementTypeKey type="XCUIElementTypeKey" name="&#10;" label="&#10;" enabled="true" visible="true" accessible="true" x="326" y="668" width="64" height="108" index="14" traits="PlaysSound, KeyboardKey"/>
+                  <XCUIElementTypeButton type="XCUIElementTypeButton" name="Go" label="開く" enabled="true" visible="true" accessible="true" x="326" y="668" width="64" height="108" index="15" traits="PlaysSound, KeyboardKey, Button"/>
+                  <XCUIElementTypeButton type="XCUIElementTypeButton" name="emoji" label="絵文字" enabled="true" visible="true" accessible="true" x="70" y="722" width="64" height="54" index="16" traits="PlaysSound, KeyboardKey, Button"/>
+                  <XCUIElementTypeKey type="XCUIElementTypeKey" name="顔文字" label="顔文字" enabled="true" visible="true" accessible="true" x="134" y="722" width="64" height="54" index="17" traits="PlaysSound, KeyboardKey"/>
+                  <XCUIElementTypeKey type="XCUIElementTypeKey" name="わ" label="わ" enabled="true" visible="true" accessible="true" x="198" y="722" width="64" height="54" index="18" traits="PlaysSound, KeyboardKey"/>
+                  <XCUIElementTypeKey type="XCUIElementTypeKey" name="、" label="、" enabled="true" visible="true" accessible="true" x="262" y="722" width="64" height="54" index="19" traits="PlaysSound, KeyboardKey"/>
+                </XCUIElementTypeOther>
+              </XCUIElementTypeOther>
+            </XCUIElementTypeKeyboard>
+          </XCUIElementTypeOther>
+          <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="true" x="0" y="553" width="390" height="291" index="4" traits="">
+            <XCUIElementTypeButton type="XCUIElementTypeButton" value="English (Japan)" name="次のキーボード" label="次のキーボード" enabled="true" visible="true" accessible="false" x="57" y="776" width="70" height="69" index="0" traits="KeyboardKey, Button">
+              <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" enabled="true" visible="false" accessible="false" x="57" y="776" width="1" height="1" index="0" traits="StaticText"/>
+            </XCUIElementTypeButton>
+            <XCUIElementTypeButton type="XCUIElementTypeButton" name="dictation" label="音声入力" enabled="true" visible="true" accessible="false" x="313" y="776" width="69" height="69" index="1" traits="KeyboardKey, Button">
+              <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" enabled="true" visible="false" accessible="false" x="313" y="776" width="1" height="1" index="0" traits="StaticText"/>
+            </XCUIElementTypeButton>
+            <XCUIElementTypeButton type="XCUIElementTypeButton" name="dictation" label="音声入力" enabled="true" visible="true" accessible="false" x="313" y="776" width="69" height="69" index="2" traits="KeyboardKey, Button">
+              <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" enabled="true" visible="false" accessible="false" x="313" y="776" width="1" height="1" index="0" traits="StaticText"/>
+            </XCUIElementTypeButton>
+          </XCUIElementTypeOther>
+        </XCUIElementTypeOther>
+        <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="390" y="844" width="1" height="1" index="1" traits=""/>
+      </XCUIElementTypeOther>
+    </XCUIElementTypeWindow>
+  </XCUIElementTypeApplication>
+</AppiumAUT>

@@ -1,0 +1,10 @@
+
+> bistro-reservation@0.1.0 check:release
+> node scripts/check-release-safety.mjs local-build
+
+
+==> Release safety check (local-build)
+Repository: /Users/mimac/Desktop/レストラン予約サイト_本体とバックアップ/bistro-reservation-go-implementation
+Local-build mode allows placeholder-like values as long as required keys are present.
+Recommended env keys are unset: BANK_ACCOUNT_HISTORY_KEY_VERSION, CONTACT_PHONE_E164, CONTACT_PHONE_DISPLAY, CONTACT_MESSAGE, BACKUP_EXPORT_SECRET, NEXT_PUBLIC_CONTACT_PHONE_E164, NEXT_PUBLIC_CONTACT_PHONE_DISPLAY, NEXT_PUBLIC_CONTACT_MESSAGE, STORE_NOTIFY_EMAIL, EMAIL_PROVIDER, EMAIL_FROM, ADMIN_EMAIL, STORE_NAME, LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET, NEXT_PUBLIC_LIFF_ID
+Required env checks passed.

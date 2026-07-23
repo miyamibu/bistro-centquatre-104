@@ -1,0 +1,22 @@
+{
+  "status": "PARTIALLY_COMPLETED",
+  "releaseDecision": "NO_GO",
+  "operations": "NOT_READY",
+  "rcSha": "111db4991bdf44abb716490889a018bf0e988bca",
+  "branch": "release/go-readiness-20260622",
+  "pullRequest": "https://github.com/miyamibu/bistro-centquatre-104/pull/1",
+  "ci": {
+    "provider": "github-actions",
+    "runId": "27921140923",
+    "status": "green",
+    "headSha": "111db4991bdf44abb716490889a018bf0e988bca"
+  },
+  "blockingItems": [
+    "Vercel Preview env is empty, so Preview deploy/smoke cannot satisfy acceptance.",
+    "Current Vercel Production deployment is not the RC SHA.",
+    "Production env is missing IDEMPOTENCY_HASH_SECRET.",
+    "Supabase project is visible but this checkout is not linked and production migration/post-check was not applied.",
+    "LINE, mail, cron, monitoring, backup/restore, rollback, and approval evidence is not complete.",
+    "Pixel 9a is connected but RC device verification was not performed because the RC is not deployed."
+  ]
+}

@@ -42,3 +42,4 @@ _tmp*
 docs/recovery/*.csv
 docs/recovery/manual-restore-*.sql
 docs/recovery/RESERVATION_DATA_RECOVERY_*.md
+.vercel

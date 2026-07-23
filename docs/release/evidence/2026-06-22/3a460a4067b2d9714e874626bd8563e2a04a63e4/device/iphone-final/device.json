@@ -1,0 +1,36 @@
+{
+  "udid": "00008101-00066D96340A001E",
+  "backend": "Appium/XCUITest Safari native address bar control",
+  "pages": [
+    {
+      "name": "home",
+      "url": "https://bistro-centquatre-104.vercel.app/",
+      "screenshot": "home.png",
+      "source": "home.xml"
+    },
+    {
+      "name": "booking",
+      "url": "https://bistro-centquatre-104.vercel.app/booking",
+      "screenshot": "booking.png",
+      "source": "booking.xml"
+    },
+    {
+      "name": "cart",
+      "url": "https://bistro-centquatre-104.vercel.app/on-line-store/cart",
+      "screenshot": "cart.png",
+      "source": "cart.xml"
+    },
+    {
+      "name": "agents",
+      "url": "https://bistro-centquatre-104.vercel.app/agents",
+      "screenshot": "agents.png",
+      "source": "agents.xml"
+    },
+    {
+      "name": "admin",
+      "url": "https://bistro-centquatre-104.vercel.app/admin",
+      "screenshot": "admin.png",
+      "source": "admin.xml"
+    }
+  ]
+}

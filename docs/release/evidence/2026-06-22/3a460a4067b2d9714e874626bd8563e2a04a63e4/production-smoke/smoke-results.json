@@ -1,0 +1,44 @@
+[
+  {
+    "name": "home",
+    "url": "https://bistro-centquatre-104.vercel.app/",
+    "status": 200,
+    "title": "ビストロ　サンキャトル　１０４"
+  },
+  {
+    "name": "booking",
+    "url": "https://bistro-centquatre-104.vercel.app/booking",
+    "status": 200,
+    "title": "ビストロ　サンキャトル　１０４"
+  },
+  {
+    "name": "cart",
+    "url": "https://bistro-centquatre-104.vercel.app/on-line-store/cart",
+    "status": 200,
+    "title": "ビストロ　サンキャトル　１０４"
+  },
+  {
+    "name": "agents",
+    "url": "https://bistro-centquatre-104.vercel.app/agents",
+    "status": 200,
+    "title": "ビストロ　サンキャトル　１０４"
+  },
+  {
+    "name": "llms",
+    "url": "https://bistro-centquatre-104.vercel.app/llms.txt",
+    "status": 200,
+    "title": ""
+  },
+  {
+    "name": "availability-monthly",
+    "url": "https://bistro-centquatre-104.vercel.app/api/availability/monthly",
+    "status": 400,
+    "contentType": "application/json"
+  },
+  {
+    "name": "agent-json",
+    "url": "https://bistro-centquatre-104.vercel.app/api/agent",
+    "status": 200,
+    "contentType": "application/json; charset=utf-8"
+  }
+]

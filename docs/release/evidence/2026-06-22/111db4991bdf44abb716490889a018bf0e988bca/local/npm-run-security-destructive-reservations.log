@@ -1,0 +1,5 @@
+
+> bistro-reservation@0.1.0 security:destructive-reservations
+> node scripts/security/check-destructive-reservation-queries.mjs
+
+[security:destructive] OK (189 files scanned, allowlist=3)

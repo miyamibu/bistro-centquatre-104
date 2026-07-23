@@ -1,0 +1,97 @@
+
+> bistro-reservation@0.1.0 build
+> prisma generate && next build
+
+Prisma schema loaded from prisma/schema.prisma
+
+✔ Generated Prisma Client (v5.22.0) to ./node_modules/@prisma/client in 39ms
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+Tip: Curious about the SQL queries Prisma ORM generates? Optimize helps you enhance your visibility: https://pris.ly/tip-2-optimize
+
+   ▲ Next.js 15.5.19
+
+   Creating an optimized production build ...
+Browserslist: browsers data (caniuse-lite) is 6 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+ ✓ Compiled successfully in 2.8s
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/26) ...
+   Generating static pages (6/26) 
+   Generating static pages (12/26) 
+   Generating static pages (19/26) 
+ ✓ Generating static pages (26/26)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                    Size  First Load JS
+┌ ○ /                                       8.02 kB         119 kB
+├ ○ /_not-found                               999 B         104 kB
+├ ○ /access                                   171 B         106 kB
+├ ○ /admin                                    171 B         106 kB
+├ ○ /admin/business-days                    12.7 kB         122 kB
+├ ○ /admin/daily-journal                    5.93 kB         112 kB
+├ ƒ /admin/reservations                     3.99 kB         133 kB
+├ ƒ /admin/reservations/[id]                1.63 kB         131 kB
+├ ○ /agents                                  2.8 kB         119 kB
+├ ○ /ai                                       216 B         103 kB
+├ ƒ /api/admin/business-days                  216 B         103 kB
+├ ƒ /api/admin/daily-journal                  216 B         103 kB
+├ ƒ /api/admin/day-status                     216 B         103 kB
+├ ƒ /api/admin/private-block                  216 B         103 kB
+├ ƒ /api/admin/reservations                   216 B         103 kB
+├ ƒ /api/admin/reservations/[id]              216 B         103 kB
+├ ƒ /api/agent                                216 B         103 kB
+├ ƒ /api/availability                         216 B         103 kB
+├ ƒ /api/availability/monthly                 216 B         103 kB
+├ ƒ /api/contact                              216 B         103 kB
+├ ƒ /api/cron/remind                          216 B         103 kB
+├ ƒ /api/crons/cancel-expired-orders          216 B         103 kB
+├ ƒ /api/crons/delete-old-histories           216 B         103 kB
+├ ƒ /api/crons/process-order-notifications    216 B         103 kB
+├ ƒ /api/crons/remind                         216 B         103 kB
+├ ƒ /api/daily-journal                        216 B         103 kB
+├ ƒ /api/dashboard/bank-account               216 B         103 kB
+├ ƒ /api/dashboard/orders                     216 B         103 kB
+├ ƒ /api/line/webhook                         216 B         103 kB
+├ ƒ /api/orders                               216 B         103 kB
+├ ƒ /api/orders/[id]/actions                  216 B         103 kB
+├ ƒ /api/pdf-to-image                         216 B         103 kB
+├ ƒ /api/private-block/access                 216 B         103 kB
+├ ƒ /api/reservations                         216 B         103 kB
+├ ƒ /api/reservations/[id]/line-link          216 B         103 kB
+├ ○ /apple-icon.png                             0 B            0 B
+├ ƒ /booking                                8.28 kB         121 kB
+├ ○ /contact                                17.8 kB         144 kB
+├ ○ /daily-journal                          3.55 kB         106 kB
+├ ƒ /dashboard/api/bank-account               216 B         103 kB
+├ ƒ /dashboard/api/orders                     216 B         103 kB
+├ ƒ /dashboard/orders                       3.53 kB         106 kB
+├ ○ /faq                                      216 B         103 kB
+├ ○ /hors-doeuvre                           2.63 kB         109 kB
+├ ○ /icon.png                                   0 B            0 B
+├ ○ /legal                                    216 B         103 kB
+├ ƒ /llms.txt                                 216 B         103 kB
+├ ○ /menu                                   5.82 kB         117 kB
+├ ○ /on-line-store                            312 B         111 kB
+├ ○ /on-line-store/apron                    3.94 kB         115 kB
+├ ○ /on-line-store/cart                     5.66 kB         117 kB
+├ ○ /on-line-store/order-complete           1.49 kB         107 kB
+├ ○ /on-line-store/pay                         3 kB         109 kB
+├ ƒ /picture                                2.29 kB         110 kB
+├ ○ /privacy                                  216 B         103 kB
+└ ƒ /staff                                    171 B         106 kB
++ First Load JS shared by all                103 kB
+  ├ chunks/1255-5c680abb9db89955.js         46.3 kB
+  ├ chunks/4bd1b696-f785427dddbba9fb.js     54.2 kB
+  └ other shared chunks (total)             2.09 kB
+
+
+ƒ Middleware                                48.3 kB
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

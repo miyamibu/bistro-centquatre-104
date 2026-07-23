@@ -1,0 +1,38 @@
+{
+  "status": "PARTIALLY_COMPLETED",
+  "releaseDecision": "NO_GO",
+  "operations": "NOT_READY",
+  "rcSha": "3a460a4067b2d9714e874626bd8563e2a04a63e4",
+  "branch": "release/go-readiness-20260622",
+  "productionUrl": "https://bistro-centquatre-104.vercel.app",
+  "productionDeployment": {
+    "id": "dpl_3RpHZXcaHuSohiKvTnJ9PY8PUZLA",
+    "status": "READY",
+    "target": "production",
+    "note": "Vercel inspect did not expose git SHA metadata in CLI JSON; deployment was created from a clean detached worktree at the RC SHA."
+  },
+  "ci": {
+    "workflow": "Reservation Hardening CI",
+    "runId": 27928022298,
+    "headSha": "3a460a4067b2d9714e874626bd8563e2a04a63e4",
+    "conclusion": "success",
+    "url": "https://github.com/miyamibu/bistro-centquatre-104/actions/runs/27928022298"
+  },
+  "completedChecks": [
+    "Production deployment reached READY.",
+    "Production smoke completed for home, booking, cart, agents, llms.txt, api/agent, api/availability, api/availability/monthly.",
+    "Production DB migration and post-check completed.",
+    "Production cron endpoint process-order-notifications returned 200 with empty outbox.",
+    "Physical iPhone Safari screenshots captured for home, booking, cart, agents, and admin Basic auth gate.",
+    "Physical Android Pixel 9a Chrome screenshots captured for home, booking, cart, agents, and admin Basic auth gate."
+  ],
+  "noGoReasons": [
+    "Preview verification was intentionally skipped by user choice; this violates the original GO condition requiring Preview same-SHA verification.",
+    "The process-order-notifications cron was reduced to once daily to satisfy the Vercel Hobby cron limit; this does not meet the original operational readiness target for timely order notification outbox processing.",
+    "Preview environment separation proof is absent because no Preview deployment was completed.",
+    "Full LINE provider, LIFF, webhook redelivery, push/reminder delivery, and quota evidence are not closed.",
+    "Full mail delivery, bounce/complaint handling, monitoring alert, restore drill, rollback drill, and store/legal approval evidence are not closed.",
+    "Production deployment SHA could not be independently read back from Vercel CLI JSON metadata; provenance relies on the clean deployment worktree and GitHub CI SHA."
+  ],
+  "finalStatement": "Status: PARTIALLY_COMPLETED / Release Decision: NO_GO / Operations: NOT_READY"
+}

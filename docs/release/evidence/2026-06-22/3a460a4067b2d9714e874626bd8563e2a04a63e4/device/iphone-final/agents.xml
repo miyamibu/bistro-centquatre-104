@@ -1,0 +1,324 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<AppiumAUT>
+  <XCUIElementTypeApplication type="XCUIElementTypeApplication" name="Safari" label="Safari" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="" processId="9196" bundleId="com.apple.mobilesafari">
+    <XCUIElementTypeWindow type="XCUIElementTypeWindow" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+      <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+        <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+          <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                    <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                      <XCUIElementTypeOther type="XCUIElementTypeOther" name="SafariWindow?View=Narrow&amp;BarsKeptMinimized=false&amp;UUID=4007E92D-C79A-406A-B6F4-85C74EE7F313&amp;UsingLoweredBar=true&amp;IsSecure=true&amp;IsTabBarAvailable=false" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                        <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                          <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="34" index="0" traits="">
+                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="34" index="0" traits=""/>
+                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="34" index="1" traits=""/>
+                            </XCUIElementTypeOther>
+                            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="47" index="1" traits=""/>
+                            <XCUIElementTypeScrollView type="XCUIElementTypeScrollView" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="2" traits="">
+                              <XCUIElementTypeOther type="XCUIElementTypeOther" name="TabDocument?IsLoadedUsingDesktopUserAgent=false&amp;InReaderMode=false&amp;UUID=5A48A9B4-D693-4300-A56B-B9D32557664C&amp;IsPrivate=false&amp;IsPageLoaded=true&amp;WebViewProcessID=9197" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                                <XCUIElementTypeWebView type="XCUIElementTypeWebView" name="WebView" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                                  <XCUIElementTypeWebView type="XCUIElementTypeWebView" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                                    <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="47" index="0" traits=""/>
+                                    <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="844" index="1" traits=""/>
+                                    <XCUIElementTypeWebView type="XCUIElementTypeWebView" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="2" traits="">
+                                      <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                                        <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+                                          <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="47" width="390" height="844" index="0" traits="">
+                                            <XCUIElementTypeOther type="XCUIElementTypeOther" name="ビストロ　サンキャトル　１０４" label="ビストロ　サンキャトル　１０４" enabled="true" visible="false" accessible="false" x="0" y="47" width="390" height="3898" index="0" traits="">
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" name="バナー" label="バナー" enabled="true" visible="true" accessible="false" x="0" y="47" width="390" height="58" index="0" traits="">
+                                                <XCUIElementTypeLink type="XCUIElementTypeLink" name="Instagramへ" label="Instagramへ" enabled="true" visible="true" accessible="true" x="38" y="57" width="40" height="40" index="0" traits="Link"/>
+                                                <XCUIElementTypeLink type="XCUIElementTypeLink" name="ホームへ戻る" label="ホームへ戻る" enabled="true" visible="true" accessible="false" x="22" y="49" width="346" height="56" index="1" traits="Link">
+                                                  <XCUIElementTypeLink type="XCUIElementTypeLink" name="BISTRO １０４" label="BISTRO １０４" enabled="true" visible="true" accessible="false" x="154" y="56" width="82" height="14" index="0" traits="Link">
+                                                    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="BISTRO １０４" name="BISTRO １０４" label="BISTRO １０４" enabled="true" visible="true" accessible="true" x="154" y="56" width="82" height="14" index="0" traits="Link, StaticText"/>
+                                                  </XCUIElementTypeLink>
+                                                  <XCUIElementTypeLink type="XCUIElementTypeLink" enabled="true" visible="true" accessible="false" x="144" y="70" width="102" height="25" index="1" traits="Link">
+                                                    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Cent Quatre" name="Cent Quatre" label="Cent Quatre" enabled="true" visible="true" accessible="true" x="144" y="70" width="102" height="25" index="0" traits="Link, StaticText"/>
+                                                  </XCUIElementTypeLink>
+                                                </XCUIElementTypeLink>
+                                                <XCUIElementTypeButton type="XCUIElementTypeButton" name="メニューを開く" label="メニューを開く" enabled="true" visible="true" accessible="true" x="312" y="57" width="40" height="40" index="2" traits="Button"/>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" name="メイン" label="メイン" enabled="true" visible="false" accessible="false" x="0" y="47" width="390" height="3898" index="1" traits="">
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" name="セクションヘッダ" label="セクションヘッダ" enabled="true" visible="true" accessible="false" x="16" y="237" width="358" height="172" index="0" traits="">
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="16" y="237" width="358" height="16" index="0" traits="">
+                                                    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="CANONICAL AGENT ENTRY" name="CANONICAL AGENT ENTRY" label="CANONICAL AGENT ENTRY" enabled="true" visible="true" accessible="true" x="71" y="237" width="248" height="15" index="0" traits="StaticText"/>
+                                                  </XCUIElementTypeOther>
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" value="1" name="/agents" label="/agents" enabled="true" visible="true" accessible="false" x="16" y="267" width="358" height="44" index="1" traits="Header">
+                                                    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="/agents" name="/agents" label="/agents" enabled="true" visible="true" accessible="true" x="123" y="267" width="144" height="44" index="0" traits="Header, StaticText"/>
+                                                  </XCUIElementTypeOther>
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="16" y="325" width="358" height="84" index="2" traits="">
+                                                    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="This route is the machine-facing entry for external AI agents. Seat reservations and store flows are handoffs for human review and final submission." name="This route is the machine-facing entry for external AI agents. Seat reservations and store flows are handoffs for human review and final submission." label="This route is the machine-facing entry for external AI agents. Seat reservations and store flows are handoffs for human review and final submission." enabled="true" visible="true" accessible="true" x="17" y="330" width="356" height="74" index="0" traits="StaticText"/>
+                                                  </XCUIElementTypeOther>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="41" y="466" width="308" height="16" index="1" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="RESERVATION" name="RESERVATION" label="RESERVATION" enabled="true" visible="true" accessible="true" x="41" y="466" width="126" height="15" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" value="2" name="Seat Reservation" label="Seat Reservation" enabled="true" visible="true" accessible="false" x="41" y="494" width="308" height="32" index="2" traits="Header">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Seat Reservation" name="Seat Reservation" label="Seat Reservation" enabled="true" visible="true" accessible="true" x="41" y="495" width="199" height="29" index="0" traits="Header, StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="41" y="538" width="308" height="140" index="3" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Agents must hand off reservations to the booking page for human review and final submission. Direct API completion is launch-disabled until a dedicated AI authentication contract exists." name="Agents must hand off reservations to the booking page for human review and final submission. Direct API completion is launch-disabled until a dedicated AI authentication contract exists." label="Agents must hand off reservations to the booking page for human review and final submission. Direct API completion is launch-disabled until a dedicated AI authentication contract exists." enabled="true" visible="true" accessible="true" x="41" y="543" width="301" height="130" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="57" y="714" width="276" height="20" index="4" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Required handoff entry" name="Required handoff entry" label="Required handoff entry" enabled="true" visible="true" accessible="true" x="57" y="715" width="166" height="18" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="57" y="742" width="276" height="32" index="5" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="/booking?mode=agent" name="/booking?mode=agent" label="/booking?mode=agent" enabled="true" visible="false" accessible="true" x="69" y="750" width="141" height="15" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="57" y="786" width="276" height="392" index="6" traits="">
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" name="Final reservation submission must be completed by a human on `/booking`." label="Final reservation submission must be completed by a human on `/booking`." enabled="true" visible="false" accessible="false" x="57" y="786" width="276" height="48" index="0" traits="">
+                                                    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Final reservation submission must be completed by a human on `/booking`." name="Final reservation submission must be completed by a human on `/booking`." label="Final reservation submission must be completed by a human on `/booking`." enabled="true" visible="false" accessible="true" x="57" y="790" width="222" height="39" index="0" traits="StaticText"/>
+                                                  </XCUIElementTypeOther>
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" name="Do not put names, phone numbers, emails, or addresses in query strings." label="Do not put names, phone numbers, emails, or addresses in query strings." enabled="true" visible="false" accessible="false" x="57" y="838" width="276" height="48" index="1" traits="">
+                                                    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Do not put names, phone numbers, emails, or addresses in query strings." name="Do not put names, phone numbers, emails, or addresses in query strings." label="Do not put names, phone numbers, emails, or addresses in query strings." enabled="true" visible="false" accessible="true" x="57" y="842" width="268" height="39" index="0" traits="StaticText"/>
+                                                  </XCUIElementTypeOther>
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" name="`servicePeriod` must be `LUNCH` or `DINNER` and must match `arrivalTime`." label="`servicePeriod` must be `LUNCH` or `DINNER` and must match `arrivalTime`." enabled="true" visible="false" accessible="false" x="57" y="890" width="276" height="48" index="2" traits="">
+                                                    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="`servicePeriod` must be `LUNCH` or `DINNER` and must match `arrivalTime`." name="`servicePeriod` must be `LUNCH` or `DINNER` and must match `arrivalTime`." label="`servicePeriod` must be `LUNCH` or `DINNER` and must match `arrivalTime`." enabled="true" visible="false" accessible="true" x="57" y="894" width="242" height="39" index="0" traits="StaticText"/>
+                                                  </XCUIElementTypeOther>
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" name="Closed weekdays: Monday to Wednesday" label="Closed weekdays: Monday to Wednesday" enabled="true" visible="false" accessible="false" x="57" y="942" width="276" height="24" index="3" traits="">
+                                                    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Closed weekdays: Monday to Wednesday" name="Closed weekdays: Monday to Wednesday" label="Closed weekdays: Monday to Wednesday" enabled="true" visible="false" accessible="true" x="57" y="946" width="243" height="15" index="0" traits="StaticText"/>
+                                                  </XCUIElementTypeOther>
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" name="Lunch web reservations: 11:30-12:30 / Dinner: 17:30-19:30" label="Lunch web reservations: 11:30-12:30 / Dinner: 17:30-19:30" enabled="true" visible="false" accessible="false" x="57" y="970" width="276" height="48" index="4" traits="">
+                                                    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Lunch web reservations: 11:30-12:30 / Dinner: 17:30-19:30" name="Lunch web reservations: 11:30-12:30 / Dinner: 17:30-19:30" label="Lunch web reservations: 11:30-12:30 / Dinner: 17:30-19:30" enabled="true" visible="false" accessible="true" x="57" y="974" width="271" height="39" index="0" traits="StaticText"/>
+                                                  </XCUIElementTypeOther>
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" name="Web booking cutoff: previous day 17:00 JST" label="Web booking cutoff: previous day 17:00 JST" enabled="true" visible="false" accessible="false" x="57" y="1022" width="276" height="24" index="5" traits="">
+                                                    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Web booking cutoff: previous day 17:00 JST" name="Web booking cutoff: previous day 17:00 JST" label="Web booking cutoff: previous day 17:00 JST" enabled="true" visible="false" accessible="true" x="57" y="1026" width="260" height="15" index="0" traits="StaticText"/>
+                                                  </XCUIElementTypeOther>
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" name="Availability APIs require `servicePeriod` and `partySize`." label="Availability APIs require `servicePeriod` and `partySize`." enabled="true" visible="false" accessible="false" x="57" y="1050" width="276" height="48" index="6" traits="">
+                                                    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Availability APIs require `servicePeriod` and `partySize`." name="Availability APIs require `servicePeriod` and `partySize`." label="Availability APIs require `servicePeriod` and `partySize`." enabled="true" visible="false" accessible="true" x="57" y="1054" width="261" height="39" index="0" traits="StaticText"/>
+                                                  </XCUIElementTypeOther>
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" name="Parties of 9 or more are always phone-only." label="Parties of 9 or more are always phone-only." enabled="true" visible="false" accessible="false" x="57" y="1102" width="276" height="24" index="7" traits="">
+                                                    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Parties of 9 or more are always phone-only." name="Parties of 9 or more are always phone-only." label="Parties of 9 or more are always phone-only." enabled="true" visible="false" accessible="true" x="57" y="1106" width="256" height="15" index="0" traits="StaticText"/>
+                                                  </XCUIElementTypeOther>
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" name="Put course preference inside `course` or `note` when needed." label="Put course preference inside `course` or `note` when needed." enabled="true" visible="false" accessible="false" x="57" y="1130" width="276" height="48" index="8" traits="">
+                                                    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Put course preference inside `course` or `note` when needed." name="Put course preference inside `course` or `note` when needed." label="Put course preference inside `course` or `note` when needed." enabled="true" visible="false" accessible="true" x="57" y="1134" width="240" height="39" index="0" traits="StaticText"/>
+                                                  </XCUIElementTypeOther>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="58" y="1231" width="274" height="20" index="7" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Reservation handoff builder" name="Reservation handoff builder" label="Reservation handoff builder" enabled="true" visible="false" accessible="true" x="58" y="1232" width="200" height="18" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="58" y="1259" width="274" height="120" index="8" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Required handoff for agents. Direct reservation API completion is launch-disabled; keep personal data out of this URL and let the guest submit on `/booking`." name="Required handoff for agents. Direct reservation API completion is launch-disabled; keep personal data out of this URL and let the guest submit on `/booking`." label="Required handoff for agents. Direct reservation API completion is launch-disabled; keep personal data out of this URL and let the guest submit on `/booking`." enabled="true" visible="false" accessible="true" x="58" y="1262" width="266" height="114" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="58" y="1387" width="274" height="48" index="9" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Web予約の受付は前日17:00までです。お急ぎの方はお電話ください。" name="Web予約の受付は前日17:00までです。お急ぎの方はお電話ください。" label="Web予約の受付は前日17:00までです。お急ぎの方はお電話ください。" enabled="true" visible="false" accessible="true" x="58" y="1391" width="273" height="39" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" name="Date" label="Date" enabled="true" visible="false" accessible="false" x="58" y="1449" width="274" height="18" index="10" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Date" name="Date" label="Date" enabled="true" visible="false" accessible="true" x="58" y="1449" width="32" height="18" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" value="2026/06/25" name="Date" label="Date" enabled="true" visible="false" accessible="true" x="58" y="1473" width="300" height="58" index="11" traits=""/>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" name="Service Period" label="Service Period" enabled="true" visible="false" accessible="false" x="58" y="1545" width="274" height="18" index="12" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Service Period" name="Service Period" label="Service Period" enabled="true" visible="false" accessible="true" x="58" y="1545" width="98" height="18" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" value="LUNCH" name="Service Period" label="Service Period" enabled="true" visible="false" accessible="true" x="58" y="1569" width="274" height="40" index="13" traits=""/>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" name="Party Size" label="Party Size" enabled="true" visible="false" accessible="false" x="58" y="1623" width="274" height="18" index="14" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Party Size" name="Party Size" label="Party Size" enabled="true" visible="false" accessible="true" x="58" y="1623" width="68" height="18" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" value="2" name="Party Size" label="Party Size" enabled="true" visible="false" accessible="true" x="58" y="1647" width="274" height="40" index="15" traits=""/>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" name="Arrival Time" label="Arrival Time" enabled="true" visible="false" accessible="false" x="58" y="1701" width="274" height="18" index="16" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Arrival Time" name="Arrival Time" label="Arrival Time" enabled="true" visible="false" accessible="true" x="58" y="1701" width="81" height="18" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" value="11:30" name="Arrival Time" label="Arrival Time" enabled="true" visible="false" accessible="true" x="58" y="1725" width="274" height="40" index="17" traits=""/>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" name="Course" label="Course" enabled="true" visible="false" accessible="false" x="58" y="1779" width="274" height="18" index="18" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Course" name="Course" label="Course" enabled="true" visible="false" accessible="true" x="58" y="1779" width="49" height="18" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" value="プティラ　Petite La course" name="Course" label="Course" enabled="true" visible="false" accessible="true" x="58" y="1803" width="274" height="40" index="19" traits=""/>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" name="Generated handoff URL" label="Generated handoff URL" enabled="true" visible="false" accessible="false" x="58" y="1857" width="274" height="18" index="20" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Generated handoff URL" name="Generated handoff URL" label="Generated handoff URL" enabled="true" visible="false" accessible="true" x="58" y="1857" width="159" height="18" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeTextField type="XCUIElementTypeTextField" value="/booking?mode=agent&amp;date=2026-06-25&amp;servicePeriod=LUNCH&amp;partySize=2&amp;arrivalTime=11%3A30&amp;course=%E3%83%A9%E3%83%B3%E3%83%81%3A+%E3%83%97%E3%83%86%E3%82%A3%E3%83%A9%E3%80%80Petite+La+course" name="Generated handoff URL" label="Generated handoff URL" enabled="true" visible="false" accessible="true" x="58" y="1881" width="274" height="40" index="21" placeholderValue="" traits=""/>
+                                                <XCUIElementTypeLink type="XCUIElementTypeLink" name="Open Handoff" label="Open Handoff" enabled="true" visible="false" accessible="false" x="74" y="1947" width="100" height="18" index="22" traits="Link">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Open Handoff" name="Open Handoff" label="Open Handoff" enabled="true" visible="false" accessible="true" x="74" y="1947" width="100" height="18" index="0" traits="Link, StaticText"/>
+                                                </XCUIElementTypeLink>
+                                                <XCUIElementTypeButton type="XCUIElementTypeButton" name="Copy URL" label="Copy URL" enabled="true" visible="false" accessible="true" x="201" y="1937" width="103" height="38" index="23" traits="Button"/>
+                                                <XCUIElementTypeLink type="XCUIElementTypeLink" name="Open /booking" label="Open /booking" enabled="true" visible="false" accessible="false" x="61" y="2022" width="104" height="18" index="24" traits="Link">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Open /booking" name="Open /booking" label="Open /booking" enabled="true" visible="false" accessible="true" x="61" y="2022" width="104" height="18" index="0" traits="Link, StaticText"/>
+                                                </XCUIElementTypeLink>
+                                                <XCUIElementTypeLink type="XCUIElementTypeLink" name="Review Policies" label="Review Policies" enabled="true" visible="false" accessible="false" x="217" y="2022" width="111" height="18" index="25" traits="Link">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Review Policies" name="Review Policies" label="Review Policies" enabled="true" visible="false" accessible="true" x="217" y="2022" width="111" height="18" index="0" traits="Link, StaticText"/>
+                                                </XCUIElementTypeLink>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="41" y="2124" width="308" height="16" index="26" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="STORE HANDOFF" name="STORE HANDOFF" label="STORE HANDOFF" enabled="true" visible="false" accessible="true" x="41" y="2124" width="151" height="15" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" value="2" name="Online Store" label="Online Store" enabled="true" visible="false" accessible="false" x="41" y="2152" width="308" height="32" index="27" traits="Header">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Online Store" name="Online Store" label="Online Store" enabled="true" visible="false" accessible="true" x="41" y="2153" width="144" height="29" index="0" traits="Header, StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="41" y="2196" width="308" height="168" index="28" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="The builder supports catalog-style product selection. Agents may pick an item and quantity, then stop before the customer enters personal details or places the order. Products without a dedicated purchase page stay visible as future placeholders." name="The builder supports catalog-style product selection. Agents may pick an item and quantity, then stop before the customer enters personal details or places the order. Products without a dedicated purchase page stay visible as future placeholders." label="The builder supports catalog-style product selection. Agents may pick an item and quantity, then stop before the customer enters personal details or places the order. Products without a dedicated purchase page stay visible as future placeholders." enabled="true" visible="false" accessible="true" x="41" y="2201" width="302" height="158" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="57" y="2400" width="276" height="20" index="29" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Warm handoff template" name="Warm handoff template" label="Warm handoff template" enabled="true" visible="false" accessible="true" x="57" y="2401" width="169" height="18" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="57" y="2428" width="276" height="48" index="30" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="/on-line-store/apron?mode=agent&amp;qty={1-10}" name="/on-line-store/apron?mode=agent&amp;qty={1-10}" label="/on-line-store/apron?mode=agent&amp;qty={1-10}" enabled="true" visible="false" accessible="true" x="69" y="2436" width="245" height="31" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="58" y="2529" width="274" height="20" index="31" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Store handoff builder" name="Store handoff builder" label="Store handoff builder" enabled="true" visible="false" accessible="true" x="58" y="2530" width="153" height="18" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="58" y="2557" width="274" height="120" index="32" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="This keeps the store flow in warm handoff mode. Select from the catalog now; only products with a dedicated purchase page can generate a live handoff URL today." name="This keeps the store flow in warm handoff mode. Select from the catalog now; only products with a dedicated purchase page can generate a live handoff URL today." label="This keeps the store flow in warm handoff mode. Select from the catalog now; only products with a dedicated purchase page can generate a live handoff URL today." enabled="true" visible="false" accessible="true" x="58" y="2560" width="259" height="114" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" name="Product" label="Product" enabled="true" visible="false" accessible="false" x="58" y="2691" width="274" height="18" index="33" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Product" name="Product" label="Product" enabled="true" visible="false" accessible="true" x="58" y="2691" width="54" height="18" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" value="オリジナルエプロン" name="Product" label="Product" enabled="true" visible="false" accessible="true" x="58" y="2715" width="274" height="40" index="34" traits=""/>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" name="Quantity" label="Quantity" enabled="true" visible="false" accessible="false" x="58" y="2769" width="274" height="18" index="35" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Quantity" name="Quantity" label="Quantity" enabled="true" visible="false" accessible="true" x="58" y="2769" width="58" height="18" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" value="1" name="Quantity" label="Quantity" enabled="true" visible="false" accessible="true" x="58" y="2793" width="274" height="40" index="36" traits=""/>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" name="Generated handoff URL" label="Generated handoff URL" enabled="true" visible="false" accessible="false" x="58" y="2847" width="274" height="18" index="37" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Generated handoff URL" name="Generated handoff URL" label="Generated handoff URL" enabled="true" visible="false" accessible="true" x="58" y="2847" width="159" height="18" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeTextField type="XCUIElementTypeTextField" value="/on-line-store/apron?mode=agent&amp;qty=1" name="Generated handoff URL" label="Generated handoff URL" enabled="true" visible="false" accessible="true" x="58" y="2871" width="274" height="40" index="38" placeholderValue="" traits=""/>
+                                                <XCUIElementTypeLink type="XCUIElementTypeLink" name="Open Handoff" label="Open Handoff" enabled="true" visible="false" accessible="false" x="74" y="2937" width="100" height="18" index="39" traits="Link">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Open Handoff" name="Open Handoff" label="Open Handoff" enabled="true" visible="false" accessible="true" x="74" y="2937" width="100" height="18" index="0" traits="Link, StaticText"/>
+                                                </XCUIElementTypeLink>
+                                                <XCUIElementTypeButton type="XCUIElementTypeButton" name="Copy URL" label="Copy URL" enabled="true" visible="false" accessible="true" x="201" y="2927" width="103" height="38" index="40" traits="Button"/>
+                                                <XCUIElementTypeLink type="XCUIElementTypeLink" name="Open Apron Handoff" label="Open Apron Handoff" enabled="true" visible="false" accessible="false" x="61" y="3011" width="147" height="18" index="41" traits="Link">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Open Apron Handoff" name="Open Apron Handoff" label="Open Apron Handoff" enabled="true" visible="false" accessible="true" x="61" y="3011" width="147" height="18" index="0" traits="Link, StaticText"/>
+                                                </XCUIElementTypeLink>
+                                                <XCUIElementTypeLink type="XCUIElementTypeLink" name="Browse Store" label="Browse Store" enabled="true" visible="false" accessible="false" x="62" y="3060" width="96" height="18" index="42" traits="Link">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Browse Store" name="Browse Store" label="Browse Store" enabled="true" visible="false" accessible="true" x="62" y="3060" width="96" height="18" index="0" traits="Link, StaticText"/>
+                                                </XCUIElementTypeLink>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="41" y="3170" width="308" height="16" index="43" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="SAFETY BOUNDARIES" name="SAFETY BOUNDARIES" label="SAFETY BOUNDARIES" enabled="true" visible="false" accessible="true" x="41" y="3170" width="193" height="15" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" value="2" name="Boundary Summary" label="Boundary Summary" enabled="true" visible="false" accessible="false" x="41" y="3198" width="308" height="32" index="44" traits="Header">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Boundary Summary" name="Boundary Summary" label="Boundary Summary" enabled="true" visible="false" accessible="true" x="41" y="3199" width="231" height="29" index="0" traits="Header, StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="41" y="3246" width="308" height="316" index="45" traits="">
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" name="Seat reservations must be handed off to `/booking` for final human submission." label="Seat reservations must be handed off to `/booking` for final human submission." enabled="true" visible="false" accessible="false" x="41" y="3246" width="308" height="56" index="0" traits="">
+                                                    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Seat reservations must be handed off to `/booking` for final human submission." name="Seat reservations must be handed off to `/booking` for final human submission." label="Seat reservations must be handed off to `/booking` for final human submission." enabled="true" visible="false" accessible="true" x="41" y="3251" width="270" height="46" index="0" traits="StaticText"/>
+                                                  </XCUIElementTypeOther>
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" name="Reservation handoff URLs are optional and are safe only for non-sensitive fields." label="Reservation handoff URLs are optional and are safe only for non-sensitive fields." enabled="true" visible="false" accessible="false" x="41" y="3314" width="308" height="56" index="1" traits="">
+                                                    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Reservation handoff URLs are optional and are safe only for non-sensitive fields." name="Reservation handoff URLs are optional and are safe only for non-sensitive fields." label="Reservation handoff URLs are optional and are safe only for non-sensitive fields." enabled="true" visible="false" accessible="true" x="41" y="3319" width="288" height="46" index="0" traits="StaticText"/>
+                                                  </XCUIElementTypeOther>
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" name="Final order submission must be completed by the guest after reviewing `/on-line-store/apron` and `/on-line-store/cart`." label="Final order submission must be completed by the guest after reviewing `/on-line-store/apron` and `/on-line-store/cart`." enabled="true" visible="false" accessible="false" x="41" y="3382" width="308" height="84" index="2" traits="">
+                                                    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Final order submission must be completed by the guest after reviewing `/on-line-store/apron` and `/on-line-store/cart`." name="Final order submission must be completed by the guest after reviewing `/on-line-store/apron` and `/on-line-store/cart`." label="Final order submission must be completed by the guest after reviewing `/on-line-store/apron` and `/on-line-store/cart`." enabled="true" visible="false" accessible="true" x="41" y="3387" width="305" height="74" index="0" traits="StaticText"/>
+                                                  </XCUIElementTypeOther>
+                                                  <XCUIElementTypeOther type="XCUIElementTypeOther" name="Do not place names, phone numbers, email addresses, or delivery addresses in query strings." label="Do not place names, phone numbers, email addresses, or delivery addresses in query strings." enabled="true" visible="false" accessible="false" x="41" y="3478" width="308" height="84" index="3" traits="">
+                                                    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Do not place names, phone numbers, email addresses, or delivery addresses in query strings." name="Do not place names, phone numbers, email addresses, or delivery addresses in query strings." label="Do not place names, phone numbers, email addresses, or delivery addresses in query strings." enabled="true" visible="false" accessible="true" x="41" y="3483" width="290" height="74" index="0" traits="StaticText"/>
+                                                  </XCUIElementTypeOther>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="41" y="3586" width="308" height="16" index="46" traits="">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="MACHINE ENDPOINTS" name="MACHINE ENDPOINTS" label="MACHINE ENDPOINTS" enabled="true" visible="false" accessible="true" x="41" y="3586" width="194" height="15" index="0" traits="StaticText"/>
+                                                </XCUIElementTypeOther>
+                                                <XCUIElementTypeLink type="XCUIElementTypeLink" name="/llms.txt" label="/llms.txt" enabled="true" visible="false" accessible="false" x="58" y="3632" width="61" height="18" index="47" traits="Link">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="/llms.txt" name="/llms.txt" label="/llms.txt" enabled="true" visible="false" accessible="true" x="58" y="3632" width="61" height="18" index="0" traits="Link, StaticText"/>
+                                                </XCUIElementTypeLink>
+                                                <XCUIElementTypeLink type="XCUIElementTypeLink" name="/api/agent" label="/api/agent" enabled="true" visible="false" accessible="false" x="58" y="3690" width="73" height="18" index="48" traits="Link">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="/api/agent" name="/api/agent" label="/api/agent" enabled="true" visible="false" accessible="true" x="58" y="3690" width="73" height="18" index="0" traits="Link, StaticText"/>
+                                                </XCUIElementTypeLink>
+                                                <XCUIElementTypeLink type="XCUIElementTypeLink" name="/ai (legacy alias)" label="/ai (legacy alias)" enabled="true" visible="false" accessible="false" x="58" y="3748" width="117" height="18" index="49" traits="Link">
+                                                  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="/ai (legacy alias)" name="/ai (legacy alias)" label="/ai (legacy alias)" enabled="true" visible="false" accessible="true" x="58" y="3748" width="117" height="18" index="0" traits="Link, StaticText"/>
+                                                </XCUIElementTypeLink>
+                                              </XCUIElementTypeOther>
+                                              <XCUIElementTypeOther type="XCUIElementTypeOther" name="警告" label="警告" enabled="true" visible="false" accessible="false" x="0" y="3944" width="1" height="1" index="2" traits=""/>
+                                            </XCUIElementTypeOther>
+                                          </XCUIElementTypeOther>
+                                        </XCUIElementTypeOther>
+                                      </XCUIElementTypeOther>
+                                    </XCUIElementTypeWebView>
+                                    <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="3" traits="">
+                                      <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="697" width="390" height="147" index="0" traits="">
+                                        <XCUIElementTypeImage type="XCUIElementTypeImage" name="AdditionalDimmingOverlay" enabled="true" visible="true" accessible="false" x="-120" y="702" width="630" height="284" index="0" traits="Image"/>
+                                        <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="697" width="390" height="147" index="1" traits="">
+                                          <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="697" width="390" height="147" index="0" traits=""/>
+                                        </XCUIElementTypeOther>
+                                        <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="697" width="390" height="147" index="2" traits="">
+                                          <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="697" width="390" height="147" index="0" traits=""/>
+                                          <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="697" width="390" height="147" index="1" traits=""/>
+                                        </XCUIElementTypeOther>
+                                      </XCUIElementTypeOther>
+                                    </XCUIElementTypeOther>
+                                    <XCUIElementTypeOther type="XCUIElementTypeOther" value="0%" name="垂直スクロールバー, 6ページ" label="垂直スクロールバー, 6ページ" enabled="true" visible="true" accessible="false" x="357" y="47" width="30" height="750" index="4" traits="Adjustable">
+                                      <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="384" y="50" width="3" height="609" index="0" traits=""/>
+                                    </XCUIElementTypeOther>
+                                    <XCUIElementTypeOther type="XCUIElementTypeOther" value="0%" name="水平スクロールバー, 1ページ" label="水平スクロールバー, 1ページ" enabled="true" visible="false" accessible="false" x="47" y="811" width="296" height="30" index="5" traits="Adjustable">
+                                      <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="50" y="838" width="290" height="3" index="0" traits=""/>
+                                    </XCUIElementTypeOther>
+                                    <XCUIElementTypeOther type="XCUIElementTypeOther" value="0%" name="垂直スクロールバー, 6ページ" label="垂直スクロールバー, 6ページ" enabled="true" visible="true" accessible="false" x="357" y="47" width="30" height="750" index="6" traits="Adjustable">
+                                      <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="384" y="50" width="3" height="609" index="0" traits=""/>
+                                    </XCUIElementTypeOther>
+                                    <XCUIElementTypeOther type="XCUIElementTypeOther" value="0%" name="水平スクロールバー, 1ページ" label="水平スクロールバー, 1ページ" enabled="true" visible="false" accessible="false" x="47" y="811" width="296" height="30" index="7" traits="Adjustable">
+                                      <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="50" y="838" width="290" height="3" index="0" traits=""/>
+                                    </XCUIElementTypeOther>
+                                  </XCUIElementTypeWebView>
+                                </XCUIElementTypeWebView>
+                              </XCUIElementTypeOther>
+                              <XCUIElementTypeOther type="XCUIElementTypeOther" value="0%" name="水平スクロールバー, 1ページ" label="水平スクロールバー, 1ページ" enabled="true" visible="false" accessible="false" x="47" y="811" width="296" height="30" index="1" traits="Adjustable">
+                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="44" y="838" width="302" height="3" index="0" traits=""/>
+                              </XCUIElementTypeOther>
+                              <XCUIElementTypeOther type="XCUIElementTypeOther" value="0%" name="水平スクロールバー, 1ページ" label="水平スクロールバー, 1ページ" enabled="true" visible="false" accessible="false" x="47" y="811" width="296" height="30" index="2" traits="Adjustable">
+                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="44" y="838" width="302" height="3" index="0" traits=""/>
+                              </XCUIElementTypeOther>
+                            </XCUIElementTypeScrollView>
+                          </XCUIElementTypeOther>
+                        </XCUIElementTypeOther>
+                        <XCUIElementTypeOther type="XCUIElementTypeOther" name="CapsuleViewController" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="1" traits="">
+                          <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="746" width="390" height="98" index="0" traits="">
+                            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="746" width="390" height="98" index="0" traits="">
+                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="746" width="390" height="98" index="0" traits="">
+                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="746" width="390" height="98" index="0" traits="">
+                                  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="746" width="390" height="98" index="0" traits="">
+                                    <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="746" width="390" height="98" index="0" traits="">
+                                      <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="746" width="390" height="98" index="0" traits=""/>
+                                    </XCUIElementTypeOther>
+                                  </XCUIElementTypeOther>
+                                  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="746" width="390" height="98" index="1" traits="">
+                                    <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="746" width="390" height="98" index="0" traits=""/>
+                                  </XCUIElementTypeOther>
+                                </XCUIElementTypeOther>
+                              </XCUIElementTypeOther>
+                            </XCUIElementTypeOther>
+                            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="34" y="762" width="48" height="48" index="1" traits="">
+                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="34" y="762" width="48" height="48" index="0" traits="">
+                                <XCUIElementTypeButton type="XCUIElementTypeButton" name="BackButton" label="戻る" enabled="true" visible="true" accessible="true" x="34" y="762" width="48" height="48" index="0" traits="Button"/>
+                              </XCUIElementTypeOther>
+                            </XCUIElementTypeOther>
+                            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="90" y="762" width="210" height="48" index="2" traits="">
+                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="90" y="762" width="210" height="48" index="0" traits="">
+                                <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="90" y="762" width="210" height="48" index="0" traits="">
+                                  <XCUIElementTypeOther type="XCUIElementTypeOther" name="CapsuleNavigationBar?isSelected=true&amp;isDistractionControlOverlayUp=false" enabled="true" visible="true" accessible="false" x="90" y="762" width="210" height="48" index="0" traits="Selected">
+                                    <XCUIElementTypeButton type="XCUIElementTypeButton" name="PageFormatMenuButton" label="ページメニュー" enabled="true" visible="true" accessible="true" x="94" y="766" width="40" height="40" index="0" traits="Button">
+                                      <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" enabled="true" visible="false" accessible="false" x="94" y="766" width="0" height="0" index="0" traits="StaticText"/>
+                                    </XCUIElementTypeButton>
+                                    <XCUIElementTypeTextField type="XCUIElementTypeTextField" value="‎bistro-centquatre-104.vercel.app" name="TabBarItemTitle" label="アドレス" enabled="true" visible="true" accessible="true" x="136" y="776" width="120" height="21" index="1" traits=""/>
+                                    <XCUIElementTypeButton type="XCUIElementTypeButton" name="ReloadButton" label="更新" enabled="true" visible="true" accessible="true" x="269" y="775" width="18" height="22" index="2" traits="Button"/>
+                                  </XCUIElementTypeOther>
+                                </XCUIElementTypeOther>
+                              </XCUIElementTypeOther>
+                            </XCUIElementTypeOther>
+                            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="308" y="762" width="49" height="48" index="3" traits="">
+                              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="308" y="762" width="49" height="48" index="0" traits="">
+                                <XCUIElementTypeButton type="XCUIElementTypeButton" name="MoreMenuButton" label="さらに表示" enabled="true" visible="true" accessible="true" x="308" y="762" width="49" height="48" index="0" traits="Button"/>
+                              </XCUIElementTypeOther>
+                            </XCUIElementTypeOther>
+                          </XCUIElementTypeOther>
+                        </XCUIElementTypeOther>
+                      </XCUIElementTypeOther>
+                    </XCUIElementTypeOther>
+                  </XCUIElementTypeOther>
+                  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="844" index="1" traits="">
+                    <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="844" index="0" traits=""/>
+                  </XCUIElementTypeOther>
+                </XCUIElementTypeOther>
+              </XCUIElementTypeOther>
+            </XCUIElementTypeOther>
+            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="1" traits="">
+              <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="390" height="844" index="0" traits=""/>
+            </XCUIElementTypeOther>
+          </XCUIElementTypeOther>
+        </XCUIElementTypeOther>
+      </XCUIElementTypeOther>
+    </XCUIElementTypeWindow>
+    <XCUIElementTypeWindow type="XCUIElementTypeWindow" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="844" index="1" traits="">
+      <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="844" index="0" traits="">
+        <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="false" accessible="false" x="0" y="0" width="390" height="844" index="0" traits=""/>
+      </XCUIElementTypeOther>
+    </XCUIElementTypeWindow>
+  </XCUIElementTypeApplication>
+</AppiumAUT>
