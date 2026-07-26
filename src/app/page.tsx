@@ -121,7 +121,7 @@ const MENU = {
     label: "ディナー",
     slides: [
       {
-        title: "実食！ ５品 5,000円",
+        title: "実食！ ５品 5,500円",
         subtitle: "ジョワ Joie course",
         description: `Amuse-bouches (3種) / Hors-d’œuvre / Entrée / ${MOBILE_ONLY_BREAK_TOKEN}Poisson または Viande / ${DESKTOP_ONLY_BREAK_TOKEN}Riz / Café`,
         anchor: "joie",
