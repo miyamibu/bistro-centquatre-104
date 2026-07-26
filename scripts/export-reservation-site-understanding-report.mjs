@@ -1044,7 +1044,7 @@ function buildFeatureStatusRows(context) {
     ["予約完了画面", "実装済み", "src/components/reserve-form.tsx(result表示)"],
     ["予約完了メール", "外部検証待ち", "src/lib/email.ts（店舗通知は実装、顧客完了メール未確認）"],
     ["店舗向け通知", "実装済み", "src/lib/email.ts#sendReservationEmail"],
-    ["顧客向けリマインド", "外部検証待ち", "src/app/api/crons/remind/route.ts（LINE送信未実装）"],
+    ["顧客向けリマインド", "外部検証待ち", "src/app/api/crons/remind/route.ts + src/lib/line-notification.ts（LINE送信実装済み、外部実送信は未検証）"],
     ["キャンセル導線", "実装済み", "管理画面操作 + 電話案内"],
     ["予約変更導線", "未実装", "顧客セルフ変更UIなし"],
     ["管理画面", "実装済み", "src/app/admin/reservations/page.tsx"],
@@ -1059,7 +1059,7 @@ function buildFeatureStatusRows(context) {
     ["No-show記録", "実装済み", "ReservationStatus.NOSHOW + 管理画面更新"],
     ["CSV/export", "未実装", "公開API/管理UIに専用export未確認"],
     ["Google Calendar連携", "未実装", "連携実装未確認"],
-    ["メール/SMS/LINE通知", "外部検証待ち", "メール実装済み、SMS未実装、LINEは準備のみ"],
+    ["メール/SMS/LINE通知", "外部検証待ち", "メール実装済み、SMS未実装、LINE送信実装済み（外部到達は未検証）"],
     ["Docker / systemd / nginx", "未実装", "該当設定ファイル未確認"],
     ["production validation evidence", "実証リリース準備済み", "docs/production-launch.md"],
     ["実機スマホ確認", "外部検証待ち", "tmp-*.png証跡はあるが実地再確認推奨"],
@@ -1486,7 +1486,7 @@ Customer Browser / Mobile
   -> Reservation API (\`/api/reservations\`)
   -> Availability Engine (\`src/lib/reservation-capacity.ts\`)
   -> Reservation DB (Prisma/PostgreSQL)
-  -> Notification (\`src/lib/email.ts\`, cron remind placeholder)
+  -> Notification (\`src/lib/email.ts\`, \`src/app/api/crons/remind/route.ts\`, \`src/lib/line-notification.ts\`)
 
 Staff Browser
   -> Staff Hub (\`/staff\`)
@@ -1506,7 +1506,7 @@ Operations boundary
 
 外部サービス
 - Email: Resend / SendGrid（実装あり）
-- LINE: env準備あり、送信本体は未実装
+- LINE: 送信実装済み（環境変数と外部実送信は未検証）
 - SMS: 未実装
 - Google Calendar: 未実装
 - Map: フロント表示あり
@@ -1518,7 +1518,7 @@ Operations boundary
 - 店舗スタッフは確認・変更・キャンセル・来店状況管理を行う
 - サーバーは予約/空席/通知/運用制御を担当
 - 個人情報を扱うため、ログ・PDF・エクスポートではマスク方針が必要
-- 外部連携は実装済み（Email）と未検証/未実装（LINE/SMS/Calendar）を分離して扱う`;
+- 外部連携は実装済み（Email/LINE）と未検証/未実装（SMS/Calendar）を分離して扱う`;
 
   const section05 = `## 5. 主要フロー
 
@@ -1556,7 +1556,7 @@ Operations boundary
 - 店舗向け新規予約通知: 実装済み
 - 予約変更通知: 未実装
 - キャンセル通知: 未実装（運用電話前提）
-- 前日/当日リマインド: cronエンドポイントあり、LINE送信未実装
+- 前日/当日リマインド: cronエンドポイントとLINE送信は実装済み、外部実送信は未検証
 - retry/dead-letter: 明示的なキュー/死信箱は未実装
 - 通知ログ: アプリログで失敗記録
 
@@ -1822,7 +1822,7 @@ ${makeMarkdownTable(["テストファイル", "主な保証"], testRows)}
 - 実機スマホ検証: 最新実地再検証が必要
 - 実予約フロー検証: 本番相当の再検証が必要
 - メール通知到達確認: 要再検証
-- SMS/LINE通知到達確認: SMS未実装、LINE未実装
+- SMS/LINE通知到達確認: SMS未実装、LINE送信実装済みだが外部到達は未検証
 - 管理画面操作確認: 実装あり、運用訓練証跡は要補完
 - 予約重複防止確認: ロジック/テストあり
 - 満席時受付停止確認: ロジック/テストあり
@@ -1903,7 +1903,7 @@ ${makeMarkdownTable(
 
 - 実機スマホ予約確認
 - 実メール通知到達確認
-- LINE通知到達確認（実装後）
+- LINE通知到達確認（送信実装済み、外部検証待ち）
 - 公開TLSホスト確認
 - 店舗スタッフ運用訓練
 - 予約重複防止の本番相当検証

@@ -516,7 +516,7 @@ const readMoreButtonStyle = {
 };
   return (
   <>
-  <div className="relative z-10 space-y-0 pb-0 md:pb-0">
+  <div className={`${lightbox ? "relative z-[130]" : "relative z-10"} space-y-0 pb-0 md:pb-0`}>
      <h1 className="sr-only">bistro centquatre 104</h1>
      <a
        href={reserveLabel.href}
