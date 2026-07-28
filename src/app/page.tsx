@@ -529,7 +529,7 @@ const readMoreButtonStyle = {
      <a
        href={reserveLabel.href}
        aria-label="予約"
-       className="fixed left-3 top-1/2 z-40 hidden rounded-r-md bg-[#b32626] text-white shadow-lg transition hover:brightness-[1.05] active:brightness-[0.98] md:block"
+       className="fixed left-3 top-1/2 z-40 hidden rounded-r-md bg-[#b32626] text-white shadow-lg transition hover:brightness-[1.05] active:brightness-[0.98] xl:block"
        style={{
          writingMode: "vertical-rl",
          textOrientation: "mixed",
@@ -544,7 +544,7 @@ const readMoreButtonStyle = {
      <a
        href={storeLabel.href}
        aria-label="オンラインストア"
-       className="fixed right-3 top-1/2 z-40 hidden rounded-l-md bg-[#1f4f8f] text-white shadow-lg transition hover:brightness-[1.05] active:brightness-[0.98] md:block"
+       className="fixed right-3 top-1/2 z-40 hidden rounded-l-md bg-[#1f4f8f] text-white shadow-lg transition hover:brightness-[1.05] active:brightness-[0.98] xl:block"
        style={{
          writingMode: "vertical-rl",
          textOrientation: "mixed",
@@ -1035,7 +1035,7 @@ const readMoreButtonStyle = {
 	          }px`,
 	        }}
 	      >
-        <div className="mx-auto grid w-full max-w-[900px] items-start gap-6 md:max-w-[1180px] md:grid-cols-[550px_550px] md:justify-center md:gap-16">
+        <div className="mx-auto grid w-full max-w-[900px] items-start gap-6 md:max-w-[1180px] md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:justify-center md:gap-16 md:px-4">
           <div
             className="order-1 md:flex md:h-[340px] md:items-center md:justify-end"
             style={{
@@ -1065,7 +1065,7 @@ const readMoreButtonStyle = {
           </div>
           </div>
           <div
-            className="order-2 mx-auto w-full max-w-[280px] overflow-hidden rounded-2xl border border-[#cfa96d]/40 shadow-sm md:w-[550px] md:max-w-[550px]"
+            className="order-2 mx-auto w-full max-w-[280px] overflow-hidden rounded-2xl border border-[#cfa96d]/40 shadow-sm md:w-full md:max-w-[550px]"
             style={{ transform: `translate(${contactPos.map.x}px, ${contactPos.map.y}px)` }}
           >
             <iframe

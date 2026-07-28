@@ -1,4 +1,8 @@
+import type { Metadata } from "next";
 import { CONTACT_PHONE_DISPLAY, CONTACT_TEL_LINK } from "@/lib/contact";
+import { createPageMetadata } from "@/lib/seo";
+
+export const metadata: Metadata = createPageMetadata("/legal");
 
 export default function LegalPage() {
   return (

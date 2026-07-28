@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import { Socket } from "node:net";
 import { Tangerine } from "next/font/google";
 import { prisma } from "@/lib/prisma";
 import { GalleryViewer } from "@/components/gallery-viewer";
+import { createPageMetadata } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = createPageMetadata("/picture");
 
 const PHOTO_CATEGORIES = [
   { key: "food", label: "料理" },

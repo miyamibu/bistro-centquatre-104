@@ -1,6 +1,10 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { AgentReservationBuilder } from "@/components/agent-reservation-builder";
 import { AgentStoreBuilder } from "@/components/agent-store-builder";
+import { createPageMetadata } from "@/lib/seo";
+
+export const metadata: Metadata = createPageMetadata("/agents");
 
 const pageSpacing = { top: 132, bottom: 140 };
 const sectionClassName =

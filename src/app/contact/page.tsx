@@ -1,4 +1,8 @@
+import type { Metadata } from "next";
 import { ContactForm } from "@/components/contact-form";
+import { createPageMetadata } from "@/lib/seo";
+
+export const metadata: Metadata = createPageMetadata("/contact");
 
 export default function ContactPage() {
   return (

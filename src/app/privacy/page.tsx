@@ -1,3 +1,8 @@
+import type { Metadata } from "next";
+import { createPageMetadata } from "@/lib/seo";
+
+export const metadata: Metadata = createPageMetadata("/privacy");
+
 export default function PrivacyPage() {
   return (
     <section className="px-0 pb-20 pt-[28px] md:pb-24 md:pt-[112px]">

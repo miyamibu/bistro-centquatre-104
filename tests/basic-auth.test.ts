@@ -39,6 +39,7 @@ describe("Basic auth hardening", () => {
     const response = middleware(request);
     expect(response.status).toBe(401);
     expect(response.headers.get("WWW-Authenticate")).toContain("Basic");
+    expect(response.headers.get("X-Robots-Tag")).toBe("noindex, nofollow");
   });
 
   it("lets backup export API use its route-level token auth", () => {
@@ -64,6 +65,7 @@ describe("Basic auth hardening", () => {
     const response = developmentMiddleware(request);
     expect(response.status).toBe(401);
     expect(response.headers.get("WWW-Authenticate")).toContain("Basic");
+    expect(response.headers.get("X-Robots-Tag")).toBe("noindex, nofollow");
   });
 
   it("allows /admin/daily-journal in development only with valid Basic auth", async () => {

@@ -1,5 +1,7 @@
+import type { Metadata } from "next";
 import "@/lib/css/liftkitvars.css";
 import { Tangerine } from "next/font/google";
+import { createPageMetadata } from "@/lib/seo";
 import {
   addJstMonths,
   formatJst,
@@ -31,6 +33,8 @@ const tangerine = Tangerine({
 });
 
 const menuHeadingSize = { base: 24, md: 45 };
+
+export const metadata: Metadata = createPageMetadata("/booking");
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 

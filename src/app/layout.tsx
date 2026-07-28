@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AppShell } from "@/components/app-shell";
+import { createPageMetadata, SITE_URL } from "@/lib/seo";
 
 export const metadata: Metadata = {
-  title: "ビストロ　サンキャトル　１０４",
-  description: "川越のフレンチレストラン bistro centquatre 104 の予約・店舗情報・オンラインストア",
+  ...createPageMetadata("/"),
+  metadataBase: new URL(SITE_URL),
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

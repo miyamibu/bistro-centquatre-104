@@ -1,8 +1,12 @@
+import type { Metadata } from "next";
 import {
   RESERVATION_BUSINESS_HOURS,
   RESERVATION_WEB_HOURS,
 } from "@/lib/reservation-config";
 import { RESERVATION_FAQ_ITEMS } from "@/lib/reservation-copy";
+import { createPageMetadata } from "@/lib/seo";
+
+export const metadata: Metadata = createPageMetadata("/faq");
 
 const BUSINESS_HOURS_QUESTION = "営業時間を教えてください。";
 const WEB_HOURS_QUESTION = "Web予約ができる時間帯を教えてください。";

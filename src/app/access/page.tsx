@@ -1,5 +1,7 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { CONTACT_PHONE_DISPLAY, CONTACT_TEL_LINK } from "@/lib/contact";
+import { createPageMetadata } from "@/lib/seo";
 import {
   RESERVATION_BUSINESS_HOURS,
   RESERVATION_BUSINESS_HOURS_TEXT,
@@ -12,6 +14,8 @@ import {
 const STORE_ADDRESS = "〒350-0824 埼玉県川越市石原町1丁目47-7";
 const GOOGLE_MAP_LINK =
   "https://www.google.com/maps/search/?api=1&query=%E3%80%92350-0824%20%E5%9F%BC%E7%8E%89%E7%9C%8C%E5%B7%9D%E8%B6%8A%E5%B8%82%E7%9F%B3%E5%8E%9F%E7%94%BA1%E4%B8%81%E7%9B%AE47-7";
+
+export const metadata: Metadata = createPageMetadata("/access");
 
 function MobileHoursList({
   items,

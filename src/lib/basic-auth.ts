@@ -98,7 +98,10 @@ export function isAuthorized(request: NextRequest) {
 export function unauthorized() {
   return new NextResponse("Unauthorized", {
     status: 401,
-    headers: { "WWW-Authenticate": "Basic realm=\"Restricted\"" },
+    headers: {
+      "WWW-Authenticate": "Basic realm=\"Restricted\"",
+      "X-Robots-Tag": "noindex, nofollow",
+    },
   });
 }
 
