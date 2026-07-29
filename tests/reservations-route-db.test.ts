@@ -5,14 +5,6 @@ import { getNextBookableReservationDate } from "@/lib/booking-rules";
 import { clearReservationArtifacts } from "./utils/reservation-destructive-cleanup";
 import { createTestPrismaClient, destructiveTestDbAccess } from "./test-database";
 
-const { sendReservationEmailMock } = vi.hoisted(() => ({
-  sendReservationEmailMock: vi.fn().mockResolvedValue({ sent: true, provider: "resend" }),
-}));
-
-vi.mock("@/lib/email", () => ({
-  sendReservationEmail: sendReservationEmailMock,
-}));
-
 const hasSafeDatabase = destructiveTestDbAccess.enabled;
 const describeIfDatabase = hasSafeDatabase ? describe : describe.skip;
 const prisma = hasSafeDatabase ? createTestPrismaClient() : null;
@@ -63,7 +55,6 @@ function getPrismaOrThrow() {
 describeIfDatabase("reservations route duplicate guard (db)", () => {
   beforeEach(async () => {
     vi.resetModules();
-    sendReservationEmailMock.mockClear();
     await cleanupReservations();
   });
 
@@ -102,7 +93,15 @@ describeIfDatabase("reservations route duplicate guard (db)", () => {
     });
 
     expect(reservations).toHaveLength(1);
-    expect(sendReservationEmailMock).toHaveBeenCalledTimes(1);
+    const emailOutbox = await getPrismaOrThrow().reservationEmailOutbox.findMany({
+      where: { reservationId: firstBody.reservationId },
+    });
+    expect(emailOutbox).toHaveLength(1);
+    expect(emailOutbox[0]).toMatchObject({
+      notificationType: "RESERVATION_CONFIRMATION",
+      status: "PENDING",
+      attempts: 0,
+    });
   }, 30000);
 
   it("creates a new reservation when the party size is different", async () => {
@@ -131,7 +130,9 @@ describeIfDatabase("reservations route duplicate guard (db)", () => {
 
     expect(reservations).toHaveLength(2);
     expect(reservations.map((reservation) => reservation.partySize)).toEqual([2, 3]);
-    expect(sendReservationEmailMock).toHaveBeenCalledTimes(2);
+    await expect(
+      getPrismaOrThrow().reservationEmailOutbox.count()
+    ).resolves.toBe(2);
   }, 30000);
 
   it("creates a new reservation when the prior one is older than 1 minute", async () => {
@@ -162,6 +163,8 @@ describeIfDatabase("reservations route duplicate guard (db)", () => {
     });
 
     expect(reservations).toHaveLength(2);
-    expect(sendReservationEmailMock).toHaveBeenCalledTimes(2);
+    await expect(
+      getPrismaOrThrow().reservationEmailOutbox.count()
+    ).resolves.toBe(2);
   }, 30000);
 });

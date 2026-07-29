@@ -40,6 +40,8 @@ describe("Basic auth hardening", () => {
     expect(response.status).toBe(401);
     expect(response.headers.get("WWW-Authenticate")).toContain("Basic");
     expect(response.headers.get("X-Robots-Tag")).toBe("noindex, nofollow");
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(response.headers.get("Vary")).toBe("Authorization");
   });
 
   it("lets backup export API use its route-level token auth", () => {

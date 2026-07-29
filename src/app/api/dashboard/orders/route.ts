@@ -6,6 +6,7 @@ import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
 import { getRequestId, logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
+const ORDER_LIST_LIMIT = 100;
 
 function unauthorized(requestId: string) {
   return apiError(401, {
@@ -26,8 +27,11 @@ export async function GET(request: NextRequest) {
   try {
     const { data, error } = await supabaseServer
       .from("orders")
-      .select("*")
-      .order("created_at", { ascending: false });
+      .select(
+        "id, customer_name, email, phone, zip_code, prefecture, city, address, building, payment_method, items, total, store_visit_date, status, version, created_at"
+      )
+      .order("created_at", { ascending: false })
+      .range(0, ORDER_LIST_LIMIT - 1);
 
     if (error) throw error;
 

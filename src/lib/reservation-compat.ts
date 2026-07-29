@@ -46,7 +46,7 @@ export class ReservationSchemaNotReadyError extends Error {
 function isMissingReservationInfrastructureError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   const hasReservationSchemaHint =
-    /(serviceperiod|reservationtype|privateblockauditlog|reservationratelimitevent|lineuserid|linereminder|linelinkedat|linelinksource|linepushstatus|linepushcheckedat|reservationlinelinktoken|notificationevent|linefriend|linecustomerlink)/i.test(
+    /(serviceperiod|reservationtype|privateblockauditlog|reservationratelimitevent|lineuserid|linereminder|linelinkedat|linelinksource|linepushstatus|linepushcheckedat|reservationlinelinktoken|notificationevent|linefriend|linecustomerlink|reservationemailoutbox)/i.test(
       message
     );
   const hasMissingHint = /(does not exist|not found|unknown|invalid|missing|undefined column)/i.test(
@@ -89,6 +89,7 @@ async function runReservationSchemaReadyCheck(client: ReservationClient) {
         lineFriendReady: boolean;
         lineCustomerLinkReady: boolean;
         reservationStatusAuditLogReady: boolean;
+        reservationEmailOutboxReady: boolean;
       }>>(
       Prisma.sql`
       SELECT
@@ -110,7 +111,8 @@ async function runReservationSchemaReadyCheck(client: ReservationClient) {
         to_regclass('"NotificationEvent"') IS NOT NULL AS "notificationEventReady",
         to_regclass('"LineFriend"') IS NOT NULL AS "lineFriendReady",
         to_regclass('"LineCustomerLink"') IS NOT NULL AS "lineCustomerLinkReady",
-        to_regclass('"ReservationStatusAuditLog"') IS NOT NULL AS "reservationStatusAuditLogReady"
+        to_regclass('"ReservationStatusAuditLog"') IS NOT NULL AS "reservationStatusAuditLogReady",
+        to_regclass('"ReservationEmailOutbox"') IS NOT NULL AS "reservationEmailOutboxReady"
       `
     );
     const schema = schemaRows[0];

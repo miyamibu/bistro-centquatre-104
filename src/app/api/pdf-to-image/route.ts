@@ -105,6 +105,14 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    if (process.env.NODE_ENV === "production") {
+      return apiError(410, {
+        error: "PDF変換は本番環境では無効です",
+        code: "PDF_CONVERSION_DISABLED_IN_PRODUCTION",
+        requestId,
+      });
+    }
+
     const rateLimit = applyRateLimit(request);
     if (rateLimit.limited) {
       return apiError(

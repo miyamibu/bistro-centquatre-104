@@ -15,6 +15,7 @@ interface ErrorPayload {
 interface WriteSecurityOptions {
   requestId?: string;
   requireRequestedWith?: boolean;
+  requireOrigin?: boolean;
   maxBytes?: number;
 }
 
@@ -43,17 +44,26 @@ export function apiError(
   payload: ErrorPayload,
   init?: Omit<ResponseInit, "status">
 ) {
-  return NextResponse.json(payload, {
+  const response = NextResponse.json(payload, {
     status,
     ...(init ?? {}),
   });
+  if (status === 401 || status === 403) {
+    if (!response.headers.has("Cache-Control")) {
+      response.headers.set("Cache-Control", "private, no-store");
+    }
+    if (!response.headers.has("Vary")) {
+      response.headers.set("Vary", "Authorization, Origin");
+    }
+  }
+  return response;
 }
 
 export function enforceWriteRequestSecurity(
   request: NextRequest,
   options: WriteSecurityOptions = {}
 ) {
-  const { requestId, requireRequestedWith = true, maxBytes } = options;
+  const { requestId, requireRequestedWith = true, requireOrigin = true, maxBytes } = options;
   const contentType = request.headers.get("content-type") ?? "";
   if (!contentType.toLowerCase().includes("application/json")) {
     return apiError(415, {
@@ -73,6 +83,13 @@ export function enforceWriteRequestSecurity(
   }
 
   const origin = request.headers.get("origin");
+  if (requireOrigin && !origin) {
+    return apiError(403, {
+      error: "Origin header is required",
+      code: "ORIGIN_REQUIRED",
+      requestId,
+    });
+  }
   if (origin) {
     const allowedOrigins = resolveAllowedOrigins(request);
     if (!allowedOrigins.has(origin)) {

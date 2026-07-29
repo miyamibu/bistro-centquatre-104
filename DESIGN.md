@@ -1,7 +1,7 @@
 # DESIGN.md
 
 ## Goal
-Keep the Bistro Joa reservation site refined, trustworthy, and easy to book while preserving the existing reservation, store, and admin workflows.
+Keep the bistro centquatre 104 reservation site refined, trustworthy, and easy to book while preserving the existing reservation, store, and admin workflows.
 
 ## Context
 - Product: restaurant reservation site with online store and admin/dashboard surfaces.

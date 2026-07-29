@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const sendOrderConfirmationEmailMock = vi.hoisted(() => vi.fn());
 const fromMock = vi.hoisted(() => vi.fn());
+const randomUUIDMock = vi.hoisted(() => vi.fn(() => "claim-token-1"));
 
 vi.mock("@/lib/email", () => ({
   sendOrderConfirmationEmail: sendOrderConfirmationEmailMock,
@@ -19,10 +20,13 @@ vi.mock("@/lib/logger", () => ({
   logWarn: vi.fn(),
 }));
 
+vi.mock("node:crypto", () => ({
+  randomUUID: randomUUIDMock,
+}));
+
 type QueryChain = PromiseLike<unknown> & {
   select: ReturnType<typeof vi.fn>;
   eq: ReturnType<typeof vi.fn>;
-  in: ReturnType<typeof vi.fn>;
   or: ReturnType<typeof vi.fn>;
   order: ReturnType<typeof vi.fn>;
   limit: ReturnType<typeof vi.fn>;
@@ -35,7 +39,6 @@ function query(result: unknown) {
   Object.assign(chain, {
     select: vi.fn(() => chain),
     eq: vi.fn(() => chain),
-    in: vi.fn(() => chain),
     or: vi.fn(() => chain),
     order: vi.fn(() => chain),
     limit: vi.fn(() => chain),
@@ -50,19 +53,66 @@ function query(result: unknown) {
   return chain;
 }
 
+function baseRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "outbox-1",
+    order_id: "order-1",
+    notification_type: "ORDER_CONFIRMATION",
+    attempts: 0,
+    max_attempts: 5,
+    claim_token: null,
+    customer_sent_at: null,
+    admin_sent_at: null,
+    admin_skipped_at: null,
+    ...overrides,
+  };
+}
+
+function orderQuery() {
+  return query({
+    data: {
+      id: "order-1",
+      customer_name: "Taro",
+      email: "taro@example.com",
+      phone: "09000000000",
+      zip_code: "100-0001",
+      prefecture: "Tokyo",
+      city: "Chiyoda",
+      address: "1-1",
+      building: null,
+      items: [{ id: "item-1", name: "Soup", price: 1000, quantity: 1 }],
+      total: 1000,
+      payment_method: "PAY_IN_STORE",
+      store_visit_date: "2026-09-24",
+    },
+    error: null,
+  });
+}
+
+async function loadProcessor() {
+  return import("@/lib/order-notification-outbox");
+}
+
 beforeEach(() => {
+  vi.resetModules();
   fromMock.mockReset();
   sendOrderConfirmationEmailMock.mockReset();
+  randomUUIDMock.mockReset();
+  randomUUIDMock.mockReturnValue("claim-token-1");
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("processOrderConfirmationOutboxForOrder", () => {
-  it("includes stale PROCESSING rows in the claimable outbox filter", async () => {
+  it("uses the same due-or-expired condition when selecting claimable rows", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-28T08:00:00.000Z"));
     const pendingQuery = query({ data: [], error: null });
     fromMock.mockReturnValueOnce(pendingQuery);
 
-    const { processOrderConfirmationOutboxForOrder } = await import(
-      "@/lib/order-notification-outbox"
-    );
+    const { processOrderConfirmationOutboxForOrder } = await loadProcessor();
     const result = await processOrderConfirmationOutboxForOrder({
       orderId: "order-1",
       requestId: "req-1",
@@ -70,126 +120,238 @@ describe("processOrderConfirmationOutboxForOrder", () => {
 
     expect(result).toMatchObject({ processed: false, sent: false, reason: "NO_PENDING_OUTBOX" });
     expect(pendingQuery.or).toHaveBeenCalledWith(
-      expect.stringContaining("next_attempt_at.is.null,next_attempt_at.lte.")
+      "and(status.eq.PENDING,next_attempt_at.is.null)," +
+        "and(status.eq.PENDING,next_attempt_at.lte.2026-07-28T08:00:00.000Z)," +
+        "and(status.eq.PROCESSING,locked_until.lte.2026-07-28T08:00:00.000Z)"
     );
   });
 
-  it("marks a claimed outbox row FAILED when order email delivery throws", async () => {
+  it("does not reclaim an active PROCESSING lock when the atomic claim matches no row", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-28T08:00:00.000Z"));
     const pendingQuery = query({
       data: [
-        {
-          id: "outbox-1",
-          order_id: "order-1",
-          notification_type: "ORDER_CONFIRMATION",
-          attempts: 0,
-          max_attempts: 5,
-        },
+        baseRow({
+          id: "outbox-active",
+          status: "PROCESSING",
+          locked_until: "2026-07-28T08:05:00.000Z",
+        }),
       ],
       error: null,
     });
-    const claimQuery = query({ data: [{ id: "outbox-1" }], error: null });
-    const orderQuery = query({
-      data: {
-        id: "order-1",
-        customer_name: "Taro",
-        email: "taro@example.com",
-        phone: "09000000000",
-        zip_code: "100-0001",
-        prefecture: "Tokyo",
-        city: "Chiyoda",
-        address: "1-1",
-        building: null,
-        items: [{ id: "item-1", name: "Soup", price: 1000, quantity: 1 }],
-        total: 1000,
-        payment_method: "PAY_IN_STORE",
-        store_visit_date: "2026-09-24",
-      },
+    const claimQuery = query({ data: null, error: null });
+    fromMock.mockReturnValueOnce(pendingQuery).mockReturnValueOnce(claimQuery);
+
+    const { processOrderConfirmationOutboxForOrder } = await loadProcessor();
+    const result = await processOrderConfirmationOutboxForOrder({
+      orderId: "order-1",
+      requestId: "req-active",
+    });
+
+    expect(result).toMatchObject({
+      processed: false,
+      sent: false,
+      reason: "CLAIM_SKIPPED",
+      durableState: false,
+    });
+    expect(sendOrderConfirmationEmailMock).not.toHaveBeenCalled();
+    expect(claimQuery.update).toHaveBeenCalledWith({
+      status: "PROCESSING",
+      claimed_at: "2026-07-28T08:00:00.000Z",
+      locked_until: "2026-07-28T08:05:00.000Z",
+      last_error: null,
+      request_id: "req-active",
+      claim_token: "claim-token-1",
+    });
+  });
+
+  it("rejects a claim response whose token is not the token written by this worker", async () => {
+    const pendingQuery = query({ data: [baseRow()], error: null });
+    const claimQuery = query({ data: { id: "outbox-1", claim_token: "another-worker" }, error: null });
+    fromMock.mockReturnValueOnce(pendingQuery).mockReturnValueOnce(claimQuery);
+
+    const { processOrderConfirmationOutboxForOrder } = await loadProcessor();
+    const result = await processOrderConfirmationOutboxForOrder({
+      orderId: "order-1",
+      requestId: "req-claim-mismatch",
+    });
+
+    expect(result).toMatchObject({ reason: "CLAIM_SKIPPED", durableState: false });
+    expect(sendOrderConfirmationEmailMock).not.toHaveBeenCalled();
+  });
+
+  it("reclaims an expired PROCESSING lock and fences every state update with the claim token", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-28T08:00:00.000Z"));
+    const pendingQuery = query({
+      data: [
+        baseRow({
+          id: "outbox-expired",
+          status: "PROCESSING",
+          locked_until: "2026-07-28T07:59:59.999Z",
+        }),
+      ],
       error: null,
     });
-    const markFailedQuery = query({ data: null, error: null });
+    const claimQuery = query({ data: { id: "outbox-expired", claim_token: "claim-token-1" }, error: null });
+    const customerStateQuery = query({ data: { id: "outbox-expired" }, error: null });
+    const adminStateQuery = query({ data: { id: "outbox-expired" }, error: null });
+    const markSentQuery = query({ data: { id: "outbox-expired" }, error: null });
 
     fromMock
       .mockReturnValueOnce(pendingQuery)
       .mockReturnValueOnce(claimQuery)
-      .mockReturnValueOnce(orderQuery)
-      .mockReturnValueOnce(markFailedQuery);
-    sendOrderConfirmationEmailMock.mockRejectedValueOnce(new Error("provider unavailable"));
+      .mockReturnValueOnce(orderQuery())
+      .mockReturnValueOnce(customerStateQuery)
+      .mockReturnValueOnce(adminStateQuery)
+      .mockReturnValueOnce(markSentQuery);
+    sendOrderConfirmationEmailMock
+      .mockResolvedValueOnce({ sent: true, provider: "resend", adminSent: false })
+      .mockResolvedValueOnce({ sent: true, provider: "resend", adminSent: true });
 
-    const { processOrderConfirmationOutboxForOrder } = await import(
-      "@/lib/order-notification-outbox"
-    );
+    const { processOrderConfirmationOutboxForOrder } = await loadProcessor();
     const result = await processOrderConfirmationOutboxForOrder({
       orderId: "order-1",
-      requestId: "req-1",
+      requestId: "req-expired",
     });
 
     expect(result).toMatchObject({
       processed: true,
+      sent: true,
+      reason: "SENT",
+      durableState: true,
+    });
+    expect(claimQuery.select).toHaveBeenCalledWith("id, claim_token");
+    expect(customerStateQuery.eq.mock.calls).toEqual([
+      ["id", "outbox-expired"],
+      ["claim_token", "claim-token-1"],
+      ["status", "PROCESSING"],
+    ]);
+    expect(adminStateQuery.eq.mock.calls).toEqual([
+      ["id", "outbox-expired"],
+      ["claim_token", "claim-token-1"],
+      ["status", "PROCESSING"],
+    ]);
+    expect(markSentQuery.eq.mock.calls).toEqual([
+      ["id", "outbox-expired"],
+      ["claim_token", "claim-token-1"],
+      ["status", "PROCESSING"],
+    ]);
+    expect(sendOrderConfirmationEmailMock).toHaveBeenNthCalledWith(
+      1,
+      expect.any(Object),
+      expect.any(Array),
+      1000,
+      "PAY_IN_STORE",
+      "2026-09-24",
+      undefined,
+      { target: "customer", idempotencyKey: "order-outbox/outbox-expired" }
+    );
+    expect(sendOrderConfirmationEmailMock).toHaveBeenNthCalledWith(
+      2,
+      expect.any(Object),
+      expect.any(Array),
+      1000,
+      "PAY_IN_STORE",
+      "2026-09-24",
+      undefined,
+      { target: "admin", idempotencyKey: "order-outbox/outbox-expired" }
+    );
+  });
+
+  it("persists customer success before an admin failure so the next retry sends only admin", async () => {
+    const pendingQuery = query({ data: [baseRow()], error: null });
+    const claimQuery = query({ data: { id: "outbox-1", claim_token: "claim-token-1" }, error: null });
+    const customerStateQuery = query({ data: { id: "outbox-1" }, error: null });
+    const markFailedQuery = query({ data: { id: "outbox-1" }, error: null });
+    fromMock
+      .mockReturnValueOnce(pendingQuery)
+      .mockReturnValueOnce(claimQuery)
+      .mockReturnValueOnce(orderQuery())
+      .mockReturnValueOnce(customerStateQuery)
+      .mockReturnValueOnce(markFailedQuery);
+    sendOrderConfirmationEmailMock
+      .mockResolvedValueOnce({ sent: true, provider: "resend", adminSent: false })
+      .mockResolvedValueOnce({ sent: false, reason: "SEND_FAILED", target: "admin", provider: "resend" });
+
+    const { processOrderConfirmationOutboxForOrder } = await loadProcessor();
+    const firstResult = await processOrderConfirmationOutboxForOrder({
+      orderId: "order-1",
+      requestId: "req-partial-1",
+    });
+
+    expect(firstResult).toMatchObject({
+      processed: true,
       sent: false,
       reason: "ORDER_NOTIFICATION_FAILED",
+      durableState: true,
     });
     expect(markFailedQuery.update).toHaveBeenCalledWith({
       status: "PENDING",
       attempts: 1,
       next_attempt_at: expect.any(String),
       locked_until: null,
-      last_error: "provider unavailable",
+      claim_token: null,
+      last_error: "ORDER_NOTIFICATION_FAILED:SEND_FAILED",
     });
-  });
 
-  it("does not leave a delivered email in retryable PROCESSING state when mark SENT fails", async () => {
-    const pendingQuery = query({
-      data: [
-        {
-          id: "outbox-1",
-          order_id: "order-1",
-          notification_type: "ORDER_CONFIRMATION",
-          attempts: 0,
-          max_attempts: 5,
-        },
-      ],
+    const retryPendingQuery = query({
+      data: [baseRow({ customer_sent_at: "2026-07-28T08:00:01.000Z" })],
       error: null,
     });
-    const claimQuery = query({ data: [{ id: "outbox-1" }], error: null });
-    const orderQuery = query({
-      data: {
-        id: "order-1",
-        customer_name: "Taro",
-        email: "taro@example.com",
-        phone: "09000000000",
-        zip_code: "100-0001",
-        prefecture: "Tokyo",
-        city: "Chiyoda",
-        address: "1-1",
-        building: null,
-        items: [{ id: "item-1", name: "Soup", price: 1000, quantity: 1 }],
-        total: 1000,
-        payment_method: "PAY_IN_STORE",
-        store_visit_date: "2026-09-24",
-      },
-      error: null,
-    });
-    const markSentQuery = query({ data: null, error: { message: "write failed" } });
-    const reconcileQuery = query({ data: null, error: null });
-
+    const retryClaimQuery = query({ data: { id: "outbox-1", claim_token: "claim-token-1" }, error: null });
+    const retryAdminStateQuery = query({ data: { id: "outbox-1" }, error: null });
+    const retryMarkSentQuery = query({ data: { id: "outbox-1" }, error: null });
     fromMock
-      .mockReturnValueOnce(pendingQuery)
-      .mockReturnValueOnce(claimQuery)
-      .mockReturnValueOnce(orderQuery)
-      .mockReturnValueOnce(markSentQuery)
-      .mockReturnValueOnce(reconcileQuery);
+      .mockReturnValueOnce(retryPendingQuery)
+      .mockReturnValueOnce(retryClaimQuery)
+      .mockReturnValueOnce(orderQuery())
+      .mockReturnValueOnce(retryAdminStateQuery)
+      .mockReturnValueOnce(retryMarkSentQuery);
     sendOrderConfirmationEmailMock.mockResolvedValueOnce({
       sent: true,
       provider: "resend",
       adminSent: true,
     });
 
-    const { processOrderConfirmationOutboxForOrder } = await import(
-      "@/lib/order-notification-outbox"
+    const secondResult = await processOrderConfirmationOutboxForOrder({
+      orderId: "order-1",
+      requestId: "req-partial-2",
+    });
+
+    expect(secondResult).toMatchObject({ processed: true, sent: true, reason: "SENT" });
+    expect(sendOrderConfirmationEmailMock).toHaveBeenCalledTimes(3);
+    expect(sendOrderConfirmationEmailMock).toHaveBeenLastCalledWith(
+      expect.any(Object),
+      expect.any(Array),
+      1000,
+      "PAY_IN_STORE",
+      "2026-09-24",
+      undefined,
+      { target: "admin", idempotencyKey: "order-outbox/outbox-1" }
     );
+  });
+
+  it("marks a claimed outbox row FAILED with a fenced update when delivery fails", async () => {
+    const pendingQuery = query({ data: [baseRow()], error: null });
+    const claimQuery = query({ data: { id: "outbox-1", claim_token: "claim-token-1" }, error: null });
+    const markFailedQuery = query({ data: { id: "outbox-1" }, error: null });
+    fromMock
+      .mockReturnValueOnce(pendingQuery)
+      .mockReturnValueOnce(claimQuery)
+      .mockReturnValueOnce(orderQuery())
+      .mockReturnValueOnce(markFailedQuery);
+    sendOrderConfirmationEmailMock.mockResolvedValueOnce({
+      sent: false,
+      reason: "SEND_FAILED",
+      target: "customer",
+      provider: "resend",
+    });
+
+    const { processOrderConfirmationOutboxForOrder } = await loadProcessor();
     const result = await processOrderConfirmationOutboxForOrder({
       orderId: "order-1",
-      requestId: "req-1",
+      requestId: "req-failed",
     });
 
     expect(result).toMatchObject({
@@ -198,68 +360,63 @@ describe("processOrderConfirmationOutboxForOrder", () => {
       reason: "ORDER_NOTIFICATION_FAILED",
       durableState: true,
     });
-    expect(reconcileQuery.update).toHaveBeenCalledWith({
-      status: "PENDING",
-      attempts: 1,
-      next_attempt_at: expect.any(String),
-      locked_until: null,
-      last_error: expect.stringContaining("ORDER_NOTIFICATION_OUTBOX_MARK_SENT_FAILED"),
-    });
+    expect(markFailedQuery.eq.mock.calls).toEqual([
+      ["id", "outbox-1"],
+      ["claim_token", "claim-token-1"],
+      ["status", "PROCESSING"],
+    ]);
   });
 
-  it("reports non-durable delivery and excludes it from normal stale retry when reconciliation fails", async () => {
-    const pendingQuery = query({
-      data: [
-        {
-          id: "outbox-1",
-          order_id: "order-1",
-          notification_type: "ORDER_CONFIRMATION",
-          attempts: 0,
-          max_attempts: 5,
-        },
-      ],
-      error: null,
-    });
-    const claimQuery = query({ data: [{ id: "outbox-1" }], error: null });
-    const orderQuery = query({
-      data: {
-        id: "order-1",
-        customer_name: "Taro",
-        email: "taro@example.com",
-        phone: "09000000000",
-        zip_code: "100-0001",
-        prefecture: "Tokyo",
-        city: "Chiyoda",
-        address: "1-1",
-        building: null,
-        items: [{ id: "item-1", name: "Soup", price: 1000, quantity: 1 }],
-        total: 1000,
-        payment_method: "PAY_IN_STORE",
-        store_visit_date: "2026-09-24",
-      },
-      error: null,
-    });
-    const markSentQuery = query({ data: null, error: { message: "write failed" } });
-    const reconcileQuery = query({ data: null, error: { message: "reconcile failed" } });
-
+  it("returns durableState false and does not reset the row when a partial-state write loses the claim", async () => {
+    const pendingQuery = query({ data: [baseRow()], error: null });
+    const claimQuery = query({ data: { id: "outbox-1", claim_token: "claim-token-1" }, error: null });
+    const customerStateQuery = query({ data: null, error: null });
     fromMock
       .mockReturnValueOnce(pendingQuery)
       .mockReturnValueOnce(claimQuery)
-      .mockReturnValueOnce(orderQuery)
-      .mockReturnValueOnce(markSentQuery)
-      .mockReturnValueOnce(reconcileQuery);
+      .mockReturnValueOnce(orderQuery())
+      .mockReturnValueOnce(customerStateQuery);
     sendOrderConfirmationEmailMock.mockResolvedValueOnce({
       sent: true,
       provider: "resend",
-      adminSent: true,
+      adminSent: false,
     });
 
-    const { processOrderConfirmationOutboxForOrder } = await import(
-      "@/lib/order-notification-outbox"
-    );
+    const { processOrderConfirmationOutboxForOrder } = await loadProcessor();
     const result = await processOrderConfirmationOutboxForOrder({
       orderId: "order-1",
-      requestId: "req-1",
+      requestId: "req-claim-lost",
+    });
+
+    expect(result).toMatchObject({
+      processed: true,
+      sent: false,
+      reason: "CLAIM_LOST",
+      durableState: false,
+    });
+    expect(fromMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("returns durableState false and leaves the row fenced when the mark-failed write loses the claim", async () => {
+    const pendingQuery = query({ data: [baseRow()], error: null });
+    const claimQuery = query({ data: { id: "outbox-1", claim_token: "claim-token-1" }, error: null });
+    const markFailedQuery = query({ data: null, error: null });
+    fromMock
+      .mockReturnValueOnce(pendingQuery)
+      .mockReturnValueOnce(claimQuery)
+      .mockReturnValueOnce(orderQuery())
+      .mockReturnValueOnce(markFailedQuery);
+    sendOrderConfirmationEmailMock.mockResolvedValueOnce({
+      sent: false,
+      reason: "SEND_FAILED",
+      target: "customer",
+      provider: "resend",
+    });
+
+    const { processOrderConfirmationOutboxForOrder } = await loadProcessor();
+    const result = await processOrderConfirmationOutboxForOrder({
+      orderId: "order-1",
+      requestId: "req-mark-failed-claim-lost",
     });
 
     expect(result).toMatchObject({
@@ -268,8 +425,44 @@ describe("processOrderConfirmationOutboxForOrder", () => {
       reason: "MARK_FAILED_FAILED",
       durableState: false,
     });
-    expect(pendingQuery.or).toHaveBeenCalledWith(
-      expect.stringContaining("next_attempt_at.is.null,next_attempt_at.lte.")
-    );
+    expect(markFailedQuery.eq.mock.calls).toEqual([
+      ["id", "outbox-1"],
+      ["claim_token", "claim-token-1"],
+      ["status", "PROCESSING"],
+    ]);
+  });
+
+  it("does not retry after all providers succeeded when the final SENT write fails", async () => {
+    const pendingQuery = query({
+      data: [
+        baseRow({
+          customer_sent_at: "2026-07-28T08:00:01.000Z",
+          admin_sent_at: "2026-07-28T08:00:02.000Z",
+        }),
+      ],
+      error: null,
+    });
+    const claimQuery = query({ data: { id: "outbox-1", claim_token: "claim-token-1" }, error: null });
+    const markSentQuery = query({ data: null, error: { message: "write failed" } });
+    fromMock
+      .mockReturnValueOnce(pendingQuery)
+      .mockReturnValueOnce(claimQuery)
+      .mockReturnValueOnce(orderQuery())
+      .mockReturnValueOnce(markSentQuery);
+
+    const { processOrderConfirmationOutboxForOrder } = await loadProcessor();
+    const result = await processOrderConfirmationOutboxForOrder({
+      orderId: "order-1",
+      requestId: "req-mark-sent-failed",
+    });
+
+    expect(result).toMatchObject({
+      processed: true,
+      sent: false,
+      reason: "DURABILITY_WRITE_FAILED",
+      durableState: false,
+    });
+    expect(sendOrderConfirmationEmailMock).not.toHaveBeenCalled();
+    expect(fromMock).toHaveBeenCalledTimes(4);
   });
 });

@@ -49,6 +49,17 @@ enum DailyJournalStatus {
   PUBLISHED
 }
 
+enum ReservationEmailOutboxStatus {
+  PENDING
+  PROCESSING
+  SENT
+  DEAD_LETTER
+}
+
+enum ReservationEmailNotificationType {
+  RESERVATION_CONFIRMATION
+}
+
 model Reservation {
   id                     String                      @id @default(cuid())
   date                   String
@@ -78,16 +89,40 @@ model Reservation {
   statusAuditLogs        ReservationStatusAuditLog[]
   lineLinkTokens         ReservationLineLinkToken[]
   notificationEvents     NotificationEvent[]
+  emailOutboxEntries     ReservationEmailOutbox[]
 
   @@index([date, servicePeriod])
   @@index([date, servicePeriod, reservationType])
   @@index([lineReminderSentAt])
 }
 
+model ReservationEmailOutbox {
+  id               String                           @id @default(cuid())
+  reservationId    String
+  notificationType ReservationEmailNotificationType
+  status           ReservationEmailOutboxStatus     @default(PENDING)
+  attempts         Int                              @default(0)
+  maxAttempts      Int                              @default(5)
+  nextAttemptAt    DateTime?                        @default(now())
+  claimedAt        DateTime?
+  lockedUntil      DateTime?
+  claimToken       String?
+  sentAt           DateTime?
+  lastError        String?
+  createdAt        DateTime                         @default(now())
+  updatedAt        DateTime                         @updatedAt
+  reservation      Reservation                      @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+
+  @@unique([reservationId, notificationType])
+  @@index([status, nextAttemptAt])
+  @@index([status, lockedUntil])
+  @@index([createdAt])
+}
+
 model ReservationStatusAuditLog {
   id             String            @id @default(cuid())
   reservationId  String
-  reservation    Reservation       @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  reservation    Reservation       @relation(fields: [reservationId], references: [id], onDelete: Restrict)
   actorName      String?
   requestId      String
   ipAddress      String?
@@ -108,7 +143,7 @@ model ReservationLineLinkToken {
   expiresAt     DateTime
   usedAt        DateTime?
   createdAt     DateTime    @default(now())
-  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Restrict)
 
   @@index([reservationId])
   @@index([expiresAt])
@@ -137,7 +172,7 @@ model NotificationEvent {
   error         String?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
-  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Restrict)
 
   @@unique([reservationId, channel, type, targetDate])
   @@index([status, targetDate])

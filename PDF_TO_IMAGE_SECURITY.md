@@ -109,11 +109,15 @@ await page.goto(fileUrl, {
 
 ## Safe Usage
 
+本routeは、生成画像を`public/converted-images`へ書き出すため、本番環境では安全側に倒して無効化しています。画像変換が必要な場合は、ローカルまたは隔離された管理用環境で実行し、生成物を本番へ直接公開しないでください。
+
 ### Correct Request
 ```bash
 curl -X POST http://localhost:3000/api/pdf-to-image \
   -H "Authorization: Basic $(echo -n 'admin:changeme' | base64)" \
   -H "Content-Type: application/json" \
+  -H "Origin: http://localhost:3000" \
+  -H "X-Requested-With: XMLHttpRequest" \
   -d '{"filePath": "/path/to/public/photos/menu.pdf"}'
 ```
 
@@ -163,6 +167,7 @@ curl -X POST http://localhost:3000/api/pdf-to-image \
 
 ## Testing Checklist
 
+- [x] Production environment fails closed with `PDF_CONVERSION_DISABLED_IN_PRODUCTION`
 - [ ] Normal PDF conversion works
 - [ ] Path traversal with `../` is rejected (403)
 - [ ] Symlink access is rejected (403)

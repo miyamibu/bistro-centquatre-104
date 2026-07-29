@@ -51,11 +51,11 @@ Allowed evidence:
 | Project | Confirm project is `bistro-centquatre-104` or approved successor | Project settings screenshot with org/project visible only | Wrong project or ambiguous project |
 | Production env presence | Vercel dashboard or `vercel env ls production`; values hidden | Key names and environments only | Required key missing or wrong environment |
 | Preview env presence | Vercel dashboard or `vercel env ls preview`; values hidden | Key names and environments only | Preview uses production DB/secrets without explicit approval |
-| Required runtime keys | `DATABASE_URL`, `BASE_URL`, `ADMIN_BASIC_USER`, `ADMIN_BASIC_PASS`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`, `BACKUP_EXPORT_SECRET`, `RATE_LIMIT_HASH_SECRET`, `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY` | Presence only | Any required key missing |
+| Required runtime keys | `DATABASE_URL`, `DIRECT_URL`, `BASE_URL`, `ADMIN_BASIC_USER`, `ADMIN_BASIC_PASS`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`, `BACKUP_EXPORT_SECRET`, `RATE_LIMIT_HASH_SECRET`, `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY` | Presence only | Any required key missing |
 | LINE keys | `NEXT_PUBLIC_LIFF_BOOKING_ID`, `NEXT_PUBLIC_LIFF_LINK_ID`, `LINE_LOGIN_CHANNEL_ID`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET`, `LINE_LINK_TOKEN_PEPPER` | Presence only | Missing when LINE is in launch scope |
 | Mail keys | `EMAIL_PROVIDER`, provider API key, `EMAIL_FROM`, `ADMIN_EMAIL` | Presence only | Sender not verified or API key missing |
 | Preview/Production separation | Compare env targets without showing values | Checklist signed by operator | Preview points to live production DB unintentionally |
-| Cron definitions | Confirm `vercel.json` paths: `/api/crons/cancel-expired-orders`, `/api/crons/delete-old-histories`, `/api/crons/remind` | Vercel cron page screenshot | Missing schedule or wrong path |
+| Cron definitions | Confirm `vercel.json` paths: `/api/crons/cancel-expired-orders`, `/api/crons/delete-old-histories`, `/api/crons/remind`, `/api/crons/process-order-notifications`, `/api/crons/process-reservation-emails` | Vercel cron page screenshot | Missing schedule or wrong path |
 | Cron logs | Confirm latest run status, duration, auth outcome, and no overlap | Log excerpt with secrets hidden | 401/500, timeout, overlap, or no recent success |
 
 ### Secret-safe commands after approval

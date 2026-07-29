@@ -37,16 +37,17 @@ The production smoke checks confirmed:
 Set these values in your hosting provider before the production deploy:
 
 1. `DATABASE_URL`
-2. `BASE_URL`
-3. `ADMIN_BASIC_USER`
-4. `ADMIN_BASIC_PASS`
-5. `NEXT_PUBLIC_SUPABASE_URL`
-6. `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-7. `SUPABASE_SERVICE_ROLE_KEY`
-8. `CRON_SECRET`
-9. `BACKUP_EXPORT_SECRET`
-10. `RATE_LIMIT_HASH_SECRET`
-11. `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY`
+2. `DIRECT_URL`（Prisma migration用の直接接続。`DATABASE_URL`と同じDBを指す）
+3. `BASE_URL`
+4. `ADMIN_BASIC_USER`
+5. `ADMIN_BASIC_PASS`
+6. `NEXT_PUBLIC_SUPABASE_URL`
+7. `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+8. `SUPABASE_SERVICE_ROLE_KEY`
+9. `CRON_SECRET`
+10. `BACKUP_EXPORT_SECRET`
+11. `RATE_LIMIT_HASH_SECRET`
+12. `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY`
 
 Recommended operational values:
 
@@ -77,6 +78,16 @@ Email provider notes:
 1. If `EMAIL_PROVIDER=resend`, set `RESEND_API_KEY`. `EMAIL_API_KEY` is accepted only as fallback.
 2. If `EMAIL_PROVIDER=sendgrid`, set `EMAIL_API_KEY`.
 3. Contact and order confirmation APIs are fail-closed for delivery. Missing/invalid mail config is returned as API error.
+4. Reservation confirmation email is enqueued atomically with the reservation and processed by `/api/crons/process-reservation-emails`.
+5. Apply `20260728090000_add_reservation_email_outbox` and the following
+   `20260728093000_restrict_reservation_related_deletes` Prisma migrations before deploying
+   code that creates reservations.
+6. Apply `supabase/migrations/20260728230000_harden_order_notification_outbox.sql`
+   after the existing order outbox migration and before deploying the order worker.
+7. Apply `supabase/rls-policies.sql`, then run `supabase/verify.sql` with
+   `psql -v ON_ERROR_STOP=1` in a read-only transaction. Do not proceed until
+   the assertions pass.
+8. See `docs/reservation-email-outbox.md` for retry, dead-letter, and safe rollout behavior.
 
 Bank account history note:
 
@@ -96,16 +107,17 @@ Preview smoke and runtime verification need the same required key structure as `
 Set these keys in Vercel Preview before relying on preview deploys:
 
 1. `DATABASE_URL`
-2. `BASE_URL`
-3. `ADMIN_BASIC_USER`
-4. `ADMIN_BASIC_PASS`
-5. `NEXT_PUBLIC_SUPABASE_URL`
-6. `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-7. `SUPABASE_SERVICE_ROLE_KEY`
-8. `CRON_SECRET`
-9. `BACKUP_EXPORT_SECRET`
-10. `RATE_LIMIT_HASH_SECRET`
-11. `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY`
+2. `DIRECT_URL`（Preview/staging DBへの直接接続）
+3. `BASE_URL`
+4. `ADMIN_BASIC_USER`
+5. `ADMIN_BASIC_PASS`
+6. `NEXT_PUBLIC_SUPABASE_URL`
+7. `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+8. `SUPABASE_SERVICE_ROLE_KEY`
+9. `CRON_SECRET`
+10. `BACKUP_EXPORT_SECRET`
+11. `RATE_LIMIT_HASH_SECRET`
+12. `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY`
 
 Safe default:
 
@@ -213,6 +225,8 @@ Cron notes:
 3. Do not remove `CRON_SECRET` after deploy
 4. `cancel-expired-orders` is bounded to 200 orders per run and can be safely rerun
 5. `delete-old-histories` deletes up to 1000 rows per run in 200-row batches
+6. `process-reservation-emails` claims at most 10 due rows per run and retries failed delivery up to 5 attempts.
+7. Its 5-minute schedule requires a Vercel plan that supports more-than-daily Cron execution.
 
 ## Post-deploy smoke checks
 

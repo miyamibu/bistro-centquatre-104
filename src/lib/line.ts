@@ -5,7 +5,7 @@ import {
   hasLineLoginEnv,
   hasLineMessagingEnv,
 } from "@/lib/env";
-import { logInfo, logWarn } from "@/lib/logger";
+import { logError, logInfo, logWarn } from "@/lib/logger";
 
 // LINE Login / LIFF / Messaging API channels MUST live under the same LINE
 // Developers Provider — otherwise the userId axis differs and the ID token
@@ -362,7 +362,7 @@ export type ReplyLineTextArgs = {
 /**
  * Send a reply message via LINE Messaging Reply API.
  * Reply tokens expire in ~30 seconds — call promptly after receiving the event.
- * Errors are intentionally swallowed; webhook handlers must return 200 regardless.
+ * Delivery errors are logged without the reply token; webhook handlers must return 200 regardless.
  */
 export async function replyLineTextMessage(args: ReplyLineTextArgs): Promise<void> {
   if (!hasLineMessagingEnv()) return;
@@ -381,8 +381,12 @@ export async function replyLineTextMessage(args: ReplyLineTextArgs): Promise<voi
         messages: [{ type: "text", text: args.text }],
       }),
     });
-  } catch {
-    // Swallow — webhook must return 200 regardless.
+  } catch (error) {
+    logError("line.reply.failed", {
+      route: "/api/line/webhook",
+      errorCode: "LINE_REPLY_FAILED",
+      context: { error },
+    });
   }
 }
 

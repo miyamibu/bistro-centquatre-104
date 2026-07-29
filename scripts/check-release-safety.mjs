@@ -14,7 +14,7 @@ if (!supportedModes.has(mode)) {
   process.exit(1);
 }
 
-const requiredKeys = [
+const baseRequiredKeys = [
   "DATABASE_URL",
   "BASE_URL",
   "ADMIN_BASIC_USER",
@@ -27,6 +27,18 @@ const requiredKeys = [
   "RATE_LIMIT_HASH_SECRET",
   "BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY",
 ];
+
+const deploymentRequiredKeys = [
+  "DIRECT_URL",
+  "STORE_NOTIFY_EMAIL",
+  "EMAIL_PROVIDER",
+  "EMAIL_FROM",
+];
+
+const requiredKeys =
+  mode === "local-build"
+    ? baseRequiredKeys
+    : [...baseRequiredKeys, ...deploymentRequiredKeys];
 
 const recommendedKeys = [
   "BANK_ACCOUNT_HISTORY_KEY_VERSION",
@@ -97,7 +109,15 @@ function resolveEnv() {
     ...parseEnvFile(path.join(repoRoot, ".env.local")),
   };
 
-  for (const key of [...requiredKeys, ...recommendedKeys, "EMAIL_API_KEY", "RESEND_API_KEY"]) {
+  const keysToResolve = new Set([
+    ...baseRequiredKeys,
+    ...deploymentRequiredKeys,
+    ...recommendedKeys,
+    "EMAIL_API_KEY",
+    "RESEND_API_KEY",
+  ]);
+
+  for (const key of keysToResolve) {
     const value = process.env[key];
     if (typeof value === "string" && value.trim() !== "") {
       merged[key] = value.trim();
@@ -122,6 +142,59 @@ function isValidRateLimitHashSecret(value) {
     value.length >= 32 &&
     !/^(change-?me|dummy|test|placeholder|replace-with)/i.test(value)
   );
+}
+
+function hasUsableEmailApiKey(value, requireRealValue) {
+  if (typeof value !== "string" || value.trim() === "") {
+    return false;
+  }
+
+  return !requireRealValue || !isPlaceholder(value);
+}
+
+function validateEmailConfiguration(envMap, requireCompleteConfiguration) {
+  const errors = [];
+  const rawProvider = envMap.EMAIL_PROVIDER?.trim() ?? "";
+
+  if (!requireCompleteConfiguration && rawProvider === "") {
+    return errors;
+  }
+
+  for (const key of ["EMAIL_PROVIDER", "STORE_NOTIFY_EMAIL", "EMAIL_FROM"]) {
+    if (!envMap[key] || envMap[key].trim() === "") {
+      errors.push(`${key} is required when mail delivery is enabled`);
+    }
+  }
+
+  if (rawProvider === "") {
+    return errors;
+  }
+
+  const provider = rawProvider.toLowerCase();
+  if (provider === "resend") {
+    const hasResendKey = hasUsableEmailApiKey(
+      envMap.RESEND_API_KEY,
+      requireCompleteConfiguration,
+    );
+    const hasFallbackKey = hasUsableEmailApiKey(
+      envMap.EMAIL_API_KEY,
+      requireCompleteConfiguration,
+    );
+    if (!hasResendKey && !hasFallbackKey) {
+      errors.push("EMAIL_PROVIDER=resend requires RESEND_API_KEY or EMAIL_API_KEY");
+    }
+    return errors;
+  }
+
+  if (provider === "sendgrid") {
+    if (!hasUsableEmailApiKey(envMap.EMAIL_API_KEY, requireCompleteConfiguration)) {
+      errors.push("EMAIL_PROVIDER=sendgrid requires EMAIL_API_KEY");
+    }
+    return errors;
+  }
+
+  errors.push("EMAIL_PROVIDER must be either resend or sendgrid");
+  return errors;
 }
 
 function getGitAuthorEmail() {
@@ -150,6 +223,7 @@ const invalidRequired = [];
 if (enforceRealSecrets && envMap.RATE_LIMIT_HASH_SECRET && !isValidRateLimitHashSecret(envMap.RATE_LIMIT_HASH_SECRET)) {
   invalidRequired.push("RATE_LIMIT_HASH_SECRET must be a non-placeholder value of at least 32 characters");
 }
+const emailConfigurationErrors = validateEmailConfiguration(envMap, enforceRealSecrets);
 const missingRecommended = recommendedKeys.filter((key) => !envMap[key] || envMap[key].trim() === "");
 
 printSection(`Release safety check (${mode})`);
@@ -167,6 +241,10 @@ if (placeholderRequired.length > 0) {
 
 if (invalidRequired.length > 0) {
   console.error(`Invalid required env values: ${invalidRequired.join(", ")}`);
+}
+
+if (emailConfigurationErrors.length > 0) {
+  console.error(`Invalid mail configuration: ${emailConfigurationErrors.join("; ")}`);
 }
 
 if (missingRecommended.length > 0) {
@@ -194,8 +272,13 @@ if (mode === "production") {
   );
 }
 
-if (missingRequired.length > 0 || placeholderRequired.length > 0 || invalidRequired.length > 0) {
+if (
+  missingRequired.length > 0 ||
+  placeholderRequired.length > 0 ||
+  invalidRequired.length > 0 ||
+  emailConfigurationErrors.length > 0
+) {
   process.exit(1);
 }
 
-console.log("Required env checks passed.");
+console.log("Required env and mail configuration checks passed.");

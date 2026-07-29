@@ -10,6 +10,7 @@ import {
   normalizeOrderPaymentMethod,
   runIdempotentMutation,
 } from "@/lib/order-actions";
+import { buildOrderActorKey } from "@/lib/order-identity";
 import { validatePayInStoreVisitDate } from "@/lib/order-rules";
 import { getPublishedStoreProduct } from "@/lib/store-products";
 import { getRequestId, logError, logInfo, logWarn } from "@/lib/logger";
@@ -100,7 +101,7 @@ export async function POST(request: NextRequest) {
       throw new Error("ORDER_TOTAL_MISMATCH");
     }
 
-    const actorKey = `order-create:${input.customerInfo.email.toLowerCase()}:${input.customerInfo.phone}`;
+    const actorKey = buildOrderActorKey(input.customerInfo.email, input.customerInfo.phone);
     const requestHash = buildIdempotencyHash({
       items: input.items,
       customerInfo: input.customerInfo,

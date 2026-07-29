@@ -13,48 +13,36 @@ export function GET(request: Request) {
     },
     routes: {
       reserve: "/booking",
-      reservations_api: "/api/reservations",
       store: "/on-line-store",
       store_apron: "/on-line-store/apron",
       store_cart: "/on-line-store/cart",
       info: "/access",
     },
     reservation: {
-      supports_direct_completion: true,
+      supports_direct_completion: false,
       closed_weekdays: ["Monday", "Tuesday", "Wednesday"],
-      direct_completion: {
-        method: "POST",
-        endpoint: "/api/reservations",
-        required_fields: [
+      handoff: {
+        method: "GET",
+        endpoint: "/booking",
+        template:
+          "/booking?mode=agent&date={YYYY-MM-DD}&servicePeriod={LUNCH|DINNER}&partySize={1-12}&arrivalTime={HH:MM}&course={URL_ENCODED_COURSE}",
+        supported_query_fields: [
           "date",
           "servicePeriod",
           "partySize",
           "arrivalTime",
-          "name",
-          "phone",
+          "course",
         ],
-        optional_fields: ["note", "lineIdToken", "course"],
-        required_headers: {
-          "Content-Type": "application/json",
-        },
-        optional_headers: {
-          "X-Requested-With": "XMLHttpRequest",
-        },
+        final_submission: "Human review and submission are required on /booking.",
         notes: [
           "servicePeriod must be LUNCH or DINNER and must match arrivalTime.",
           "Lunch web reservations accept 11:30-12:30 and dinner accepts 17:30-19:30.",
           "Web reservations close at 17:00 JST on the previous day.",
           "Availability APIs require date/month plus servicePeriod and partySize.",
           "Parties of 9 or more are always phone-only.",
-          "Put course preference inside course or note when needed.",
-          "Send personal data in the JSON body, not in query strings.",
+          "Do not put names, phone numbers, email addresses, or other personal data in handoff URLs.",
           "Reservations are rejected on Mondays, Tuesdays, and Wednesdays.",
         ],
-      },
-      handoff: {
-        template:
-          "/booking?mode=agent&date={YYYY-MM-DD}&servicePeriod={LUNCH|DINNER}&partySize={1-12}&arrivalTime={HH:MM}&course={URL_ENCODED_COURSE}",
-        purpose: "Optional review bridge",
       },
     },
     store: {
@@ -65,7 +53,7 @@ export function GET(request: Request) {
       },
     },
     boundaries: [
-      "Seat reservations may be completed directly through /api/reservations.",
+      "AI agents must hand off seat reservations to /booking for human review and final submission.",
       "Store checkout must stop before customer details, payment selection, and final order submission.",
       "Avoid putting personal data in query strings.",
     ],
@@ -82,7 +70,8 @@ export function GET(request: Request) {
   return new NextResponse(body, {
     headers: {
       "content-type": "application/json; charset=utf-8",
-      "cache-control": "public, max-age=3600",
+      "cache-control": "no-store",
+      pragma: "no-cache",
     },
   });
 }

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { sendOrderConfirmationEmail } from "@/lib/email";
 import { logError, logInfo, logWarn } from "@/lib/logger";
 import { supabaseServer } from "@/lib/supabase-server";
@@ -13,7 +14,43 @@ type OutboxRow = {
   notification_type: string;
   attempts: number | null;
   max_attempts: number | null;
+  claim_token: string | null;
+  customer_sent_at: string | null;
+  admin_sent_at: string | null;
+  admin_skipped_at: string | null;
 };
+
+type DurableFailureReason = "CLAIM_LOST" | "DURABILITY_WRITE_FAILED";
+
+class OutboxDurabilityError extends Error {
+  constructor(
+    readonly durableFailureReason: DurableFailureReason,
+    message: string
+  ) {
+    super(message);
+    this.name = "OutboxDurabilityError";
+  }
+}
+
+function isOutboxDurabilityError(error: unknown): error is OutboxDurabilityError {
+  return error instanceof OutboxDurabilityError;
+}
+
+function requireFencedUpdate(
+  operation: string,
+  data: unknown,
+  error: { message?: string } | null
+) {
+  if (error) {
+    throw new OutboxDurabilityError(
+      "DURABILITY_WRITE_FAILED",
+      `${operation}:${error.message ?? "database update failed"}`
+    );
+  }
+  if (!data) {
+    throw new OutboxDurabilityError("CLAIM_LOST", `${operation}:claim lost`);
+  }
+}
 
 type OrderEmailItem = {
   id: string;
@@ -45,6 +82,14 @@ type BankAccountRow = {
   account_number: string;
   account_holder: string;
 };
+
+function buildClaimableOutboxFilter(now: string) {
+  return [
+    "and(status.eq.PENDING,next_attempt_at.is.null)",
+    `and(status.eq.PENDING,next_attempt_at.lte.${now})`,
+    `and(status.eq.PROCESSING,locked_until.lte.${now})`,
+  ].join(",");
+}
 
 function normalizeEmailItems(items: unknown): OrderEmailItem[] {
   if (!Array.isArray(items)) return [];
@@ -102,66 +147,130 @@ export async function enqueueOrderNotification(input: {
 
 async function claimOutboxRow(id: string, requestId: string) {
   const now = new Date();
+  const nowIso = now.toISOString();
   const lockedUntil = new Date(now.getTime() + LOCK_MINUTES * 60 * 1000).toISOString();
+  const claimToken = randomUUID();
   const { data, error } = await supabaseServer
     .from("order_notification_outbox")
     .update({
       status: "PROCESSING" satisfies OutboxStatus,
-      claimed_at: now.toISOString(),
+      claimed_at: nowIso,
       locked_until: lockedUntil,
       last_error: null,
       request_id: requestId,
+      claim_token: claimToken,
     })
     .eq("id", id)
-    .in("status", ["PENDING", "PROCESSING"])
-    .select("id")
+    .or(buildClaimableOutboxFilter(nowIso))
+    .select("id, claim_token")
     .maybeSingle();
 
   if (error) {
     throw new Error("ORDER_NOTIFICATION_OUTBOX_CLAIM_FAILED:" + error.message);
   }
-  return !!data;
+  if (!data || (data as { claim_token?: unknown }).claim_token !== claimToken) {
+    return null;
+  }
+  return claimToken;
 }
 
-async function markOutboxSent(id: string) {
-  const { error } = await supabaseServer
+async function markOutboxCustomerSent(id: string, claimToken: string) {
+  const { data, error } = await supabaseServer
+    .from("order_notification_outbox")
+    .update({
+      customer_sent_at: new Date().toISOString(),
+      last_error: null,
+    })
+    .eq("id", id)
+    .eq("claim_token", claimToken)
+    .eq("status", "PROCESSING")
+    .select("id")
+    .maybeSingle();
+  requireFencedUpdate("ORDER_NOTIFICATION_OUTBOX_MARK_CUSTOMER_SENT_FAILED", data, error);
+}
+
+async function markOutboxAdminSent(id: string, claimToken: string) {
+  const { data, error } = await supabaseServer
+    .from("order_notification_outbox")
+    .update({
+      admin_sent_at: new Date().toISOString(),
+      last_error: null,
+    })
+    .eq("id", id)
+    .eq("claim_token", claimToken)
+    .eq("status", "PROCESSING")
+    .select("id")
+    .maybeSingle();
+  requireFencedUpdate("ORDER_NOTIFICATION_OUTBOX_MARK_ADMIN_SENT_FAILED", data, error);
+}
+
+async function markOutboxAdminSkipped(id: string, claimToken: string) {
+  const { data, error } = await supabaseServer
+    .from("order_notification_outbox")
+    .update({
+      admin_skipped_at: new Date().toISOString(),
+      last_error: null,
+    })
+    .eq("id", id)
+    .eq("claim_token", claimToken)
+    .eq("status", "PROCESSING")
+    .select("id")
+    .maybeSingle();
+  requireFencedUpdate("ORDER_NOTIFICATION_OUTBOX_MARK_ADMIN_SKIPPED_FAILED", data, error);
+}
+
+async function markOutboxSent(id: string, claimToken: string) {
+  const { data, error } = await supabaseServer
     .from("order_notification_outbox")
     .update({
       status: "SENT" satisfies OutboxStatus,
       sent_at: new Date().toISOString(),
       locked_until: null,
+      claim_token: null,
+      next_attempt_at: null,
       last_error: null,
     })
-    .eq("id", id);
-  if (error) {
-    throw new Error("ORDER_NOTIFICATION_OUTBOX_MARK_SENT_FAILED:" + error.message);
-  }
+    .eq("id", id)
+    .eq("claim_token", claimToken)
+    .eq("status", "PROCESSING")
+    .select("id")
+    .maybeSingle();
+  requireFencedUpdate("ORDER_NOTIFICATION_OUTBOX_MARK_SENT_FAILED", data, error);
 }
 
 async function markOutboxFailed(
   id: string,
+  claimToken: string,
   status: Extract<OutboxStatus, "PENDING" | "DEAD_LETTER">,
   attempts: number,
   error: unknown
 ) {
   const nextAttemptAt = new Date(Date.now() + Math.min(60, 2 ** attempts) * 60 * 1000);
   const message = error instanceof Error ? error.message : String(error);
-  const { error: updateError } = await supabaseServer
+  const { data, error: updateError } = await supabaseServer
     .from("order_notification_outbox")
     .update({
       status,
       attempts,
       next_attempt_at: status === "DEAD_LETTER" ? null : nextAttemptAt.toISOString(),
       locked_until: null,
+      claim_token: null,
       last_error: message.slice(0, 1000),
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("claim_token", claimToken)
+    .eq("status", "PROCESSING")
+    .select("id")
+    .maybeSingle();
   if (updateError) {
     throw new Error("ORDER_NOTIFICATION_OUTBOX_MARK_FAILED_FAILED:" + updateError.message);
   }
+  if (!data) {
+    throw new Error("ORDER_NOTIFICATION_OUTBOX_MARK_FAILED_CLAIM_LOST");
+  }
 }
 
-async function sendOutboxRow(row: OutboxRow, requestId: string) {
+async function sendOutboxRow(row: OutboxRow, requestId: string, claimToken: string) {
   if (row.notification_type !== "ORDER_CONFIRMATION") {
     throw new Error("Unsupported notification type: " + row.notification_type);
   }
@@ -190,32 +299,71 @@ async function sendOutboxRow(row: OutboxRow, requestId: string) {
     bankAccount = (data?.[0] as BankAccountRow | undefined) ?? undefined;
   }
 
-  const emailResult = await sendOrderConfirmationEmail(
-    {
-      name: String(order.customer_name),
-      email: String(order.email),
-      phone: String(order.phone),
-      zipCode: String(order.zip_code),
-      prefecture: String(order.prefecture),
-      city: String(order.city),
-      address: String(order.address),
-      building: typeof order.building === "string" ? order.building : "",
-    },
-    normalizeEmailItems(order.items),
-    Number(order.total ?? 0),
+  const customerInfo = {
+    name: String(order.customer_name),
+    email: String(order.email),
+    phone: String(order.phone),
+    zipCode: String(order.zip_code),
+    prefecture: String(order.prefecture),
+    city: String(order.city),
+    address: String(order.address),
+    building: typeof order.building === "string" ? order.building : "",
+  };
+  const items = normalizeEmailItems(order.items);
+  const total = Number(order.total ?? 0);
+  const storeVisitDate =
+    typeof order.store_visit_date === "string" ? order.store_visit_date : undefined;
+
+  if (!row.customer_sent_at) {
+    const customerResult = await sendOrderConfirmationEmail(
+      customerInfo,
+      items,
+      total,
+      order.payment_method,
+      storeVisitDate,
+      bankAccount,
+      { target: "customer", idempotencyKey: `order-outbox/${row.id}` }
+    );
+
+    if (!customerResult.sent) {
+      logError("order_notification_outbox.email_failed", {
+        requestId,
+        route: "/api/crons/process-order-notifications",
+        errorCode: customerResult.reason,
+        context: { orderId: order.id, target: customerResult.target },
+      });
+      throw new Error("ORDER_NOTIFICATION_FAILED:" + customerResult.reason);
+    }
+
+    await markOutboxCustomerSent(row.id, claimToken);
+  }
+
+  if (row.admin_sent_at || row.admin_skipped_at) return;
+
+  const adminResult = await sendOrderConfirmationEmail(
+    customerInfo,
+    items,
+    total,
     order.payment_method,
-    typeof order.store_visit_date === "string" ? order.store_visit_date : undefined,
-    bankAccount
+    storeVisitDate,
+    bankAccount,
+    { target: "admin", idempotencyKey: `order-outbox/${row.id}` }
   );
 
-  if (!emailResult.sent) {
+  if (!adminResult.sent) {
     logError("order_notification_outbox.email_failed", {
       requestId,
       route: "/api/crons/process-order-notifications",
-      errorCode: emailResult.reason,
-      context: { orderId: order.id, target: emailResult.target },
+      errorCode: adminResult.reason,
+      context: { orderId: order.id, target: adminResult.target },
     });
-    throw new Error("ORDER_NOTIFICATION_FAILED:" + emailResult.reason);
+    throw new Error("ORDER_NOTIFICATION_FAILED:" + adminResult.reason);
+  }
+
+  if (adminResult.adminSent) {
+    await markOutboxAdminSent(row.id, claimToken);
+  } else {
+    await markOutboxAdminSkipped(row.id, claimToken);
   }
 }
 
@@ -227,11 +375,12 @@ export async function processOrderConfirmationOutboxForOrder(input: {
   const now = new Date().toISOString();
   let pendingQuery = supabaseServer
     .from("order_notification_outbox")
-    .select("id, order_id, notification_type, attempts, max_attempts")
+    .select(
+      "id, order_id, notification_type, attempts, max_attempts, claim_token, customer_sent_at, admin_sent_at, admin_skipped_at"
+    )
     .eq("order_id", input.orderId)
     .eq("notification_type", "ORDER_CONFIRMATION")
-    .in("status", ["PENDING", "PROCESSING"])
-    .or("next_attempt_at.is.null,next_attempt_at.lte." + now + ",locked_until.lte." + now)
+    .or(buildClaimableOutboxFilter(now))
     .order("next_attempt_at", { ascending: true, nullsFirst: true })
     .limit(1);
 
@@ -255,9 +404,9 @@ export async function processOrderConfirmationOutboxForOrder(input: {
     return { processed: false, sent: false, reason: "NO_PENDING_OUTBOX" as const };
   }
 
-  let claimed = false;
+  let claimToken: string | null = null;
   try {
-    claimed = await claimOutboxRow(row.id, input.requestId);
+    claimToken = await claimOutboxRow(row.id, input.requestId);
   } catch (error) {
     logError("orders.notification_outbox.claim_failed", {
       requestId: input.requestId,
@@ -273,27 +422,47 @@ export async function processOrderConfirmationOutboxForOrder(input: {
     };
   }
 
-  if (!claimed) {
+  if (!claimToken) {
     logWarn("orders.notification_outbox.claim_skipped", {
       requestId: input.requestId,
       route: "/api/orders/[id]/actions",
       errorCode: "ORDER_NOTIFICATION_OUTBOX_CLAIM_SKIPPED",
       context: { outboxId: row.id },
     });
-    return { processed: false, sent: false, reason: "CLAIM_SKIPPED" as const };
+    return {
+      processed: false,
+      sent: false,
+      reason: "CLAIM_SKIPPED" as const,
+      durableState: false,
+    };
   }
 
   try {
-    await sendOutboxRow(row, input.requestId);
-    await markOutboxSent(row.id);
+    await sendOutboxRow(row, input.requestId, claimToken);
+    await markOutboxSent(row.id, claimToken);
     return { processed: true, sent: true, reason: "SENT" as const, durableState: true };
   } catch (error) {
+    if (isOutboxDurabilityError(error)) {
+      logError("orders.notification_outbox.durability_failed", {
+        requestId: input.requestId,
+        route: "/api/orders/[id]/actions",
+        errorCode: error.durableFailureReason,
+        context: { outboxId: row.id, message: error.message },
+      });
+      return {
+        processed: true,
+        sent: false,
+        reason: error.durableFailureReason,
+        durableState: false,
+      };
+    }
+
     const attempts = Number(row.attempts ?? 0) + 1;
     const maxAttempts = Number(row.max_attempts ?? MAX_ATTEMPTS) || MAX_ATTEMPTS;
     const status = attempts >= maxAttempts ? "DEAD_LETTER" : "PENDING";
 
     try {
-      await markOutboxFailed(row.id, status, attempts, error);
+      await markOutboxFailed(row.id, claimToken, status, attempts, error);
     } catch (markError) {
       logError("orders.notification_outbox.mark_failed_failed", {
         requestId: input.requestId,
@@ -331,9 +500,10 @@ export async function processOrderNotificationOutbox(input: {
   const limit = Math.max(1, Math.min(input.limit ?? 10, 50));
   const { data, error } = await supabaseServer
     .from("order_notification_outbox")
-    .select("id, order_id, notification_type, attempts, max_attempts")
-    .in("status", ["PENDING", "PROCESSING"])
-    .or("next_attempt_at.is.null,next_attempt_at.lte." + now + ",locked_until.lte." + now)
+    .select(
+      "id, order_id, notification_type, attempts, max_attempts, claim_token, customer_sent_at, admin_sent_at, admin_skipped_at"
+    )
+    .or(buildClaimableOutboxFilter(now))
     .order("next_attempt_at", { ascending: true, nullsFirst: true })
     .limit(limit);
 

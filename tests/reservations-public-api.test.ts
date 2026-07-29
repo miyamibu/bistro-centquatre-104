@@ -7,10 +7,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const originalEnv = { ...process.env };
+const PUBLIC_BASE_URL = "https://bistro-centquatre-104.vercel.app";
 
 const routeMocks = vi.hoisted(() => ({
   lineLinkTokenCreate: vi.fn(),
   txReservationFindMany: vi.fn(),
+  reservationEmailOutboxUpsert: vi.fn(),
+  sendReservationEmail: vi.fn(),
 }));
 
 const readySchemaRow = {
@@ -22,6 +25,8 @@ const readySchemaRow = {
   notificationEventReady: true,
   lineFriendReady: true,
   lineCustomerLinkReady: true,
+  reservationStatusAuditLogReady: true,
+  reservationEmailOutboxReady: true,
 };
 
 function resetRouteMocks() {
@@ -31,6 +36,14 @@ function resetRouteMocks() {
     expiresAt: new Date(),
   });
   routeMocks.txReservationFindMany.mockResolvedValue([]);
+  routeMocks.reservationEmailOutboxUpsert.mockResolvedValue({
+    id: "outbox-1",
+    status: "PENDING",
+  });
+  routeMocks.sendReservationEmail.mockResolvedValue({
+    sent: true,
+    provider: "resend",
+  });
 }
 
 resetRouteMocks();
@@ -93,6 +106,9 @@ vi.mock("@/lib/prisma", () => ({
           count: vi.fn().mockResolvedValue(0),
           create: vi.fn().mockResolvedValue({}),
         },
+        reservationEmailOutbox: {
+          upsert: routeMocks.reservationEmailOutboxUpsert,
+        },
         privateBlock: { findFirst: vi.fn().mockResolvedValue(null) },
       };
       return fn(fakeTx);
@@ -117,12 +133,18 @@ vi.mock("@/lib/line", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/email", () => ({ sendReservationEmail: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("@/lib/email", () => ({
+  sendReservationEmail: routeMocks.sendReservationEmail,
+}));
 
 function post(body: Record<string, unknown>) {
-  return new NextRequest("http://localhost:3000/api/reservations", {
+  return new NextRequest(`${PUBLIC_BASE_URL}/api/reservations`, {
     method: "POST",
-    headers: { "content-type": "application/json", origin: "http://localhost:3000" },
+    headers: {
+      "content-type": "application/json",
+      origin: PUBLIC_BASE_URL,
+      "x-requested-with": "XMLHttpRequest",
+    },
     body: JSON.stringify(body),
   });
 }
@@ -131,7 +153,7 @@ async function loadRoute() {
   vi.resetModules();
   process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
   process.env.SUPABASE_SERVICE_ROLE_KEY = "svc";
-  process.env.BASE_URL = "https://bistro-centquatre-104.vercel.app";
+  process.env.BASE_URL = PUBLIC_BASE_URL;
   return import("@/app/api/reservations/route");
 }
 
@@ -142,6 +164,37 @@ describe("public reservations API — adminLink (P12)", () => {
     if (res.status !== 200) return; // skip if schema not ready in test env
     const body = await res.json();
     expect(body).not.toHaveProperty("adminLink");
+  });
+});
+
+describe("public reservations API — durable email enqueue", () => {
+  it("writes the reservation confirmation outbox intent inside the reservation transaction", async () => {
+    const { POST } = await loadRoute();
+    const res = await POST(post({ ...MIN_BODY, name: "山田" }));
+
+    expect(res.status).toBe(200);
+    expect(routeMocks.reservationEmailOutboxUpsert).toHaveBeenCalledWith({
+      where: {
+        reservationId_notificationType: {
+          reservationId: "res-abc",
+          notificationType: "RESERVATION_CONFIRMATION",
+        },
+      },
+      create: {
+        reservationId: "res-abc",
+        notificationType: "RESERVATION_CONFIRMATION",
+        status: "PENDING",
+        attempts: 0,
+        maxAttempts: 5,
+        nextAttemptAt: expect.any(Date),
+      },
+      update: {},
+      select: {
+        id: true,
+        status: true,
+      },
+    });
+    expect(routeMocks.sendReservationEmail).not.toHaveBeenCalled();
   });
 });
 
@@ -202,6 +255,7 @@ describe("public reservations API — linkUrl uses liff.line.me (P4)", () => {
     expect(body.deduplicated).toBe(true);
     expect(body.lineNotification).toEqual({ enabled: false, deduplicated: true });
     expect(routeMocks.lineLinkTokenCreate).not.toHaveBeenCalled();
+    expect(routeMocks.reservationEmailOutboxUpsert).not.toHaveBeenCalled();
   });
 });
 

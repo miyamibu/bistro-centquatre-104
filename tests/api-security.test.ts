@@ -34,6 +34,20 @@ describe("API Security", () => {
     expect(body?.code).toBe("MISSING_REQUEST_HEADER");
   });
 
+  it("blocks write requests when an origin is required but missing", async () => {
+    const request = buildRequest({
+      "content-type": "application/json",
+      "x-requested-with": "XMLHttpRequest",
+    });
+    const result = enforceWriteRequestSecurity(request, {
+      requestId: "test-id",
+      requireOrigin: true,
+    });
+    expect(result?.status).toBe(403);
+    const body = await result?.json();
+    expect(body?.code).toBe("ORIGIN_REQUIRED");
+  });
+
   it("blocks cross-site requests", async () => {
     const request = buildRequest({
       "content-type": "application/json",

@@ -2,7 +2,7 @@
 
 ## Goal
 
-本番運用中の `Reservation`、`PrivateBlockAuditLog`、`BusinessDay` を、アプリ実行ユーザーや誤操作から hard delete されにくい権限構成にする。
+本番運用中の予約本体、予約監査、通知台帳、LINE連携token、rate-limit記録を、アプリ実行ユーザーや誤操作からhard deleteされにくい最小権限構成にする。
 
 ## Context
 
@@ -18,16 +18,17 @@
 
 ## Done when
 
-- runtime ユーザーは `SELECT`, `INSERT`, `UPDATE` を持つ。
-- runtime ユーザーは `Reservation`, `PrivateBlockAuditLog`, `BusinessDay` への `DELETE` / `TRUNCATE` を持たない。
+- runtimeユーザーは、各テーブルの実処理に必要な `SELECT` / `INSERT` / `UPDATE` だけを持つ。
+- runtimeユーザーは、下記の保護対象8テーブルへの `DELETE` / `TRUNCATE` を持たない。
+- 追記型の監査・rate-limitテーブルは `UPDATE` も持たない。
 - rollback 手順と確認クエリが用意されている。
 
 ## Recommended role split
 
 1. `bistro_app_runtime`
    - 本番アプリ用
-   - 必要権限は `SELECT`, `INSERT`, `UPDATE`
-   - `Reservation`, `PrivateBlockAuditLog`, `BusinessDay` への `DELETE`, `TRUNCATE` は付与しない
+   - 必要権限だけをテーブル単位で付与する
+   - 下記保護対象への `DELETE`, `TRUNCATE` は付与しない
 2. `bistro_migration`
    - Prisma migration や管理者作業専用
    - スキーマ変更時だけ限定利用
@@ -35,51 +36,120 @@
 
 ## Example SQL
 
-以下は PostgreSQL の一例です。実環境に合わせて DB 管理者が調整してください。
+以下はPostgreSQLの一例です。`bistro_app_runtime` が作成済みであることを先に確認し、実環境に合わせてDB管理者が調整してください。
+
+| テーブル | runtimeの最小権限 | 理由 |
+|---|---|---|
+| `Reservation` | `SELECT`, `INSERT`, `UPDATE` | 予約作成とstatus更新 |
+| `BusinessDay` | `SELECT`, `INSERT`, `UPDATE` | 営業日・休業日管理 |
+| `PrivateBlockAuditLog` | `SELECT`, `INSERT` | 追記型の貸切監査 |
+| `ReservationStatusAuditLog` | `SELECT`, `INSERT` | 追記型のstatus監査 |
+| `ReservationEmailOutbox` | `SELECT`, `INSERT`, `UPDATE` | enqueue、claim、再試行、送信完了 |
+| `ReservationLineLinkToken` | `SELECT`, `INSERT`, `UPDATE` | token発行と使用済み更新 |
+| `NotificationEvent` | `SELECT`, `INSERT`, `UPDATE` | 通知claimと結果更新 |
+| `ReservationRateLimitEvent` | `SELECT`, `INSERT` | rate-limit試行の追記と集計 |
 
 ```sql
+SELECT rolname
+FROM pg_roles
+WHERE rolname = 'bistro_app_runtime';
+
 REVOKE DELETE, TRUNCATE
-ON TABLE "Reservation", "PrivateBlockAuditLog", "BusinessDay"
+ON TABLE
+  "Reservation",
+  "BusinessDay",
+  "PrivateBlockAuditLog",
+  "ReservationStatusAuditLog",
+  "ReservationEmailOutbox",
+  "ReservationLineLinkToken",
+  "NotificationEvent",
+  "ReservationRateLimitEvent"
 FROM bistro_app_runtime;
 
 GRANT SELECT, INSERT, UPDATE
-ON TABLE "Reservation", "PrivateBlockAuditLog", "BusinessDay"
+ON TABLE
+  "Reservation",
+  "BusinessDay",
+  "ReservationEmailOutbox",
+  "ReservationLineLinkToken",
+  "NotificationEvent"
 TO bistro_app_runtime;
 
-GRANT USAGE, SELECT
-ON ALL SEQUENCES IN SCHEMA public
+REVOKE UPDATE
+ON TABLE
+  "PrivateBlockAuditLog",
+  "ReservationStatusAuditLog",
+  "ReservationRateLimitEvent"
+FROM bistro_app_runtime;
+
+GRANT SELECT, INSERT
+ON TABLE
+  "PrivateBlockAuditLog",
+  "ReservationStatusAuditLog",
+  "ReservationRateLimitEvent"
 TO bistro_app_runtime;
 ```
 
-必要に応じて、他の業務テーブルも同じ考え方で runtime ユーザーから `DELETE` / `TRUNCATE` を外してください。
+対象のPrisma modelはアプリ側でtext IDを生成するため、この8テーブルだけを目的とした `ON ALL SEQUENCES` の一括grantは不要です。他の業務テーブルへ権限を広げる場合も、必要なテーブルと操作を個別にレビューしてください。
+
+> `GRANT` はRLSを迂回しません。接続roleがtable ownerでも `BYPASSRLS` roleでもない場合、切替前にそのruntime role向けの最小RLS policyを別migrationとしてレビュー・検証してください。権限SQLだけを先に適用して `DATABASE_URL` を切り替えないでください。
 
 ## Verification queries
 
 ```sql
-SELECT grantee, table_name, privilege_type
-FROM information_schema.role_table_grants
-WHERE grantee = 'bistro_app_runtime'
-  AND table_name IN ('Reservation', 'PrivateBlockAuditLog', 'BusinessDay')
-ORDER BY table_name, privilege_type;
+SELECT
+  c.relname AS table_name,
+  has_table_privilege('bistro_app_runtime', c.oid, 'SELECT') AS can_select,
+  has_table_privilege('bistro_app_runtime', c.oid, 'INSERT') AS can_insert,
+  has_table_privilege('bistro_app_runtime', c.oid, 'UPDATE') AS can_update,
+  has_table_privilege('bistro_app_runtime', c.oid, 'DELETE') AS can_delete,
+  has_table_privilege('bistro_app_runtime', c.oid, 'TRUNCATE') AS can_truncate
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = 'public'
+  AND c.relname IN (
+    'Reservation',
+    'BusinessDay',
+    'PrivateBlockAuditLog',
+    'ReservationStatusAuditLog',
+    'ReservationEmailOutbox',
+    'ReservationLineLinkToken',
+    'NotificationEvent',
+    'ReservationRateLimitEvent'
+  )
+ORDER BY c.relname;
 ```
 
 期待値:
 
-1. `SELECT`, `INSERT`, `UPDATE` はある
-2. `DELETE` はない
-3. `TRUNCATE` はない
+1. 上表で定義した `SELECT`, `INSERT`, `UPDATE` だけが `true`
+2. 全8テーブルで `can_delete = false`
+3. 全8テーブルで `can_truncate = false`
+4. 追記型3テーブルで `can_update = false`
+
+`supabase/verify.sql` は、この期待値を読み取りだけでassertできます。repo rootから `psql` を使う場合は、エラーを終了コードへ反映させ、roleを明示してください。
+
+```sql
+BEGIN READ ONLY;
+SET LOCAL bistro.verify_runtime_role = 'bistro_app_runtime';
+-- psqlではここで \i supabase/verify.sql を実行する
+ROLLBACK;
+```
+
+- `psql` は `-v ON_ERROR_STOP=1` を付ける。
+- `bistro.verify_runtime_role` に指定したroleが存在しない場合はFAILする。
+- roleを指定せず、既定名 `bistro_app_runtime` も存在しない環境では、role検証だけを明示的にSKIPし、テーブル/RLS/policy/FKのassertは継続する。
+- 実行結果に予約行や個人情報は含まれない。
 
 ## Rollback example
 
-運用上やむを得ず権限を一時復元する場合も、DB 管理者レビューのうえで短時間だけ実施してください。
+このhardeningのrollbackでも、保護対象へ `DELETE` / `TRUNCATE` を一括付与しないでください。適用前に取得したrole別privilege一覧を正本とし、DB管理者レビュー済みの権限だけを個別に戻します。
 
-```sql
-GRANT DELETE, TRUNCATE
-ON TABLE "Reservation", "PrivateBlockAuditLog", "BusinessDay"
-TO bistro_app_runtime;
-```
-
-rollback 後は、作業完了時点で必ず再度 `REVOKE DELETE, TRUNCATE` を実施してください。
+1. 適用前の `information_schema.role_table_grants` 結果を保存する。
+2. 障害時は、欠けている非破壊権限だけを特定する。
+3. `SELECT` / `INSERT` / `UPDATE` のうち、事前snapshotで確認できる権限だけを個別に復元する。
+4. `DELETE` / `TRUNCATE` が必要に見える場合はrollbackを中止し、アプリ処理またはRLS policyの不整合を先に調査する。
+5. 事前snapshotがない場合は推測でgrantせず、migration用roleへ一時切替する判断も含めて運用責任者の承認を得る。
 
 ## Operational notes
 
@@ -89,3 +159,5 @@ rollback 後は、作業完了時点で必ず再度 `REVOKE DELETE, TRUNCATE` �
 4. 予約キャンセルは削除ではなく `Reservation.status = CANCELLED`
 5. No-show は削除ではなく `Reservation.status = NOSHOW`
 6. 来店済みは削除ではなく `Reservation.status = DONE`
+7. `ReservationEmailOutbox`、監査、LINE token、通知台帳、rate-limit記録を通常のcleanup対象にしない
+8. migration・grant・RLS適用後は `supabase/verify.sql` が例外なしで完了するまでreleaseを進めない

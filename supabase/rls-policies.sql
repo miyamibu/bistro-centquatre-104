@@ -12,6 +12,9 @@ alter table if exists public.bank_account_history enable row level security;
 alter table if exists public."Reservation" enable row level security;
 alter table if exists public."PrivateBlockAuditLog" enable row level security;
 alter table if exists public."ReservationStatusAuditLog" enable row level security;
+alter table if exists public."ReservationEmailOutbox" enable row level security;
+alter table if exists public."ReservationLineLinkToken" enable row level security;
+alter table if exists public."NotificationEvent" enable row level security;
 alter table if exists public."ReservationRateLimitEvent" enable row level security;
 alter table if exists public."BusinessDay" enable row level security;
 alter table if exists public."MenuItem" enable row level security;
@@ -60,6 +63,18 @@ drop policy if exists "private_block_audit_service_role_all" on public."PrivateB
 drop policy if exists "reservation_status_audit_deny_anon_all" on public."ReservationStatusAuditLog";
 drop policy if exists "reservation_status_audit_deny_authenticated_all" on public."ReservationStatusAuditLog";
 drop policy if exists "reservation_status_audit_service_role_all" on public."ReservationStatusAuditLog";
+
+drop policy if exists "reservation_email_outbox_deny_anon_all" on public."ReservationEmailOutbox";
+drop policy if exists "reservation_email_outbox_deny_authenticated_all" on public."ReservationEmailOutbox";
+drop policy if exists "reservation_email_outbox_service_role_all" on public."ReservationEmailOutbox";
+
+drop policy if exists "reservation_line_link_token_deny_anon_all" on public."ReservationLineLinkToken";
+drop policy if exists "reservation_line_link_token_deny_authenticated_all" on public."ReservationLineLinkToken";
+drop policy if exists "reservation_line_link_token_service_role_all" on public."ReservationLineLinkToken";
+
+drop policy if exists "notification_event_deny_anon_all" on public."NotificationEvent";
+drop policy if exists "notification_event_deny_authenticated_all" on public."NotificationEvent";
+drop policy if exists "notification_event_service_role_all" on public."NotificationEvent";
 
 drop policy if exists "reservation_rate_limit_deny_anon_all" on public."ReservationRateLimitEvent";
 drop policy if exists "reservation_rate_limit_deny_authenticated_all" on public."ReservationRateLimitEvent";
@@ -256,6 +271,18 @@ create policy "private_block_audit_service_role_all" on public."PrivateBlockAudi
 create policy "reservation_status_audit_deny_anon_all" on public."ReservationStatusAuditLog" for all to anon using (false) with check (false);
 create policy "reservation_status_audit_deny_authenticated_all" on public."ReservationStatusAuditLog" for all to authenticated using (false) with check (false);
 create policy "reservation_status_audit_service_role_all" on public."ReservationStatusAuditLog" for all to service_role using (true) with check (true);
+
+create policy "reservation_email_outbox_deny_anon_all" on public."ReservationEmailOutbox" for all to anon using (false) with check (false);
+create policy "reservation_email_outbox_deny_authenticated_all" on public."ReservationEmailOutbox" for all to authenticated using (false) with check (false);
+create policy "reservation_email_outbox_service_role_all" on public."ReservationEmailOutbox" for all to service_role using (true) with check (true);
+
+create policy "reservation_line_link_token_deny_anon_all" on public."ReservationLineLinkToken" for all to anon using (false) with check (false);
+create policy "reservation_line_link_token_deny_authenticated_all" on public."ReservationLineLinkToken" for all to authenticated using (false) with check (false);
+create policy "reservation_line_link_token_service_role_all" on public."ReservationLineLinkToken" for all to service_role using (true) with check (true);
+
+create policy "notification_event_deny_anon_all" on public."NotificationEvent" for all to anon using (false) with check (false);
+create policy "notification_event_deny_authenticated_all" on public."NotificationEvent" for all to authenticated using (false) with check (false);
+create policy "notification_event_service_role_all" on public."NotificationEvent" for all to service_role using (true) with check (true);
 
 create policy "reservation_rate_limit_deny_anon_all" on public."ReservationRateLimitEvent" for all to anon using (false) with check (false);
 create policy "reservation_rate_limit_deny_authenticated_all" on public."ReservationRateLimitEvent" for all to authenticated using (false) with check (false);

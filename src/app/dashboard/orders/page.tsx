@@ -3,9 +3,17 @@ import { OrdersClient } from "./orders-client";
 
 export const dynamic = "force-dynamic";
 
+const ORDER_LIST_LIMIT = 100;
+const ORDER_LIST_SELECT =
+  "id, customer_name, email, phone, zip_code, prefecture, city, address, building, payment_method, items, total, store_visit_date, status, version, created_at";
+
 export default async function DashboardOrdersPage() {
   const [ordersResult, bankAccountResult] = await Promise.all([
-    supabaseServer.from("orders").select("*").order("created_at", { ascending: false }),
+    supabaseServer
+      .from("orders")
+      .select(ORDER_LIST_SELECT)
+      .order("created_at", { ascending: false })
+      .range(0, ORDER_LIST_LIMIT - 1),
     supabaseServer.from("bank_account").select("*").limit(1),
   ]);
 

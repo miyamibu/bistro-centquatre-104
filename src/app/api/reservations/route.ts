@@ -6,7 +6,6 @@ import {
   isArrivalTimeValid,
   isCoursePeriodConsistent,
 } from "@/lib/availability";
-import { sendReservationEmail } from "@/lib/email";
 import {
   enforceReservationWriteRateLimit,
   isReservationRateLimitError,
@@ -29,7 +28,6 @@ import { createReservationSchema, zodFields } from "@/lib/validation";
 import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
 import { isLinePhoneAutoAttachEnabled } from "@/lib/env";
 import { getContactPayload } from "@/lib/contact";
-import { env } from "@/lib/env";
 import {
   canPushToLineUser,
   generateLineLinkToken,
@@ -44,6 +42,7 @@ import {
   getLineCustomerLinkConsentCutoff,
 } from "@/lib/line-customer-link";
 import { getRequestId, logError, logInfo, logWarn } from "@/lib/logger";
+import { enqueueReservationConfirmationEmail } from "@/lib/reservation-email-outbox";
 
 export const dynamic = "force-dynamic";
 
@@ -164,7 +163,7 @@ export async function POST(request: NextRequest) {
   const contact = getContactPayload();
   const securityError = enforceWriteRequestSecurity(request, {
     requestId,
-    requireRequestedWith: false,
+    requireOrigin: true,
   });
   if (securityError) return securityError;
 
@@ -464,6 +463,8 @@ export async function POST(request: NextRequest) {
             linePushCheckedAt,
           });
 
+          await enqueueReservationConfirmationEmail(tx, createdReservation.id);
+
           return {
             reservation: createdReservation,
             deduplicated: false,
@@ -482,24 +483,6 @@ export async function POST(request: NextRequest) {
           requestId,
           route: "/api/reservations",
           context: { reservationId: reservation.id },
-        });
-      }
-
-      const adminLink = env.BASE_URL
-        ? `${env.BASE_URL}/admin/reservations/${reservation.id}`
-        : "";
-
-      if (!deduplicated) {
-        sendReservationEmail({ reservation, adminUrl: adminLink }).catch((err) => {
-          logError("reservation.email.failed", {
-            requestId,
-            route: "/api/reservations",
-            errorCode: "EMAIL_SEND_FAILED",
-            context: {
-              reservationId: reservation.id,
-              error: err instanceof Error ? err.message : String(err),
-            },
-          });
         });
       }
 

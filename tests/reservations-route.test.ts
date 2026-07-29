@@ -14,6 +14,7 @@ function buildRequest(body: Record<string, unknown>) {
     headers: {
       "content-type": "application/json",
       origin: "http://localhost:3000",
+      "x-requested-with": "XMLHttpRequest",
     },
     body: JSON.stringify(body),
   });

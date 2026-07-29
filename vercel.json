@@ -26,6 +26,10 @@
       "schedule": "0 2 * * *"
     },
     {
+      "path": "/api/crons/process-reservation-emails",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/crons/remind",
       "schedule": "0 3 * * *"
     }

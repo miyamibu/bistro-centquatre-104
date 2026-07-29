@@ -101,6 +101,8 @@ export function unauthorized() {
     headers: {
       "WWW-Authenticate": "Basic realm=\"Restricted\"",
       "X-Robots-Tag": "noindex, nofollow",
+      "Cache-Control": "private, no-store",
+      Vary: "Authorization",
     },
   });
 }

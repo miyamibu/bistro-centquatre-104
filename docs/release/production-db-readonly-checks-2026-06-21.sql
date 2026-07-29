@@ -62,6 +62,11 @@ with target_tables(schema_name, table_name) as (
     ('public', 'bank_account_history'),
     ('public', 'Reservation'),
     ('public', 'PrivateBlockAuditLog'),
+    ('public', 'ReservationStatusAuditLog'),
+    ('public', 'ReservationEmailOutbox'),
+    ('public', 'ReservationLineLinkToken'),
+    ('public', 'NotificationEvent'),
+    ('public', 'ReservationRateLimitEvent'),
     ('public', 'BusinessDay')
 )
 select
@@ -92,6 +97,11 @@ with target_tables(schema_name, table_name) as (
     ('public', 'bank_account_history'),
     ('public', 'Reservation'),
     ('public', 'PrivateBlockAuditLog'),
+    ('public', 'ReservationStatusAuditLog'),
+    ('public', 'ReservationEmailOutbox'),
+    ('public', 'ReservationLineLinkToken'),
+    ('public', 'NotificationEvent'),
+    ('public', 'ReservationRateLimitEvent'),
     ('public', 'BusinessDay')
 )
 select
@@ -120,6 +130,11 @@ with target_tables(schema_name, table_name) as (
     ('public', 'bank_account_history'),
     ('public', 'Reservation'),
     ('public', 'PrivateBlockAuditLog'),
+    ('public', 'ReservationStatusAuditLog'),
+    ('public', 'ReservationEmailOutbox'),
+    ('public', 'ReservationLineLinkToken'),
+    ('public', 'NotificationEvent'),
+    ('public', 'ReservationRateLimitEvent'),
     ('public', 'BusinessDay')
 ),
 target_regclasses as (
@@ -165,6 +180,11 @@ where schemaname = 'public'
     'bank_account_history',
     'Reservation',
     'PrivateBlockAuditLog',
+    'ReservationStatusAuditLog',
+    'ReservationEmailOutbox',
+    'ReservationLineLinkToken',
+    'NotificationEvent',
+    'ReservationRateLimitEvent',
     'BusinessDay'
   )
 order by tablename, policyname;
@@ -242,6 +262,29 @@ where table_schema = 'public'
   and table_name = 'order_notification_outbox'
 order by ordinal_position;
 
+with expected_columns(table_name, column_name) as (
+  values
+    ('order_notification_outbox', 'claim_token'),
+    ('order_notification_outbox', 'customer_sent_at'),
+    ('order_notification_outbox', 'admin_sent_at'),
+    ('order_notification_outbox', 'admin_skipped_at'),
+    ('ReservationEmailOutbox', 'claimToken'),
+    ('ReservationEmailOutbox', 'lockedUntil'),
+    ('ReservationEmailOutbox', 'lastError')
+)
+select
+  expected.table_name,
+  expected.column_name,
+  exists (
+    select 1
+    from information_schema.columns column_record
+    where column_record.table_schema = 'public'
+      and column_record.table_name = expected.table_name
+      and column_record.column_name = expected.column_name
+  ) as exists
+from expected_columns expected
+order by expected.table_name, expected.column_name;
+
 select
   routine_schema,
   routine_name,
@@ -286,7 +329,11 @@ where migration_name in (
   '20260407153000_harden_private_block_invariants',
   '20260506093000_add_daily_journal_entry',
   '20260511120000_add_line_reminder_fields',
-  '20260529150000_line_link_and_notification_ledger'
+  '20260529150000_line_link_and_notification_ledger',
+  '20260514120000_add_line_post_booking_link_fields',
+  '20260622000000_add_reservation_status_audit_log',
+  '20260728090000_add_reservation_email_outbox',
+  '20260728093000_restrict_reservation_related_deletes'
 )
 order by migration_name;
 

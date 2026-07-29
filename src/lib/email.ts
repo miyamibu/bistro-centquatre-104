@@ -1,6 +1,7 @@
 import { Reservation } from "@prisma/client";
 import { parseReservationNote } from "@/lib/reservation-note";
 import { env } from "@/lib/env";
+import { logError } from "@/lib/logger";
 
 type EmailProvider = "resend" | "sendgrid";
 type EmailFailureReason = "MISSING_ENV" | "UNKNOWN_PROVIDER" | "SEND_FAILED";
@@ -18,6 +19,7 @@ interface EmailSendRequest {
   html?: string;
   replyTo?: string;
   from?: string;
+  idempotencyKey?: string;
 }
 
 type EmailDeliveryResult =
@@ -100,18 +102,27 @@ async function sendEmail(message: EmailSendRequest): Promise<EmailDeliveryResult
       let response:
         | { error?: { message?: string } | null }
         | undefined;
+      const resendRequestOptions = message.idempotencyKey
+        ? { idempotencyKey: message.idempotencyKey }
+        : undefined;
 
       if (typeof message.html === "string") {
-        response = await resend.emails.send({
-          ...resendBasePayload,
-          html: message.html,
-          ...(typeof message.text === "string" ? { text: message.text } : {}),
-        });
+        response = await resend.emails.send(
+          {
+            ...resendBasePayload,
+            html: message.html,
+            ...(typeof message.text === "string" ? { text: message.text } : {}),
+          },
+          resendRequestOptions
+        );
       } else if (typeof message.text === "string") {
-        response = await resend.emails.send({
-          ...resendBasePayload,
-          text: message.text,
-        });
+        response = await resend.emails.send(
+          {
+            ...resendBasePayload,
+            text: message.text,
+          },
+          resendRequestOptions
+        );
       } else {
         throw new Error("Email body is missing");
       }
@@ -152,9 +163,12 @@ async function sendEmail(message: EmailSendRequest): Promise<EmailDeliveryResult
 
     return { sent: true, provider };
   } catch (error) {
-    console.error("Email send failed", {
-      provider,
-      message: error instanceof Error ? error.message : String(error),
+    logError("email.provider_send_failed", {
+      errorCode: "EMAIL_PROVIDER_SEND_FAILED",
+      context: {
+        provider,
+        errorName: error instanceof Error ? error.name : "UnknownError",
+      },
     });
     return { sent: false, reason: "SEND_FAILED", provider };
   }
@@ -271,7 +285,7 @@ interface BankAccount {
 }
 
 type OrderEmailResult =
-  | { sent: true; provider: EmailProvider; adminSent: boolean }
+  | { sent: true; provider?: EmailProvider; adminSent: boolean }
   | {
       sent: false;
       reason: EmailFailureReason;
@@ -279,15 +293,24 @@ type OrderEmailResult =
       provider?: EmailProvider;
     };
 
+type OrderEmailTarget = "both" | "customer" | "admin";
+
+type OrderEmailOptions = {
+  target?: OrderEmailTarget;
+  idempotencyKey?: string;
+};
+
 export async function sendOrderConfirmationEmail(
   customerInfo: CustomerInfo,
   items: OrderItem[],
   total: number,
   paymentMethod: "bank-transfer" | "cash-store" | "BANK_TRANSFER" | "PAY_IN_STORE",
   storeVisitDate?: string,
-  bankAccount?: BankAccount
+  bankAccount?: BankAccount,
+  options: OrderEmailOptions = {}
 ): Promise<OrderEmailResult> {
   const storeName = env.STORE_NAME || "bistro centquatre 104";
+  const target = options.target ?? "both";
   const fromAddress = formatFromAddress(
     storeName,
     env.EMAIL_FROM ?? env.STORE_NOTIFY_EMAIL ?? "no-reply@example.com"
@@ -407,25 +430,36 @@ export async function sendOrderConfirmationEmail(
       </html>
     `;
 
-  const customerDelivery = await sendEmail({
-    from: fromAddress,
-    to: customerInfo.email,
-    subject: `ご注文確認 - ${storeName}`,
-    html,
-  });
+  let customerProvider: EmailProvider | undefined;
+  if (target !== "admin") {
+    const customerDelivery = await sendEmail({
+      from: fromAddress,
+      to: customerInfo.email,
+      subject: `ご注文確認 - ${storeName}`,
+      html,
+      ...(options.idempotencyKey
+        ? { idempotencyKey: `${options.idempotencyKey}:customer` }
+        : {}),
+    });
 
-  if (!customerDelivery.sent) {
-    return {
-      sent: false,
-      reason: customerDelivery.reason,
-      provider: customerDelivery.provider,
-      target: "customer",
-    };
+    if (!customerDelivery.sent) {
+      return {
+        sent: false,
+        reason: customerDelivery.reason,
+        provider: customerDelivery.provider,
+        target: "customer",
+      };
+    }
+
+    customerProvider = customerDelivery.provider;
+    if (target === "customer") {
+      return { sent: true, provider: customerProvider, adminSent: false };
+    }
   }
 
   const adminEmail = env.ADMIN_EMAIL;
   if (!adminEmail) {
-    return { sent: true, provider: customerDelivery.provider, adminSent: false };
+    return { sent: true, provider: customerProvider, adminSent: false };
   }
 
   const staffHtml = `
@@ -463,6 +497,9 @@ export async function sendOrderConfirmationEmail(
     to: adminEmail,
     subject: `新規注文: ${customerInfo.name}様`,
     html: staffHtml,
+    ...(options.idempotencyKey
+      ? { idempotencyKey: `${options.idempotencyKey}:admin` }
+      : {}),
   });
 
   if (!adminDelivery.sent) {
@@ -474,5 +511,5 @@ export async function sendOrderConfirmationEmail(
     };
   }
 
-  return { sent: true, provider: customerDelivery.provider, adminSent: true };
+  return { sent: true, provider: customerProvider ?? adminDelivery.provider, adminSent: true };
 }

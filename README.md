@@ -54,6 +54,7 @@ Codex 作業ガイド:
 主要変数は `.env.example` に記載しています。特に以下は必須です。
 
 - `DATABASE_URL`
+- `DIRECT_URL`（Prisma migration用の直接接続。poolerを経由せず、`DATABASE_URL`と同じDBを指す）
 - `TEST_DATABASE_URL`（破壊的DBテスト専用。`DATABASE_URL` と共有しない）
 - `ADMIN_BASIC_USER`, `ADMIN_BASIC_PASS`
 - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
@@ -93,6 +94,11 @@ Codex 作業ガイド:
 将来互換メモ（Next 16）: `middleware.ts` が `proxy.ts` へ改称される場合も、
 Basic 認証ロジックは `src/lib/basic-auth.ts` を共通利用し、認証判定の実装差分を出さない方針です。
 
+Basic認証の401応答はキャッシュさせません。認証失敗を監査ログへ記録する場合も、
+資格情報や入力ユーザー名を残してはいけません。
+サーバーレス環境ではプロセスローカルな回数カウンターをブルートフォース防御として扱えないため、
+本番ではVercel Firewall/WAFまたは共有・永続型のレート制限を別途設定し、監査ログと合わせて検証してください。
+
 ### Cron 認証（Bearer）
 
 cron API は `Authorization: Bearer $CRON_SECRET` で保護されます。
@@ -115,10 +121,11 @@ cron API は `Authorization: Bearer $CRON_SECRET` で保護されます。
 書き込み API では共通防御 `src/lib/api-security.ts` を適用しています。
 
 - `Content-Type: application/json` 必須
-- `Origin` が同一オリジン（`request.nextUrl.origin` / `BASE_URL`）であること
+- `Origin` ヘッダーが必須で、同一オリジン（`request.nextUrl.origin` / `BASE_URL`）であること
 - `Sec-Fetch-Site: cross-site` を拒否
 - `X-Requested-With: XMLHttpRequest` は既定で必須
-- 例外: `POST /api/reservations` は公開予約フォーム互換のため未指定でも受け付ける。AIエージェントの直接予約完了はlaunch-disabledで、`/booking?mode=agent` のhandoffのみを公開する
+- `POST /api/reservations` も同一オリジンのブラウザ予約フォームからのみ受け付ける
+- AIエージェントの直接予約完了はlaunch-disabledで、`/booking?mode=agent` のhandoffのみを公開する
 
 対象（主な書き込み API）:
 
@@ -166,8 +173,9 @@ cron API は `Authorization: Bearer $CRON_SECRET` で保護されます。
 ## 予約・注文ルール
 
 - 予約は当日不可、最大3ヶ月先まで
-- メイン席合計 12 名まで、10名以上予約は貸切扱い
-- 来店時間は `17:30` 以降
+- Web予約は最大12名まで。9名以上は電話受付のみ
+- Web予約可能時間はランチ `11:30-12:30`、ディナー `17:30-19:30`
+- 営業時間はランチ `11:30-14:00`、ディナー `17:30-22:00`（L.O. `21:00`）
 - 店頭支払い（`cash-store`）の来店日は 木〜日かつ 注文日+14〜30日
 - 顧客の自己キャンセル/変更 UI は未実装。連絡導線（電話）で運用
 - `SHIPPED` / `CANCELLED` 到達時は `order_history` に終端スナップショットを archive する
