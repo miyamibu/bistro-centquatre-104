@@ -123,13 +123,13 @@ const MENU = {
       {
         title: "実食！ ５品 5,500円",
         subtitle: "ジョワ Joie course",
-        description: `Amuse-bouches (3種) / Hors-d’œuvre / Entrée / ${MOBILE_ONLY_BREAK_TOKEN}Poisson または Viande / ${DESKTOP_ONLY_BREAK_TOKEN}Riz / Café`,
+        description: `Amuse-bouches / Hors-d’œuvre / Entrée / ${MOBILE_ONLY_BREAK_TOKEN}Poisson または Viande / ${DESKTOP_ONLY_BREAK_TOKEN}Riz / Café`,
         anchor: "joie",
       },
       {
         title: "戸田市 ６品 8,000円",
         subtitle: "サンキャトル Cent Quatre course",
-        description: `Amuse-bouches (3種) / Hors-d’œuvre / Entrée / Poisson / ${MOBILE_ONLY_BREAK_TOKEN}Viande / ${DESKTOP_ONLY_BREAK_TOKEN}Riz / Café`,
+        description: `Amuse-bouches / Hors-d’œuvre / Entrée / Poisson / ${MOBILE_ONLY_BREAK_TOKEN}Viande / ${DESKTOP_ONLY_BREAK_TOKEN}Riz / Café`,
         anchor: "cent-quatre",
       },
     ],
