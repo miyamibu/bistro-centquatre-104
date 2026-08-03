@@ -13,14 +13,17 @@ if (!hasSafeDatabase) {
   console.warn(`[tests] Skipping destructive DB tests: ${destructiveTestDbAccess.reason}`);
 }
 
-function buildRequest(body: Record<string, unknown>) {
+function buildRequest(body: Record<string, unknown>, idempotencyKey?: string) {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    origin: "http://localhost:3000",
+    "x-requested-with": "XMLHttpRequest",
+  };
+  if (idempotencyKey) headers["idempotency-key"] = idempotencyKey;
+
   return new NextRequest("http://localhost:3000/api/reservations", {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      origin: "http://localhost:3000",
-      "x-requested-with": "XMLHttpRequest",
-    },
+    headers,
     body: JSON.stringify(body),
   });
 }
@@ -67,7 +70,7 @@ describeIfDatabase("reservations route duplicate guard (db)", () => {
     const { POST } = await import("@/app/api/reservations/route");
     const payload = buildPayload();
 
-    const firstResponse = await POST(buildRequest(payload));
+    const firstResponse = await POST(buildRequest(payload, "legacy-duplicate-first"));
     const firstBody = await firstResponse.json();
 
     const secondResponse = await POST(
@@ -75,7 +78,7 @@ describeIfDatabase("reservations route duplicate guard (db)", () => {
         ...payload,
         name: " 山田 花子 ",
         phone: "09012345678",
-      })
+      }, "legacy-duplicate-second")
     );
     const secondBody = await secondResponse.json();
 
@@ -108,12 +111,12 @@ describeIfDatabase("reservations route duplicate guard (db)", () => {
     const { POST } = await import("@/app/api/reservations/route");
     const payload = buildPayload();
 
-    await POST(buildRequest(payload));
+    await POST(buildRequest(payload, "different-size-first"));
     const response = await POST(
       buildRequest({
         ...payload,
         partySize: 3,
-      })
+      }, "different-size-second")
     );
     const body = await response.json();
 
@@ -139,7 +142,7 @@ describeIfDatabase("reservations route duplicate guard (db)", () => {
     const { POST } = await import("@/app/api/reservations/route");
     const payload = buildPayload();
 
-    const firstResponse = await POST(buildRequest(payload));
+    const firstResponse = await POST(buildRequest(payload, "stale-first"));
     const firstBody = await firstResponse.json();
 
     const staleCreatedAt = new Date(Date.now() - 5 * 60 * 1000);
@@ -148,7 +151,7 @@ describeIfDatabase("reservations route duplicate guard (db)", () => {
       data: { createdAt: staleCreatedAt },
     });
 
-    const secondResponse = await POST(buildRequest(payload));
+    const secondResponse = await POST(buildRequest(payload, "stale-second"));
     const secondBody = await secondResponse.json();
 
     expect(secondResponse.status).toBe(200);
@@ -166,5 +169,65 @@ describeIfDatabase("reservations route duplicate guard (db)", () => {
     await expect(
       getPrismaOrThrow().reservationEmailOutbox.count()
     ).resolves.toBe(2);
+  }, 30000);
+
+  it("replays the saved response after the original response was lost for minutes", async () => {
+    const { POST } = await import("@/app/api/reservations/route");
+    const payload = buildPayload();
+    const idempotencyKey = "response-loss-after-minutes";
+
+    const firstResponse = await POST(buildRequest(payload, idempotencyKey));
+    const firstBody = await firstResponse.json();
+    expect(firstResponse.status).toBe(200);
+
+    await getPrismaOrThrow().reservationIdempotency.update({
+      where: { idempotencyKey },
+      data: { createdAt: new Date(Date.now() - 5 * 60 * 1000) },
+    });
+
+    const replayResponse = await POST(buildRequest(payload, idempotencyKey));
+    const replayBody = await replayResponse.json();
+
+    expect(replayResponse.status).toBe(200);
+    expect(replayBody).toEqual(firstBody);
+    await expect(getPrismaOrThrow().reservation.count()).resolves.toBe(1);
+    await expect(getPrismaOrThrow().reservationEmailOutbox.count()).resolves.toBe(1);
+  }, 30000);
+
+  it("returns the same saved response for concurrent requests with the same key", async () => {
+    const { POST } = await import("@/app/api/reservations/route");
+    const payload = buildPayload();
+    const idempotencyKey = "concurrent-same-key";
+
+    const [firstResponse, secondResponse] = await Promise.all([
+      POST(buildRequest(payload, idempotencyKey)),
+      POST(buildRequest(payload, idempotencyKey)),
+    ]);
+    const firstBody = await firstResponse.json();
+    const secondBody = await secondResponse.json();
+
+    expect(firstResponse.status).toBe(200);
+    expect(secondResponse.status).toBe(200);
+    expect(secondBody).toEqual(firstBody);
+    await expect(getPrismaOrThrow().reservation.count()).resolves.toBe(1);
+    await expect(getPrismaOrThrow().reservationEmailOutbox.count()).resolves.toBe(1);
+  }, 30000);
+
+  it("returns 409 when the same key is reused with a different body", async () => {
+    const { POST } = await import("@/app/api/reservations/route");
+    const payload = buildPayload();
+    const idempotencyKey = "different-body-conflict";
+
+    const firstResponse = await POST(buildRequest(payload, idempotencyKey));
+    expect(firstResponse.status).toBe(200);
+
+    const conflictResponse = await POST(
+      buildRequest({ ...payload, partySize: 3 }, idempotencyKey)
+    );
+    const conflictBody = await conflictResponse.json();
+
+    expect(conflictResponse.status).toBe(409);
+    expect(conflictBody.code).toBe("IDEMPOTENCY_CONFLICT");
+    await expect(getPrismaOrThrow().reservation.count()).resolves.toBe(1);
   }, 30000);
 });

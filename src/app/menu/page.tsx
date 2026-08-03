@@ -1,15 +1,17 @@
 "use client";
 
 import type { Route } from "next";
-import type { CSSProperties } from "react";
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { Pause, Play } from "lucide-react";
 import { Tangerine } from "next/font/google";
 import {
   appetizerSections,
   APPETIZER_SURCHARGE_NOTE,
 } from "@/lib/appetizer-data";
+import { getMenuTabIdForKey, type CourseTabId } from "@/lib/menu-tabs";
 import { getReservationCoursesForServicePeriod } from "@/lib/reservation-config";
 
 const tangerine = Tangerine({
@@ -26,8 +28,6 @@ const DESKTOP_SLIDE_HEIGHT_PX = 576; // matches the intended Petite La desktop s
 const DESKTOP_SLIDE_WIDTH_PX = 768; // keep the desktop slide width fixed to the Petite La layout
 const PANEL_RADIUS_PX = 35.2; // equals rounded-[2.2rem]
 const menuHeadingSize = { base: 32, md: 60 };
-
-type CourseTabId = "petite" | "joie" | "cent-quatre";
 
 type CourseMenuItem = {
   headingHtml: string;
@@ -207,9 +207,13 @@ export default function MenuPage() {
   const isMobileLayout = useIsMobileLayout();
   const [activeTab, setActiveTab] = useState<CourseTabId>("petite");
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
+  const [isSlideshowPaused, setIsSlideshowPaused] = useState(false);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const [motionPreferenceReady, setMotionPreferenceReady] = useState(false);
   const [panelHeightPx, setPanelHeightPx] = useState(0);
   const [panelWidthPx, setPanelWidthPx] = useState(0);
   const panelRef = useRef<HTMLElement | null>(null);
+  const tabButtonRefs = useRef<Partial<Record<CourseTabId, HTMLButtonElement | null>>>({});
 
   const topGapPx = isMobileLayout
     ? Math.max(0, TOP_GAP_PX - MOBILE_TOP_GAP_REDUCTION_PX + MOBILE_TOP_GAP_EXTRA_PX)
@@ -225,6 +229,19 @@ export default function MenuPage() {
   const desktopSlideWidth = `${effectiveSlideWidthPx}px`;
   const slideBottomAlignOffsetPx = Math.max(24, panelHeightPx - effectiveSlideHeightPx);
   const desktopSlideTop = `calc(var(--header-h) + min(${slideBottomAlignOffsetPx}px, max(1.5rem, 100vh - var(--header-h) - ${desktopSlideHeight} - 1.5rem)))`;
+
+  function focusTab(tabId: CourseTabId) {
+    setActiveTab(tabId);
+    tabButtonRefs.current[tabId]?.focus();
+  }
+
+  function handleTabKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, tabId: CourseTabId) {
+    const nextTabId = getMenuTabIdForKey(tabId, event.key);
+    if (!nextTabId) return;
+
+    event.preventDefault();
+    focusTab(nextTabId);
+  }
 
   useEffect(() => {
     if (isMobileLayout) return;
@@ -284,7 +301,33 @@ export default function MenuPage() {
   }, [activeTab]);
 
   useEffect(() => {
-    if (isMobileLayout || activeCourse.photos.length < 2) return;
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const syncPreference = () => {
+      setPrefersReducedMotion(mediaQuery.matches);
+      setMotionPreferenceReady(true);
+    };
+
+    syncPreference();
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", syncPreference);
+      return () => mediaQuery.removeEventListener("change", syncPreference);
+    }
+
+    mediaQuery.addListener(syncPreference);
+    return () => mediaQuery.removeListener(syncPreference);
+  }, []);
+
+  useEffect(() => {
+    if (
+      isMobileLayout ||
+      !motionPreferenceReady ||
+      prefersReducedMotion ||
+      isSlideshowPaused ||
+      activeCourse.photos.length < 2
+    ) {
+      return;
+    }
 
     const timerId = window.setInterval(() => {
       setActiveSlideIndex((prev) => (prev + 1) % activeCourse.photos.length);
@@ -293,7 +336,14 @@ export default function MenuPage() {
     return () => {
       window.clearInterval(timerId);
     };
-  }, [activeCourse.id, activeCourse.photos.length, isMobileLayout]);
+  }, [
+    activeCourse.id,
+    activeCourse.photos.length,
+    isMobileLayout,
+    isSlideshowPaused,
+    motionPreferenceReady,
+    prefersReducedMotion,
+  ]);
 
   return (
     <div
@@ -359,7 +409,12 @@ export default function MenuPage() {
             ))}
           </div>
 
-          <div role="tablist" aria-label="メニューコース" className="md:flex md:flex-nowrap md:justify-center md:gap-3">
+          <div
+            role="tablist"
+            aria-label="メニューコース"
+            aria-orientation="horizontal"
+            className="md:flex md:flex-nowrap md:justify-center md:gap-3"
+          >
             <div className="flex justify-center gap-3 md:contents">
               {courseTabs
                 .filter((course) => course.id === "petite")
@@ -374,6 +429,11 @@ export default function MenuPage() {
                       role="tab"
                       aria-selected={isActive}
                       aria-controls={`${course.id}-panel`}
+                      tabIndex={isActive ? 0 : -1}
+                      ref={(element) => {
+                        tabButtonRefs.current[course.id] = element;
+                      }}
+                      onKeyDown={(event) => handleTabKeyDown(event, course.id)}
                       onClick={() => setActiveTab(course.id)}
                       className={`inline-flex w-auto justify-center whitespace-nowrap rounded-full border-0 px-4 py-3 text-sm tracking-[0.08em] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f0eadf]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#4a3122] md:min-w-[10.5rem] md:px-8 md:py-3 md:text-[1.02rem] ${
                         isActive
@@ -401,6 +461,11 @@ export default function MenuPage() {
                       role="tab"
                       aria-selected={isActive}
                       aria-controls={`${course.id}-panel`}
+                      tabIndex={isActive ? 0 : -1}
+                      ref={(element) => {
+                        tabButtonRefs.current[course.id] = element;
+                      }}
+                      onKeyDown={(event) => handleTabKeyDown(event, course.id)}
                       onClick={() => setActiveTab(course.id)}
                       className={`inline-flex w-full justify-center whitespace-nowrap rounded-full border-0 px-4 py-3 text-sm tracking-[0.08em] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f0eadf]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#4a3122] md:w-auto md:min-w-[10.5rem] md:px-8 md:py-3 md:text-[1.02rem] ${
                         isActive
@@ -510,7 +575,8 @@ export default function MenuPage() {
                   return (
                     <div
                       key={`${activeCourse.id}-${src}`}
-                      className={`absolute inset-0 transition-opacity duration-700 ${
+                      aria-hidden={!isActive}
+                      className={`absolute inset-0 transition-opacity duration-700 motion-reduce:transition-none ${
                         isActive ? "opacity-100" : "opacity-0"
                       }`}
                     >
@@ -526,15 +592,36 @@ export default function MenuPage() {
                   );
                 })}
 
-                <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-2">
-                  {activeCourse.photos.map((_, index) => (
-                    <span
-                      key={`${activeCourse.id}-dot-${index}`}
-                      className={`h-1.5 rounded-full transition-all duration-300 ${
-                        index === activeSlideIndex ? "w-6 bg-white" : "w-1.5 bg-white/70"
-                      }`}
-                    />
-                  ))}
+                <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-3">
+                  <div className="flex items-center gap-2" role="group" aria-label="スライド選択">
+                    {activeCourse.photos.map((_, index) => (
+                      <button
+                        key={`${activeCourse.id}-dot-${index}`}
+                        type="button"
+                        onClick={() => setActiveSlideIndex(index)}
+                        aria-label={`${index + 1}枚目の写真を表示`}
+                        aria-current={index === activeSlideIndex ? "true" : undefined}
+                        className={`h-1.5 rounded-full transition-all duration-300 motion-reduce:transition-none ${
+                          index === activeSlideIndex ? "w-6 bg-white" : "w-1.5 bg-white/70"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  {!prefersReducedMotion ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsSlideshowPaused((paused) => !paused)}
+                      aria-label={isSlideshowPaused ? "スライドショーを再開" : "スライドショーを一時停止"}
+                      aria-pressed={isSlideshowPaused}
+                      className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-black/55 px-1.5 text-[10px] font-semibold text-white transition hover:bg-black/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+                    >
+                      {isSlideshowPaused ? (
+                        <Play aria-hidden="true" className="h-3 w-3 fill-current" />
+                      ) : (
+                        <Pause aria-hidden="true" className="h-3 w-3 fill-current" />
+                      )}
+                    </button>
+                  ) : null}
                 </div>
               </aside>
             ) : null}
@@ -615,6 +702,18 @@ export default function MenuPage() {
               </aside>
             ) : null}
           </div>
+
+          {courseTabs
+            .filter((course) => course.id !== activeCourse.id)
+            .map((course) => (
+              <div
+                key={`${course.id}-tabpanel-placeholder`}
+                id={`${course.id}-panel`}
+                role="tabpanel"
+                aria-labelledby={`${course.id}-tab`}
+                hidden
+              />
+            ))}
         </section>
 
         <section className="mx-auto mt-6 max-w-5xl rounded-[2rem] border border-[#c7a357]/25 bg-[rgba(255,248,235,0.08)] px-6 py-7 text-[#f7efe3] shadow-[0_18px_40px_rgba(14,7,4,0.18)] md:px-10">

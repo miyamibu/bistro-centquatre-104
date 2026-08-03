@@ -4,6 +4,8 @@ import {
   createOrderSchema,
   createPrivateBlockSchema,
   createReservationSchema,
+  updateReservationStatusSchema,
+  upsertBusinessDaySchema,
 } from "@/lib/validation";
 
 describe("Validation schemas", () => {
@@ -91,6 +93,43 @@ describe("Validation schemas", () => {
     expect(parsed.success).toBe(false);
   });
 
+  it("accepts a real business date and strict boolean", () => {
+    const parsed = upsertBusinessDaySchema.safeParse({
+      date: "2026-03-15",
+      isClosed: false,
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects nonexistent business dates and string booleans", () => {
+    expect(
+      upsertBusinessDaySchema.safeParse({
+        date: "2026-02-31",
+        isClosed: false,
+      }).success
+    ).toBe(false);
+    expect(
+      upsertBusinessDaySchema.safeParse({
+        date: "2026-03-15",
+        isClosed: "false",
+      }).success
+    ).toBe(false);
+  });
+
+  it("validates private-block status target metadata", () => {
+    const parsed = updateReservationStatusSchema.safeParse({
+      status: "CANCELLED",
+      operatorName: "担当者A",
+      reason: "貸切解除",
+      expectedDate: "2026-03-15",
+      expectedServicePeriod: "DINNER",
+      expectedReservationType: "PRIVATE_BLOCK",
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
   it("rejects PAY_IN_STORE order without visit date", () => {
     const parsed = createOrderSchema.safeParse({
       items: [{ id: "item-1", quantity: 1 }],
@@ -125,6 +164,50 @@ describe("Validation schemas", () => {
       total: 2000,
     });
     expect(parsed.success).toBe(true);
+  });
+
+  it("rejects an order with too many distinct items", () => {
+    const parsed = createOrderSchema.safeParse({
+      items: Array.from({ length: 21 }, (_, index) => ({
+        id: `item-${index}`,
+        quantity: 1,
+      })),
+      customerInfo: {
+        name: "山田 太郎",
+        email: "test@example.com",
+        phone: "090-1111-2222",
+        zipCode: "100-0001",
+        prefecture: "東京都",
+        city: "千代田区",
+        address: "1-1-1",
+      },
+      paymentMethod: "BANK_TRANSFER",
+      total: 21000,
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects an order whose total quantity exceeds the bound", () => {
+    const parsed = createOrderSchema.safeParse({
+      items: [
+        { id: "item-1", quantity: 50 },
+        { id: "item-2", quantity: 50 },
+      ],
+      customerInfo: {
+        name: "山田 太郎",
+        email: "test@example.com",
+        phone: "090-1111-2222",
+        zipCode: "100-0001",
+        prefecture: "東京都",
+        city: "千代田区",
+        address: "1-1-1",
+      },
+      paymentMethod: "BANK_TRANSFER",
+      total: 100000,
+    });
+
+    expect(parsed.success).toBe(false);
   });
 
   it("accepts valid contact payload", () => {

@@ -28,9 +28,9 @@ The technical production deployment already exists, but the formal operations-re
 
 | Area | Required decision | Owner | Approved at | Evidence path | Approval status | Execution status |
 |---|---|---|---|---|---|---|
-| Basic auth owner | Name the person responsible for `/admin` and `/dashboard` Basic auth | 宮下実歩 | 2026-07-18 20:11 JST | docs/release/evidence/operational-approval-chat-2026-07-16.md | APPROVED | CONFIRMED |
-| Password rotation | 2026-07-23に変更後、90日ごと。次回2026-10-21。例外時は即時変更し、旧拒否・新成功を確認 | 宮下実歩 | 2026-07-18 20:11 JST | docs/production/evidence/20260723T000000Z/operations-decision-plan.md | APPROVED | NOT_RUN |
-| Emergency revocation | 漏えい疑いから15分以内にADMIN_BASIC_PASSを変更・再デプロイし、旧拒否・新成功・時刻・デプロイIDを記録 | 宮下実歩 | 2026-07-18 20:11 JST | docs/production/evidence/20260723T000000Z/operations-decision-plan.md | APPROVED | NOT_RUN |
+| Staff auth owner | `/admin` と `/dashboard` のSupabase Authユーザー、role、TOTP MFA、セッション失効を管理する責任者 | 宮下実歩 | 2026-07-18 20:11 JST | docs/release/evidence/operational-approval-chat-2026-07-16.md | APPROVED | CONFIRMED |
+| Token/key rotation | 予約token鍵とバックアップ鍵は鍵IDを切り替え、旧鍵を有効期間・復旧確認まで保持 | 宮下実歩 | 2026-07-18 20:11 JST | docs/recovery/local-reservation-backup.md | APPROVED | NOT_RUN |
+| Emergency revocation | Supabaseユーザーを無効化し、role削除・MFA再登録・セッション失効を15分以内に実施 | 宮下実歩 | 2026-07-18 20:11 JST | docs/production/evidence/20260723T000000Z/operations-decision-plan.md | APPROVED | NOT_RUN |
 | Monitoring owner | Primary person watching launch health | 宮下実歩 | 2026-07-18 20:11 JST | docs/release/evidence/operational-approval-chat-2026-07-16.md | APPROVED | CONFIRMED |
 | Alert destination | P0はSTORE_NOTIFY_EMAIL/ADMIN_EMAILへメール後に電話、P1はメール。SMSは使用しない | 宮下実歩 | 2026-07-18 20:11 JST | docs/production/evidence/20260723T000000Z/operations-decision-plan.md | APPROVED | NOT_VERIFIED |
 | Incident owner | Person who decides stop/rollback during launch | 宮下実歩 | 2026-07-18 20:11 JST | docs/release/evidence/operational-approval-chat-2026-07-16.md | APPROVED | CONFIRMED |
@@ -92,7 +92,7 @@ Use synthetic data only.
 
 - Owner cannot be named for monitoring, incident, backup, restore, or rollback.
 - Staff drill is incomplete.
-- Basic auth rotation/revocation is undefined.
+- Staff Auth role/MFA/session revocation and key rotation drill has not yet been executed.
 - Legal/privacy/retention/store-display approval is missing.
 - Manual fallback cannot be executed during go-live window.
 - Any evidence requires exposing customer PII or secrets.

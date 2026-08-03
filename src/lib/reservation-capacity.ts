@@ -46,6 +46,10 @@ export type ReservationAvailabilityInput = {
   now?: Date;
 };
 
+export function isCapacityBlockingReservation(reservation: { status: string }): boolean {
+  return reservation.status === "CONFIRMED";
+}
+
 type Pattern = Omit<SlotCounts, "hasPhoneOnly">;
 
 const EMPTY_SLOT_COUNTS: SlotCounts = {
@@ -124,7 +128,7 @@ export function aggregateSlotCounts(
   }>
 ): SlotCounts {
   return reservations.reduce<SlotCounts>((counts, reservation) => {
-    if (reservation.status === "CANCELLED") {
+    if (!isCapacityBlockingReservation(reservation)) {
       return counts;
     }
 
@@ -209,7 +213,7 @@ export function evaluateReservationAvailability(
   const hasPrivateBlock = input.existingReservations.some(
     (reservation) =>
       reservation.servicePeriod === input.servicePeriod &&
-      reservation.status !== "CANCELLED" &&
+      isCapacityBlockingReservation(reservation) &&
       reservation.reservationType === "PRIVATE_BLOCK"
   );
 

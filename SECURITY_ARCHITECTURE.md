@@ -31,19 +31,20 @@ This document describes the security measures implemented for Supabase client us
 
 ### 3. API Route Authentication
 
-All API routes using `supabaseServer` MUST include one of:
-1. **Basic authentication** (`isAuthorized()`) - For admin/dashboard routes
+All API routes using the Supabase service role client MUST include one of:
+1. **Individual Supabase Auth session** (`getStaffAuth()`) - For admin/dashboard routes
 2. **CRON_SECRET token** verification - For scheduled tasks
-3. **User session validation** - For user-specific operations
+3. **Route-scoped bearer token** verification - For backup export
+4. **User session validation** - For user-specific operations
 
 **Example:**
 ```typescript
 import { supabaseServer } from '@/lib/supabase-server'
-import { isAuthorized } from '@/lib/basic-auth'
+import { getStaffAuth } from '@/lib/staff-auth'
 
 export async function GET(request: NextRequest) {
   // 1. Always authenticate first
-  if (!isAuthorized(request)) {
+  if (!(await getStaffAuth())) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -61,8 +62,8 @@ export async function GET(request: NextRequest) {
 - Photos page - Public queries with anon key
 
 ### Server-Side (Service Role Key)
-- `/src/app/api/dashboard/orders/route.ts` - Protected by Basic Auth
-- `/src/app/api/dashboard/bank-account/route.ts` - Protected by Basic Auth
+- `/src/app/api/dashboard/orders/route.ts` - Protected by individual Supabase Auth user + role + MFA
+- `/src/app/api/dashboard/bank-account/route.ts` - Protected by individual Supabase Auth user + role + MFA
 - `/src/app/api/orders/route.ts` - Public order creation endpoint
 - `/src/app/api/crons/delete-old-histories/route.ts` - Protected by CRON_SECRET
 - `/src/app/api/crons/cancel-expired-orders/route.ts` - Protected by CRON_SECRET

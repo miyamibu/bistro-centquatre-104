@@ -81,8 +81,8 @@ curl http://localhost:3000/api/pdf-to-image?filePath=../../../etc/passwd
 3. **Environment Variables**
    - [ ] `DATABASE_URL` - Server-only ✅
    - [ ] `SUPABASE_SERVICE_ROLE_KEY` - Server-only ✅
-   - [ ] `ADMIN_BASIC_USER` - Server-only ✅
-   - [ ] `ADMIN_BASIC_PASS` - Server-only ✅
+   - [ ] Individual Supabase Auth users with `app_metadata.role` (`ADMIN`/`STAFF`) ✅
+   - [ ] TOTP MFA (`aal2`) and `STAFF_SESSION_MAX_AGE_SECONDS` ✅
    - [ ] `CRON_SECRET` - Server-only ✅
    - [ ] `NEXT_PUBLIC_SUPABASE_URL` - Public OK
    - [ ] `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Public OK
@@ -101,8 +101,9 @@ curl http://localhost:3000/api/pdf-to-image?filePath=../../../etc/passwd
 **Server-Only Variables** (Never visible to client):
 - `DATABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `ADMIN_BASIC_USER`
-- `ADMIN_BASIC_PASS`
+- `STAFF_SESSION_MAX_AGE_SECONDS`
+- `RESERVATION_TOKEN_KEYS_JSON` / `RESERVATION_TOKEN_ACTIVE_KEY_ID`
+- `BACKUP_ENCRYPTION_KEYS_JSON` / `BACKUP_ENCRYPTION_ACTIVE_KEY_ID`
 - `EMAIL_API_KEY`
 - `CRON_SECRET`
 - `LINE_CHANNEL_SECRET`
@@ -200,17 +201,15 @@ vercel logs | grep "401\|403\|suspicious"
 ### If Authentication Fails
 
 ```bash
-# 1. Verify credentials are correct
-echo $ADMIN_BASIC_USER
-echo $ADMIN_BASIC_PASS
+# 1. Verify the Supabase Auth user, role, and MFA enrollment in the official dashboard.
+# Do not print passwords, access tokens, or cookies in a terminal or ticket.
 
 # 2. Check middleware is protecting routes
 curl -I http://localhost:3000/dashboard
 # Should show: Location: /admin (redirect to login)
 
-# 3. Check Basic Auth header format
-curl -H "Authorization: Basic $(echo -n 'user:pass' | base64)" \
-  http://localhost:3000/dashboard
+# 3. Open the staff login page and complete password + TOTP MFA.
+open http://localhost:3000/admin/login
 ```
 
 ---
@@ -218,11 +217,11 @@ curl -H "Authorization: Basic $(echo -n 'user:pass' | base64)" \
 ## Common Issues & Quick Fixes
 
 ### Issue: 401 Unauthorized on /dashboard
-**Cause**: Missing or incorrect Basic Auth header  
-**Fix**: Check that Authorization header is set with correct credentials
+**Cause**: No valid Supabase Auth session, missing role, missing TOTP MFA, or expired session
+**Fix**: Sign in at `/admin/login`, verify the user's `app_metadata.role`, enroll TOTP MFA, and check `STAFF_SESSION_MAX_AGE_SECONDS`.
 ```bash
-# Test with credentials
-curl -u admin:yourpassword http://localhost:3000/api/dashboard/orders
+# Test the unauthenticated boundary (should redirect to /admin/login)
+curl -I http://localhost:3000/dashboard
 ```
 
 ### Issue: 400 Order validation failed

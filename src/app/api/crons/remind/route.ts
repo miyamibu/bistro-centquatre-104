@@ -18,9 +18,7 @@ import {
   isReservationSchemaNotReadyError,
 } from "@/lib/reservation-compat";
 import {
-  buildReminderRetryKey,
   getLineMonthlyQuotaConsumption,
-  summarizeLineError,
 } from "@/lib/line";
 import { claimAndSendLineReminder } from "@/lib/line-notification";
 
@@ -30,11 +28,53 @@ export const runtime = "nodejs";
 // Configurable via env; defaults match LINE free tier limits.
 const FREE_TIER_HARD_LIMIT = env.LINE_MONTHLY_REMINDER_LIMIT ?? 200;
 const FREE_TIER_WARN_THRESHOLD = env.LINE_MONTHLY_REMINDER_WARN_THRESHOLD ?? 180;
-const STATUS_SKIPPED_QUOTA = "SKIPPED_QUOTA";
+const DEFAULT_BATCH_SIZE = 50;
+const MAX_BATCH_SIZE = 100;
+const MIN_DEADLINE_MS = 250;
+const DEFAULT_DEADLINE_MS = 8_000;
+const MAX_DEADLINE_MS = 15_000;
+
+type ReminderCursor = { createdAt: Date; id: string };
+
+function clampInteger(value: number | undefined, fallback: number, min: number, max: number) {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(min, Math.min(Math.trunc(value as number), max));
+}
+
+function decodeCursor(value: string | undefined): ReminderCursor | undefined {
+  if (!value) return undefined;
+
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as {
+      createdAt?: unknown;
+      id?: unknown;
+    };
+    if (typeof parsed.createdAt !== "string" || typeof parsed.id !== "string") return undefined;
+    const createdAt = new Date(parsed.createdAt);
+    return Number.isNaN(createdAt.getTime()) || !parsed.id
+      ? undefined
+      : { createdAt, id: parsed.id };
+  } catch {
+    return undefined;
+  }
+}
+
+function encodeCursor(cursor: ReminderCursor): string {
+  return Buffer.from(
+    JSON.stringify({ createdAt: cursor.createdAt.toISOString(), id: cursor.id }),
+    "utf8"
+  ).toString("base64url");
+}
 
 function isCronAuthorized(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
   return !!env.CRON_SECRET && authHeader === `Bearer ${env.CRON_SECRET}`;
+}
+
+function parsePositiveInteger(value: string | null): number | undefined {
+  if (!value || !/^\d+$/.test(value)) return undefined;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 async function countMonthlyRemindersSent(): Promise<number> {
@@ -44,22 +84,50 @@ async function countMonthlyRemindersSent(): Promise<number> {
   });
 }
 
-async function executeReminderCron() {
+async function executeReminderCron(input: {
+  batchSize?: number;
+  cursor?: string;
+  deadlineMs?: number;
+} = {}) {
   await ensureReservationSchemaReady(prisma);
 
   const today = todayJst();
   const tomorrow = addDays(today, 1);
   const target = formatJst(tomorrow);
+  const batchSize = clampInteger(input.batchSize, DEFAULT_BATCH_SIZE, 1, MAX_BATCH_SIZE);
+  const deadlineMs = clampInteger(
+    input.deadlineMs,
+    DEFAULT_DEADLINE_MS,
+    MIN_DEADLINE_MS,
+    MAX_DEADLINE_MS
+  );
+  const deadlineAt = Date.now() + deadlineMs;
+  const cursor = decodeCursor(input.cursor);
 
   const candidates = await findReservationsCompat(prisma, {
     where: {
-      date: target,
-      status: ReservationStatus.CONFIRMED,
-      reservationType: ReservationType.NORMAL,
-      lineUserId: { not: null },
-      lineReminderSentAt: null,
+      AND: [
+        {
+          date: target,
+          status: ReservationStatus.CONFIRMED,
+          reservationType: ReservationType.NORMAL,
+          lineUserId: { not: null },
+          lineReminderSentAt: null,
+        },
+        ...(cursor
+          ? [
+              {
+                OR: [
+                  { createdAt: { gt: cursor.createdAt } },
+                  { createdAt: cursor.createdAt, id: { gt: cursor.id } },
+                ],
+              },
+            ]
+          : []),
+      ],
     },
-    orderBy: { createdAt: "asc" },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    take: batchSize,
   });
 
   if (!hasLineMessagingEnv()) {
@@ -71,6 +139,8 @@ async function executeReminderCron() {
       status: "SKIPPED_LINE_SETUP",
       date: target,
       count: candidates.length,
+      nextCursor: null,
+      deadlineReached: false,
     });
   }
 
@@ -91,75 +161,47 @@ async function executeReminderCron() {
     });
   }
 
-  let monthlySent = monthlySentBefore;
   let sent = 0;
   let failed = 0;
   let skipped = 0;
   let skippedQuota = 0;
+  let deadlineReached = false;
+  let lastCursor: ReminderCursor | undefined;
+  let cursorSafe = true;
 
-  // Sequential dispatch only — Promise.all is forbidden for this loop.
+  // Sequential dispatch keeps provider pressure bounded. The DB claim and quota
+  // reservation remain atomic even when this route is invoked concurrently.
   for (const reservation of candidates) {
-    if (!reservation.lineUserId) continue;
-
-    if (monthlySent >= FREE_TIER_HARD_LIMIT) {
-      // Mark quota-skipped on both Reservation and NotificationEvent.
-      try {
-        await prisma.reservation.update({
-          where: { id: reservation.id },
-          data: {
-            lineReminderStatus: STATUS_SKIPPED_QUOTA,
-            lineReminderError: "LINE monthly free quota guard reached",
-          },
-        });
-        await prisma.notificationEvent.upsert({
-          where: {
-            reservationId_channel_type_targetDate: {
-              reservationId: reservation.id,
-              channel: "LINE",
-              type: "DAY_BEFORE_REMINDER",
-              targetDate: target,
-            },
-          },
-          create: {
-            reservationId: reservation.id,
-            channel: "LINE",
-            type: "DAY_BEFORE_REMINDER",
-            targetDate: target,
-            status: "SKIPPED",
-            retryKey: buildReminderRetryKey(reservation.id, target),
-            error: "quota",
-            updatedAt: new Date(),
-          },
-          update: { status: "SKIPPED", error: "quota", updatedAt: new Date() },
-        });
-      } catch (updateError) {
-        logError("crons.remind.skip_update_failed", {
-          route: "/api/crons/remind",
-          errorCode: "CRON_REMIND_UPDATE_FAILED",
-          context: {
-            reservationId: reservation.id,
-            message: summarizeLineError(updateError),
-          },
-        });
-      }
-      skippedQuota += 1;
-      continue;
+    if (Date.now() >= deadlineAt) {
+      deadlineReached = true;
+      break;
     }
+
+    lastCursor = {
+      createdAt: reservation.createdAt,
+      id: reservation.id,
+    };
+
+    if (!reservation.lineUserId) continue;
 
     const outcome = await claimAndSendLineReminder(
       reservation.id,
       reservation.lineUserId,
       target,
-      "CRON"
+      "CRON",
+      { monthlyQuota: FREE_TIER_HARD_LIMIT }
     );
 
     if (outcome === "sent") {
-      monthlySent += 1;
       sent += 1;
     } else if (outcome === "failed") {
       failed += 1;
+      cursorSafe = false;
+    } else if (outcome === "quota") {
+      skippedQuota += 1;
     } else {
       skipped += 1;
+      cursorSafe = false;
     }
   }
 
@@ -173,6 +215,7 @@ async function executeReminderCron() {
       skipped,
       skippedQuota,
       monthlySentBefore,
+      deadlineReached,
     },
   });
 
@@ -185,6 +228,13 @@ async function executeReminderCron() {
     skipped,
     skippedQuota,
     monthlySentBefore,
+    deadlineReached,
+    nextCursor:
+      cursorSafe && (deadlineReached || candidates.length === batchSize)
+        ? lastCursor
+          ? encodeCursor(lastCursor)
+          : input.cursor ?? null
+        : null,
   });
 }
 
@@ -195,7 +245,15 @@ async function executeRemind(request: NextRequest) {
   }
 
   try {
-    return await executeReminderCron();
+    const params = request.nextUrl.searchParams;
+    const batchSize = parsePositiveInteger(params.get("batchSize"));
+    const deadlineMs = parsePositiveInteger(params.get("deadlineMs"));
+    const cursor = params.get("cursor")?.trim();
+    return await executeReminderCron({
+      ...(batchSize ? { batchSize } : {}),
+      ...(deadlineMs ? { deadlineMs } : {}),
+      ...(cursor && cursor.length <= 512 ? { cursor } : {}),
+    });
   } catch (error) {
     if (isReservationSchemaNotReadyError(error)) {
       return apiError(503, {

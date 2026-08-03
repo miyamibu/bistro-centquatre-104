@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import puppeteer from "puppeteer";
 import * as path from "path";
 import * as fs from "fs";
-import { isAuthorized } from "@/lib/basic-auth";
+import { getStaffAuth } from "@/lib/staff-auth";
 import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
 import { getRequestId, logError, logWarn } from "@/lib/logger";
 import { pdfToImageSchema, zodFields } from "@/lib/validation";
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
     const securityError = enforceWriteRequestSecurity(request, { requestId });
     if (securityError) return securityError;
 
-    if (!isAuthorized(request)) {
+    if (!(await getStaffAuth())) {
       return apiError(401, {
         error: "Unauthorized - authentication required",
         code: "UNAUTHORIZED",

@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { env } from "@/lib/env";
 import { apiError } from "@/lib/api-security";
-import { archiveOrderHistoryByOrderId } from "@/lib/order-history";
-import { executeCancelOrderAction, OrderActionError } from "@/lib/order-actions";
+import {
+  buildIdempotencyHash,
+  executeAtomicTerminalOrderAction,
+  OrderActionError,
+} from "@/lib/order-actions";
 import { getRequestId, logError, logInfo } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -95,26 +98,60 @@ async function executeCancelExpired(req: NextRequest) {
           new Date(String(order.hold_expires_at)).getTime() < Date.now();
 
         const reasonCode = isExpiredHold ? "EXPIRED_HOLD" : "EXPIRED_PAYMENT";
+        const orderId = String(order.id);
+        const expectedVersion = Number(order.version ?? 0);
+        const idempotencyKey = `cron:${requestId}:${orderId}:${reasonCode}`;
 
         try {
-          await executeCancelOrderAction({
-            orderId: String(order.id),
-            expectedVersion: Number(order.version ?? 0),
+          const result = await executeAtomicTerminalOrderAction({
+            scope: "POST:/api/crons/cancel-expired-orders:CANCEL",
+            actorKey: "cron",
+            requestHash: buildIdempotencyHash({
+              action: "CANCEL",
+              orderId,
+              expectedVersion,
+              payload: { reasonCode, adminNote: "cancel-expired-orders cron" },
+            }),
+            orderId,
+            expectedVersion,
+            action: "CANCEL",
             reasonCode,
             actorType: "cron",
             actorId: "cron",
             requestId,
-            idempotencyKey: `cron:${requestId}:${order.id}:${reasonCode}`,
+            idempotencyKey,
             adminNote: "cancel-expired-orders cron",
           });
 
-          await archiveOrderHistoryByOrderId({
-            orderId: String(order.id),
-            source: "cron",
-            requestId,
-          });
+          if (result.status >= 200 && result.status < 300) {
+            cancelledCount += 1;
+            continue;
+          }
 
-          cancelledCount += 1;
+          const resultCode =
+            typeof result.body.code === "string" ? result.body.code : "UNKNOWN_ACTION_FAILURE";
+          if (
+            result.status === 409 &&
+            (resultCode === "VERSION_CONFLICT" ||
+              resultCode === "ALREADY_CANCELLED" ||
+              resultCode === "ALREADY_COMPLETED" ||
+              resultCode === "IDEMPOTENCY_IN_PROGRESS")
+          ) {
+            skippedCount += 1;
+            continue;
+          }
+
+          failedCount += 1;
+          logError("crons.cancel_expired.cancel_failed", {
+            requestId,
+            route,
+            errorCode: resultCode,
+            context: {
+              orderId,
+              reasonCode,
+              status: result.status,
+            },
+          });
         } catch (error) {
           if (
             error instanceof OrderActionError &&
@@ -132,7 +169,7 @@ async function executeCancelExpired(req: NextRequest) {
             route,
             errorCode: "CRON_CANCEL_FAILED",
             context: {
-              orderId: String(order.id),
+              orderId,
               reasonCode,
               message: error instanceof Error ? error.message : String(error),
             },

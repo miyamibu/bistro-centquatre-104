@@ -4,6 +4,8 @@ import { OrdersClient } from "./orders-client";
 export const dynamic = "force-dynamic";
 
 const ORDER_LIST_LIMIT = 100;
+const BANK_ACCOUNT_SELECT =
+  "id, bank_name, branch_name, account_type, account_number, account_holder";
 const ORDER_LIST_SELECT =
   "id, customer_name, email, phone, zip_code, prefecture, city, address, building, payment_method, items, total, store_visit_date, status, version, created_at";
 
@@ -14,7 +16,7 @@ export default async function DashboardOrdersPage() {
       .select(ORDER_LIST_SELECT)
       .order("created_at", { ascending: false })
       .range(0, ORDER_LIST_LIMIT - 1),
-    supabaseServer.from("bank_account").select("*").limit(1),
+    supabaseServer.from("bank_account").select(BANK_ACCOUNT_SELECT).limit(1),
   ]);
 
   return (

@@ -12,6 +12,12 @@ function isAuthorizedCron(request: NextRequest) {
   return !!env.CRON_SECRET && authorization === `Bearer ${env.CRON_SECRET}`;
 }
 
+function parsePositiveInteger(value: string | null): number | undefined {
+  if (!value || !/^\d+$/.test(value)) return undefined;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 async function execute(request: NextRequest) {
   const requestId = getRequestId(request);
   if (!isAuthorizedCron(request)) {
@@ -23,7 +29,16 @@ async function execute(request: NextRequest) {
   }
 
   try {
-    const summary = await processReservationEmailOutbox({ requestId });
+    const params = request.nextUrl.searchParams;
+    const batchSize = parsePositiveInteger(params.get("batchSize"));
+    const deadlineMs = parsePositiveInteger(params.get("deadlineMs"));
+    const cursor = params.get("cursor")?.trim();
+    const summary = await processReservationEmailOutbox({
+      requestId,
+      ...(batchSize ? { batchSize } : {}),
+      ...(deadlineMs ? { deadlineMs } : {}),
+      ...(cursor && cursor.length <= 512 ? { cursor } : {}),
+    });
     if (summary.failed > 0 || summary.deadLetter > 0 || summary.unsafe > 0) {
       return apiError(500, {
         ...summary,

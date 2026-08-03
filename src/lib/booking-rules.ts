@@ -275,16 +275,7 @@ export function getPrivateBlockMarkerText(
   lunchReason?: string | null,
   dinnerReason?: string | null
 ): "夜のみ" | "昼のみ" | "終日貸切" | null {
-  const nonBookableReasons = new Set([
-    "BEFORE_OPENING",
-    "OUT_OF_RANGE",
-    "CLOSED",
-    "SAME_DAY_BLOCKED",
-    "CUTOFF_PASSED",
-    "INVALID_DATE",
-  ]);
-  const canShowMarkerForOppositePeriod = (reason?: string | null) =>
-    reason == null || !nonBookableReasons.has(reason);
+  const canShowMarkerForOppositePeriod = (reason?: string | null) => reason === "OK";
 
   const lunchPrivateBlock = lunchReason === "PRIVATE_BLOCK";
   const dinnerPrivateBlock = dinnerReason === "PRIVATE_BLOCK";
@@ -302,4 +293,8 @@ export function getPrivateBlockMarkerText(
   }
 
   return null;
+}
+
+export function getPrivateBlockMarkerAriaLabel(markerText: "夜のみ" | "昼のみ") {
+  return `${markerText}予約可`;
 }

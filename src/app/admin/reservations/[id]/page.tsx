@@ -4,6 +4,7 @@ import { StatusForm } from "@/components/status-form";
 import { formatJst } from "@/lib/dates";
 import { buildMockReservations } from "@/lib/admin-reservation-mock";
 import { parseReservationNote } from "@/lib/reservation-note";
+import { getReservationStatusLabel } from "@/lib/reservation-labels";
 import {
   ensureReservationSchemaReady,
   findReservationByIdCompat,
@@ -83,7 +84,7 @@ export default async function AdminReservationDetail({
             <p className="whitespace-pre-wrap leading-6">要望: {note ?? "なし"}</p>
           </>
         )}
-        <p>ステータス: {reservation.status}</p>
+        <p>ステータス: {getReservationStatusLabel(reservation.status)}</p>
         <p>作成: {reservation.createdAt.toISOString()}</p>
       </div>
 
@@ -92,6 +93,9 @@ export default async function AdminReservationDetail({
           id={reservation.id}
           current={reservation.status}
           isPrivateBlock={isPrivateBlock}
+          expectedDate={reservation.date}
+          expectedServicePeriod={reservation.servicePeriod}
+          expectedReservationType={reservation.reservationType}
         />
       </div>
     </div>

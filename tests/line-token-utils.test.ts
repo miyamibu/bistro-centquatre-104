@@ -68,13 +68,15 @@ describe("hashLineLinkToken", () => {
     // Set all required production env vars to pass env.ts validation.
     vi.resetModules();
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon-key";
     process.env.SUPABASE_SERVICE_ROLE_KEY = "test";
+    process.env.STAFF_SESSION_MAX_AGE_SECONDS = "28800";
     process.env.DATABASE_URL = "postgresql://test";
-    process.env.ADMIN_BASIC_USER = "admin";
-    process.env.ADMIN_BASIC_PASS = "pass";
     process.env.CRON_SECRET = "secret";
     process.env.BACKUP_EXPORT_SECRET = "backup-secret";
     process.env.RATE_LIMIT_HASH_SECRET = "rate-limit-hash-secret-32chars-min";
+    process.env.RESERVATION_TOKEN_SECRET = "reservation-token-secret-32chars-min";
+    process.env.BACKUP_ENCRYPTION_KEY = "backup-encryption-key-32-characters";
     process.env.BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY = "key-32-chars-xxxxxxxxxxxxxxxxxxxx";
     vi.stubEnv("NODE_ENV", "production");
     delete process.env.LINE_LINK_TOKEN_PEPPER;

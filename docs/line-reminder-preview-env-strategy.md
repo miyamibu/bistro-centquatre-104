@@ -23,7 +23,7 @@
 | Preview | **0** | 完全に空 |
 | Development | **0** | 完全に空 |
 
-**重要**: Preview に何も入っていないため、LINE 4 値だけを投入してもアプリ全体は起動できない。Vercel の Preview deploy は `NODE_ENV=production` で動くため、`src/lib/env.ts` の `superRefine` で `DATABASE_URL` / `ADMIN_BASIC_USER` / `ADMIN_BASIC_PASS` / `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `CRON_SECRET` / `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY` の 7 値が必須となり、欠落でモジュール初期化エラーになる。
+**重要**: Preview に何も入っていないため、LINE 4 値だけを投入してもアプリ全体は起動できない。Vercel の Preview deploy は `NODE_ENV=production` で動くため、`src/lib/env.ts` の `superRefine` で `DATABASE_URL` / `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` / `STAFF_SESSION_MAX_AGE_SECONDS` / `CRON_SECRET` / `BACKUP_EXPORT_SECRET` / token・backup鍵 / `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY` が必須となり、欠落でモジュール初期化エラーになる。
 
 ---
 
@@ -36,11 +36,13 @@
 | env 名 | 性質 | env.ts 上の扱い |
 |---|---|---|
 | `DATABASE_URL` | secret | requiredInProduction |
-| `ADMIN_BASIC_USER` | server-only | requiredInProduction |
-| `ADMIN_BASIC_PASS` | secret | requiredInProduction |
 | `NEXT_PUBLIC_SUPABASE_URL` | 公開値 | requiredInProduction |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 公開値 | requiredInProduction |
 | `SUPABASE_SERVICE_ROLE_KEY` | secret | requiredInProduction |
+| `STAFF_SESSION_MAX_AGE_SECONDS` | policy | requiredInProduction |
 | `CRON_SECRET` | secret | requiredInProduction |
+| `BACKUP_EXPORT_SECRET` | secret | requiredInProduction |
+| token/backup keyring (or migration key) | secret | requiredInProduction |
 | `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY` | secret | requiredInProduction |
 
 ### B. `/booking` 表示・予約 API 動作に必要
@@ -59,8 +61,8 @@
 
 | env 名 | 性質 |
 |---|---|
-| `ADMIN_BASIC_USER` | A と重複（Basic 認証） |
-| `ADMIN_BASIC_PASS` | A と重複（Basic 認証） |
+| `STAFF_SESSION_MAX_AGE_SECONDS` | A と重複（個別スタッフセッションTTL） |
+| `RESERVATION_TOKEN_KEYS_JSON` / active ID | 予約管理リンクの鍵輪番 |
 
 ### D. cron 手動実行に必要
 
@@ -83,7 +85,6 @@
 |---|---|---|
 | `EMAIL_PROVIDER` / `RESEND_API_KEY` / `EMAIL_API_KEY` / `EMAIL_FROM` / `ADMIN_EMAIL` / `STORE_NOTIFY_EMAIL` | 予約完了メール送信 | Preview からテスト予約のたびに本物のメールが送信されないように、未設定のまま放置（コード側は send 失敗を握りつぶす） |
 | `BANK_ACCOUNT_HISTORY_KEY_VERSION` | 銀行履歴暗号化のバージョン | オンラインストア機能、LINE 確認には不要 |
-| `BACKUP_EXPORT_SECRET` | 予約バックアップ export 認証 | LINE と無関係 |
 | `PRIVATE_BLOCK_ACCESS_CODE` | 貸切モード解除 | LINE と無関係 |
 
 ただし、`BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY` は A の通り module init で必須。これは「鍵が存在さえすれば起動する」もので、本番の鍵を使う必要はない（Preview 用の別鍵で問題ない）。
@@ -95,7 +96,7 @@
 | `DATABASE_URL` | Preview のテスト予約が**本番 Supabase に書き込まれる**。最大級の事故 |
 | `SUPABASE_SERVICE_ROLE_KEY` | Preview から本番 Supabase に admin 権限でアクセスできてしまう |
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 同上、フロントが本番 Supabase を叩く |
-| `ADMIN_BASIC_USER` / `ADMIN_BASIC_PASS` | Preview の Basic 認証が本番と同値、漏洩リスク |
+| Supabase Authユーザー/role/MFA | Previewの認証情報・MFAを本番と共有すると漏洩・誤操作リスク |
 | `CRON_SECRET` | Preview のリンクや手動 curl が本番 cron API を呼べてしまう |
 | `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY` | 本番銀行履歴を Preview で復号できる |
 | `BACKUP_EXPORT_SECRET` | 本番バックアップを Preview から export できる |
@@ -116,8 +117,11 @@ Preview deploy を機能させるためには、最小で以下 19〜20 env を 
 ```text
 A. 起動必須:
    DATABASE_URL                          ← staging/test PostgreSQL
-   ADMIN_BASIC_USER                      ← Preview 用ユーザー名
-   ADMIN_BASIC_PASS                      ← Preview 用パスワード（本番と別）
+   STAFF_SESSION_MAX_AGE_SECONDS        ← Preview 用セッションTTL
+   RESERVATION_TOKEN_KEYS_JSON          ← Preview 用token鍵輪番設定
+   RESERVATION_TOKEN_ACTIVE_KEY_ID      ← Preview 用active key ID
+   BACKUP_ENCRYPTION_KEYS_JSON          ← Preview 用backup鍵輪番設定
+   BACKUP_ENCRYPTION_ACTIVE_KEY_ID      ← Preview 用active key ID
    NEXT_PUBLIC_SUPABASE_URL              ← staging/test Supabase URL
    NEXT_PUBLIC_SUPABASE_ANON_KEY         ← staging/test Supabase anon key
    SUPABASE_SERVICE_ROLE_KEY             ← staging/test Supabase service role

@@ -51,12 +51,14 @@ async function cleanupDayFiles(
 
   const entries = await fs.readdir(daysDir, { withFileTypes: true });
   for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith(".json")) {
+    // New backups are encrypted. Existing plaintext files are legacy evidence
+    // and must remain untouched by this retention job.
+    if (!entry.isFile() || !entry.name.endsWith(".json.enc")) {
       continue;
     }
 
     checked += 1;
-    const dateText = entry.name.replace(/\.json$/i, "");
+    const dateText = entry.name.replace(/\.json\.enc$/i, "");
     if (!DATE_PATTERN.test(dateText)) {
       skipped += 1;
       continue;
@@ -94,6 +96,20 @@ async function cleanupRunFiles(
   for (const entry of entries) {
     if (!entry.isFile()) continue;
     if (!entry.name.startsWith("pull-") || !entry.name.endsWith(".json")) {
+      continue;
+    }
+
+    // Legacy plaintext run summaries are recovery evidence and must remain
+    // untouched. Only the new metadata format is eligible for archiving.
+    try {
+      const summary = JSON.parse(await fs.readFile(path.join(runsDir, entry.name), "utf8"));
+      if (
+        summary?.schemaVersion !== 2 ||
+        summary?.encryption?.format !== "bistro-reservation-backup-aead"
+      ) {
+        continue;
+      }
+    } catch {
       continue;
     }
 

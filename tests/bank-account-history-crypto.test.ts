@@ -22,7 +22,6 @@ describe("Bank account history key separation", () => {
     const { getBankHistoryKey } = await loadCryptoModule({
       BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY: undefined,
       SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
-      ADMIN_BASIC_PASS: "admin-pass",
       CRON_SECRET: "cron-secret",
     });
 

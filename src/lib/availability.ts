@@ -37,12 +37,19 @@ export async function getAvailability(
 
   const businessDay = await prisma.businessDay.findUnique({
     where: { date: input.date },
+    select: { isClosed: true },
   });
   const reservations = await findReservationsCompat(prisma, {
     where: {
       date: input.date,
       servicePeriod: input.servicePeriod,
       status: ReservationStatus.CONFIRMED,
+    },
+    select: {
+      partySize: true,
+      status: true,
+      servicePeriod: true,
+      reservationType: true,
     },
   });
 
@@ -91,6 +98,13 @@ export async function getMonthlyAvailability(
         date: { in: dateKeys },
         servicePeriod: input.servicePeriod,
         status: ReservationStatus.CONFIRMED,
+      },
+      select: {
+        date: true,
+        partySize: true,
+        status: true,
+        servicePeriod: true,
+        reservationType: true,
       },
     }),
   ]);

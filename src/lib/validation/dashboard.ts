@@ -1,6 +1,9 @@
-import { ReservationStatus } from "@prisma/client";
+import { ReservationStatus, ReservationType } from "@prisma/client";
 import { z } from "zod";
-import { dateStringSchema, reservationServicePeriodSchema } from "@/lib/validation/common";
+import {
+  dateStringSchema,
+  reservationServicePeriodSchema,
+} from "@/lib/validation/common";
 
 export const updateOrderStatusSchema = z.object({
   orderId: z.string().min(1),
@@ -25,15 +28,28 @@ export const deleteBankAccountSchema = z.object({
 });
 
 export const upsertBusinessDaySchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  isClosed: z.coerce.boolean().optional().default(false),
+  date: dateStringSchema,
+  isClosed: z.boolean().optional().default(false),
   note: z.string().max(300).optional().nullable(),
+});
+
+const reservationTargetSchema = z.object({
+  date: dateStringSchema,
+  servicePeriod: reservationServicePeriodSchema,
+  reservationType: z.nativeEnum(ReservationType),
 });
 
 export const updateReservationStatusSchema = z.object({
   status: z.nativeEnum(ReservationStatus),
   operatorName: z.string().trim().max(80).optional(),
   reason: z.string().trim().max(500).optional(),
+  date: dateStringSchema.optional(),
+  servicePeriod: reservationServicePeriodSchema.optional(),
+  reservationType: z.nativeEnum(ReservationType).optional(),
+  expectedDate: dateStringSchema.optional(),
+  expectedServicePeriod: reservationServicePeriodSchema.optional(),
+  expectedReservationType: z.nativeEnum(ReservationType).optional(),
+  expected: reservationTargetSchema.optional(),
 });
 
 export const createAdminPrivateBlockSchema = z.object({

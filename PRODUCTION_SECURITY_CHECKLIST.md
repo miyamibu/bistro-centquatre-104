@@ -9,18 +9,18 @@ Before deploying to production, verify all items below are complete and tested.
 ## 1. Authentication & Authorization
 
 ### Middleware Protection
-- [ ] `/admin` routes require Basic Auth
-- [ ] `/dashboard` routes require Basic Auth  
-- [ ] `/api/admin/*` routes require Basic Auth
+- [ ] `/admin` routes require individual Supabase Auth users
+- [ ] `/dashboard` routes require individual Supabase Auth users
+- [ ] `/api/admin/*` routes require individual Supabase Auth users
 - [ ] `/api/cron/*` routes require CRON_SECRET
 - [ ] Test unauthorized access returns 401
 
-### Admin Credentials
-- [ ] `ADMIN_BASIC_USER` is NOT "admin"
-- [ ] `ADMIN_BASIC_PASS` is strong password (12+ chars, mixed case/numbers/symbols)
-- [ ] Credentials are NOT stored in code
-- [ ] Credentials are in Vercel env vars as server-side only
-- [ ] Initial password will be changed immediately after first login
+### Staff identity, roles, and MFA
+- [ ] Each staff member has an individual Supabase Auth user (no shared account)
+- [ ] `app_metadata.role` is `ADMIN` or `STAFF`; destructive/admin-only routes require `ADMIN`
+- [ ] TOTP MFA is enrolled and `aal2` is required for all protected routes
+- [ ] `STAFF_SESSION_MAX_AGE_SECONDS` is between 900 and 86400 (default 8 hours)
+- [ ] Disable/revoke the individual user session when staff access ends
 
 ### Session Management
 - [ ] No session tokens stored in localStorage
@@ -106,9 +106,10 @@ Before deploying to production, verify all items below are complete and tested.
 ### Server-Side Only Variables
 - [ ] `SUPABASE_SERVICE_ROLE_KEY` is server-only
 - [ ] `DATABASE_URL` is server-only
-- [ ] `ADMIN_BASIC_USER` and `ADMIN_BASIC_PASS` are server-only
+- [ ] `STAFF_SESSION_MAX_AGE_SECONDS` is configured
 - [ ] `EMAIL_API_KEY` is server-only
 - [ ] `CRON_SECRET` is server-only
+- [ ] Reservation and backup keyrings are configured with a current key ID and retained prior key
 
 ### Public Variables (Browser-Safe)
 - [ ] `NEXT_PUBLIC_SUPABASE_URL` is safe (project URL only)

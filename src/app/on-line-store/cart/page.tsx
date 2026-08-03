@@ -153,7 +153,9 @@ function StoreCartFallback() {
       }}
     >
       <div className="mx-auto max-w-4xl">
-        <p className={`${bodySerif.className} text-sm text-[#4a3121]`}>読み込み中...</p>
+        <p role="status" aria-live="polite" className={`${bodySerif.className} text-sm text-[#4a3121]`}>
+          読み込み中...
+        </p>
       </div>
     </section>
   );
@@ -344,6 +346,9 @@ function StoreCartContent() {
         if (
           !json?.paymentSetup?.orderId ||
           !json?.paymentSetup?.humanToken ||
+          typeof json?.paymentSetup?.receiptToken !== "string" ||
+          json.paymentSetup.receiptToken.length < 1 ||
+          json.paymentSetup.receiptToken.length > 256 ||
           !serverItems ||
           !Number.isSafeInteger(serverTotal) ||
           serverTotal <= 0 ||
@@ -355,6 +360,7 @@ function StoreCartContent() {
           orderId: String(json.paymentSetup.orderId),
           expectedVersion: Number(json.paymentSetup.expectedVersion ?? 0),
           humanToken: String(json.paymentSetup.humanToken),
+          receiptToken: json.paymentSetup.receiptToken,
           paymentMethod: json.paymentSetup.paymentMethod,
           storeVisitDate:
             typeof json.paymentSetup.storeVisitDate === "string"

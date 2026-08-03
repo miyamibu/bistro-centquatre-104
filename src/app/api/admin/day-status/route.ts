@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isAuthorized } from "@/lib/basic-auth";
+import { getStaffAuth } from "@/lib/staff-auth";
 import { getAdminDayStatus, getAdminMonthStatus } from "@/lib/admin-day-status";
 import { apiError } from "@/lib/api-security";
 import { getRequestId, logError } from "@/lib/logger";
@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
   const requestId = getRequestId(request);
   const route = "/api/admin/day-status";
 
-  if (!isAuthorized(request)) {
+  if (!(await getStaffAuth())) {
     return apiError(401, { error: "Unauthorized", code: "UNAUTHORIZED", requestId });
   }
 

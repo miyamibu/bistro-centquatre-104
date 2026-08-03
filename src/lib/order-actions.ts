@@ -7,6 +7,15 @@ const HUMAN_CONFIRM_TTL_MINUTES = 15;
 
 type ActorType = "user" | "admin" | "agent" | "cron" | "system";
 
+export type TerminalOrderActionName = "MARK_SHIPPED" | "CANCEL";
+
+export interface TerminalOrderActionResult {
+  status: number;
+  body: Record<string, unknown>;
+  replayed: boolean;
+  reconciled?: boolean;
+}
+
 interface IdempotencyRecord {
   id: string;
   request_hash: string;
@@ -209,21 +218,39 @@ function mapRpcError(error: { message?: string } | null, fallbackCode: string): 
     "INVALID_PAYMENT_METHOD",
     "ALREADY_CANCELLED",
     "ALREADY_COMPLETED",
+    "IDEMPOTENCY_CONFLICT",
+    "IDEMPOTENCY_IN_PROGRESS",
+    "IDEMPOTENCY_CLAIM_FAILED",
+    "IDEMPOTENCY_FINALIZE_FAILED",
+    "IDEMPOTENCY_RECOVERY_CONFLICT",
+    "INVALID_TERMINAL_ACTION",
+    "CANCEL_REASON_REQUIRED",
+    "TERMINAL_ORDER_ACTION_FAILED",
   ];
 
   const matched = explicitCodes.find((code) => upper.includes(code));
   if (matched) {
-    const status =
-      matched === "ORDER_NOT_FOUND"
-        ? 404
-        : matched.startsWith("HUMAN_")
-          ? 403
-          : matched === "STORE_VISIT_DATE_REQUIRED" ||
-              matched === "STORE_VISIT_NOT_BUSINESS_DAY" ||
-              matched === "STORE_VISIT_OUT_OF_RANGE" ||
-              matched === "INVALID_PAYMENT_METHOD"
-            ? 400
-            : 409;
+    let status = 409;
+    if (matched === "ORDER_NOT_FOUND") {
+      status = 404;
+    } else if (matched.startsWith("HUMAN_")) {
+      status = 403;
+    } else if (
+      matched === "STORE_VISIT_DATE_REQUIRED" ||
+      matched === "STORE_VISIT_NOT_BUSINESS_DAY" ||
+      matched === "STORE_VISIT_OUT_OF_RANGE" ||
+      matched === "INVALID_PAYMENT_METHOD" ||
+      matched === "INVALID_TERMINAL_ACTION" ||
+      matched === "CANCEL_REASON_REQUIRED"
+    ) {
+      status = 400;
+    } else if (
+      matched === "IDEMPOTENCY_CLAIM_FAILED" ||
+      matched === "IDEMPOTENCY_FINALIZE_FAILED" ||
+      matched === "TERMINAL_ORDER_ACTION_FAILED"
+    ) {
+      status = 500;
+    }
     return createActionError(status, matched, message);
   }
 
@@ -245,6 +272,53 @@ async function executeRpc<TBody>(input: {
   }
 
   return data as TBody;
+}
+
+export async function executeAtomicTerminalOrderAction(input: {
+  scope: string;
+  actorKey: string;
+  requestHash: string;
+  orderId: string;
+  expectedVersion: number;
+  action: TerminalOrderActionName;
+  reasonCode?: string | null;
+  actorType: ActorType;
+  actorId: string | null;
+  requestId: string;
+  idempotencyKey: string;
+  adminNote?: string;
+}) {
+  const result = await executeRpc<TerminalOrderActionResult>({
+    rpcName: "execute_terminal_order_action",
+    rpcArgs: {
+      p_scope: input.scope,
+      p_actor_key: input.actorKey,
+      p_idempotency_key: input.idempotencyKey,
+      p_request_hash: input.requestHash,
+      p_order_id: input.orderId,
+      p_expected_version: input.expectedVersion,
+      p_action: input.action,
+      p_reason_code: input.reasonCode ?? null,
+      p_actor_type: input.actorType,
+      p_actor_id: input.actorId,
+      p_request_id: input.requestId,
+      p_admin_note: input.adminNote ?? null,
+    },
+    fallbackCode:
+      input.action === "MARK_SHIPPED" ? "MARK_SHIPPED_FAILED" : "CANCEL_ORDER_FAILED",
+  });
+
+  if (
+    !Number.isInteger(result.status) ||
+    !result.body ||
+    typeof result.body !== "object" ||
+    Array.isArray(result.body) ||
+    typeof result.replayed !== "boolean"
+  ) {
+    throw createActionError(500, "TERMINAL_ORDER_ACTION_FAILED", "Unexpected RPC response");
+  }
+
+  return result;
 }
 
 export async function runIdempotentMutation<TBody>(input: {
@@ -362,6 +436,7 @@ export async function executeCreateOrderQuoteAction(input: {
   total: number;
   holdExpiresAt: string;
   humanTokenHash: string;
+  receiptTokenHash: string;
   actorId: string;
   requestId: string;
   idempotencyKey: string;
@@ -369,7 +444,7 @@ export async function executeCreateOrderQuoteAction(input: {
   selectedStoreVisitDate?: string | null;
 }) {
   return executeRpc<Record<string, unknown>>({
-    rpcName: "create_order_quote_action",
+    rpcName: "create_order_quote_with_receipt_action",
     rpcArgs: {
       p_customer_name: input.customerInfo.name,
       p_email: input.customerInfo.email,
@@ -383,6 +458,7 @@ export async function executeCreateOrderQuoteAction(input: {
       p_total: input.total,
       p_hold_expires_at: input.holdExpiresAt,
       p_token_hash: input.humanTokenHash,
+      p_receipt_token_hash: input.receiptTokenHash,
       p_actor_id: input.actorId,
       p_request_id: input.requestId,
       p_idempotency_key: input.idempotencyKey,

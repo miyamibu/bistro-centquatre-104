@@ -7,6 +7,17 @@ import {
   type Reservation,
 } from "@prisma/client";
 
+const reservationContactDefaults = {
+  customerEmail: null,
+  customerEmailVerifiedAt: null,
+  contactChannel: null,
+  cancellationPolicyVersion: null,
+  cancellationPolicyAcceptedAt: null,
+  cancelledAt: null,
+  cancelSource: null,
+  cancellationReason: null,
+} as const;
+
 export function buildMockReservations(monthStart: Date, monthDays: number): Reservation[] {
   const buildDate = (day: number) =>
     format(
@@ -31,6 +42,7 @@ export function buildMockReservations(monthStart: Date, monthDays: number): Rese
       arrivalTime: "11:30",
       name: "山田 花子",
       phone: "090-1111-2222",
+      ...reservationContactDefaults,
       note: "コース: ランチコース\n備考: 窓側希望",
       status: ReservationStatus.CONFIRMED,
       lineUserId: null,
@@ -57,6 +69,7 @@ export function buildMockReservations(monthStart: Date, monthDays: number): Rese
       arrivalTime: "18:00",
       name: "佐藤 恒一",
       phone: "090-3333-4444",
+      ...reservationContactDefaults,
       note: "コース: シェフおまかせ",
       status: ReservationStatus.CONFIRMED,
       lineUserId: null,
@@ -83,6 +96,7 @@ export function buildMockReservations(monthStart: Date, monthDays: number): Rese
       arrivalTime: "19:00",
       name: "高橋 由美",
       phone: "090-5555-6666",
+      ...reservationContactDefaults,
       note: "備考: 記念日プレート希望",
       status: ReservationStatus.CONFIRMED,
       lineUserId: null,
@@ -109,6 +123,7 @@ export function buildMockReservations(monthStart: Date, monthDays: number): Rese
       arrivalTime: "12:30",
       name: "伊藤 誠",
       phone: "090-7777-8888",
+      ...reservationContactDefaults,
       note: null,
       status: ReservationStatus.CONFIRMED,
       lineUserId: null,
@@ -135,6 +150,7 @@ export function buildMockReservations(monthStart: Date, monthDays: number): Rese
       arrivalTime: "18:30",
       name: "中村 彩",
       phone: "090-9999-0000",
+      ...reservationContactDefaults,
       note: "コース: ディナーB",
       status: ReservationStatus.CONFIRMED,
       lineUserId: null,
@@ -161,6 +177,7 @@ export function buildMockReservations(monthStart: Date, monthDays: number): Rese
       arrivalTime: null,
       name: "貸切",
       phone: "-",
+      ...reservationContactDefaults,
       note: "社内会食 18名",
       status: ReservationStatus.CONFIRMED,
       lineUserId: null,

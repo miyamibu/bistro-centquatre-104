@@ -17,11 +17,17 @@ export default function CancelButton({
   disabled,
   label,
   requireOperatorName,
+  expectedDate,
+  expectedServicePeriod,
+  expectedReservationType,
 }: {
   id: string;
   disabled?: boolean;
   label?: string;
   requireOperatorName?: boolean;
+  expectedDate?: string;
+  expectedServicePeriod?: "LUNCH" | "DINNER";
+  expectedReservationType?: "NORMAL" | "PRIVATE_BLOCK";
 }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<CancelMessage | null>(null);
@@ -63,7 +69,17 @@ export default function CancelButton({
           "Content-Type": "application/json",
           "X-Requested-With": "XMLHttpRequest",
         },
-        body: JSON.stringify({ status: ReservationStatus.CANCELLED, operatorName }),
+        body: JSON.stringify({
+          status: ReservationStatus.CANCELLED,
+          operatorName,
+          ...(requireOperatorName
+            ? {
+                expectedDate,
+                expectedServicePeriod,
+                expectedReservationType,
+              }
+            : {}),
+        }),
         signal: controller.signal,
       });
       if (res.ok) {

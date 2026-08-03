@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -7,20 +7,22 @@ import { afterAll, describe, expect, it } from "vitest";
 const repoRoot = process.cwd();
 const releaseScript = resolve(repoRoot, "scripts/check-release-safety.mjs");
 const isolatedCwd = mkdtempSync(resolve(tmpdir(), "bistro-release-safety-"));
+const cronConfigPath = resolve(isolatedCwd, "vercel.json");
 
 const baseReleaseEnv: Record<string, string> = {
   PATH: "",
   NODE_ENV: "test",
   DATABASE_URL: "postgresql://bistro:bistro@127.0.0.1:5432/bistro",
   BASE_URL: "https://bistro.invalid",
-  ADMIN_BASIC_USER: "operator",
-  ADMIN_BASIC_PASS: "strong-admin-password",
   NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co",
   NEXT_PUBLIC_SUPABASE_ANON_KEY: "safe-anon-key",
   SUPABASE_SERVICE_ROLE_KEY: "safe-service-role-key",
+  STAFF_SESSION_MAX_AGE_SECONDS: "28800",
   CRON_SECRET: "safe-cron-secret",
   BACKUP_EXPORT_SECRET: "safe-backup-export-secret",
   RATE_LIMIT_HASH_SECRET: "rate-limit-secret-value-32-characters",
+  RESERVATION_TOKEN_SECRET: "reservation-token-secret-value-32-characters",
+  BACKUP_ENCRYPTION_KEY: "backup-encryption-key-value-32-characters",
   BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY: "bank-history-encryption-key",
 };
 
@@ -67,6 +69,16 @@ describe("release safety environment contract", () => {
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain("Required env and mail configuration checks passed.");
     expect(result.stderr).not.toContain("Missing required env keys: DIRECT_URL");
+  });
+
+  it("requires the reservation bearer-token derivation secret", () => {
+    const result = runReleaseCheck("production", {
+      set: completeMailEnv,
+      unset: ["RESERVATION_TOKEN_SECRET"],
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("RESERVATION_TOKEN_SECRET");
   });
 
   it.each(["preview", "production"] as const)(
@@ -132,6 +144,54 @@ describe("release safety environment contract", () => {
 
     expect(result.status, result.stderr).toBe(0);
   });
+
+  it("rejects Hobby when vercel.json contains a five-minute cron", () => {
+    writeFileSync(
+      cronConfigPath,
+      JSON.stringify({
+        crons: [{ path: "/api/crons/process-reservation-emails", schedule: "*/5 * * * *" }],
+      }),
+    );
+
+    const result = runReleaseCheck("preview", {
+      set: { ...completeMailEnv, VERCEL_CONFIG_PATH: cronConfigPath, VERCEL_PLAN: "hobby" },
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Vercel Cron plan is Hobby");
+  });
+
+  it("requires an explicit Vercel plan for a production five-minute cron", () => {
+    writeFileSync(
+      cronConfigPath,
+      JSON.stringify({
+        crons: [{ path: "/api/crons/process-reservation-emails", schedule: "*/5 * * * *" }],
+      }),
+    );
+
+    const result = runReleaseCheck("production", {
+      set: { ...completeMailEnv, VERCEL_CONFIG_PATH: cronConfigPath },
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Vercel Cron plan is unknown");
+  });
+
+  it("accepts Pro for a production five-minute cron", () => {
+    writeFileSync(
+      cronConfigPath,
+      JSON.stringify({
+        crons: [{ path: "/api/crons/process-reservation-emails", schedule: "*/5 * * * *" }],
+      }),
+    );
+
+    const result = runReleaseCheck("production", {
+      set: { ...completeMailEnv, VERCEL_CONFIG_PATH: cronConfigPath, VERCEL_PLAN: "pro" },
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("Vercel Cron plan check passed");
+  });
 });
 
 describe("database release safety contracts", () => {
@@ -146,6 +206,28 @@ describe("database release safety contracts", () => {
 
     expect(migration).toMatch(
       /ALTER TABLE "ReservationEmailOutbox" ENABLE ROW LEVEL SECURITY;/,
+    );
+
+    const managementTokenMigration = readFileSync(
+      resolve(
+        repoRoot,
+        "prisma/migrations/20260731100000_add_reservation_management_token/migration.sql",
+      ),
+      "utf8",
+    );
+    expect(managementTokenMigration).toMatch(
+      /ALTER TABLE "ReservationManagementToken" ENABLE ROW LEVEL SECURITY;/,
+    );
+
+    const webhookInboxMigration = readFileSync(
+      resolve(
+        repoRoot,
+        "prisma/migrations/20260731101000_add_line_webhook_inbox/migration.sql",
+      ),
+      "utf8",
+    );
+    expect(webhookInboxMigration).toContain(
+      'ALTER TABLE "LineWebhookInbox" ENABLE ROW LEVEL SECURITY;',
     );
 
     const relatedMigration = readFileSync(
@@ -181,9 +263,15 @@ describe("database release safety contracts", () => {
     for (const table of [
       "ReservationEmailOutbox",
       "ReservationStatusAuditLog",
+      "ReservationIdempotency",
       "ReservationLineLinkToken",
+      "ReservationManagementToken",
       "NotificationEvent",
+      "LineWebhookInbox",
       "ReservationRateLimitEvent",
+      "LineFriend",
+      "LineCustomerLink",
+      "DailyJournalEntry",
     ]) {
       expect(verifySql).toContain(`'${table}'`);
     }
@@ -196,7 +284,16 @@ describe("database release safety contracts", () => {
       resolve(repoRoot, "supabase/rls-policies.sql"),
       "utf8",
     );
-    for (const table of ["ReservationLineLinkToken", "NotificationEvent"]) {
+    for (const table of [
+      "ReservationLineLinkToken",
+      "ReservationManagementToken",
+      "NotificationEvent",
+      "LineWebhookInbox",
+      "ReservationIdempotency",
+      "LineFriend",
+      "LineCustomerLink",
+      "DailyJournalEntry",
+    ]) {
       expect(policiesSql).toContain(`public."${table}" enable row level security`);
       expect(policiesSql).toContain(`public."${table}" for all to service_role`);
     }
@@ -211,9 +308,15 @@ describe("database release safety contracts", () => {
     for (const table of [
       "ReservationEmailOutbox",
       "ReservationStatusAuditLog",
+      "ReservationIdempotency",
       "ReservationLineLinkToken",
+      "ReservationManagementToken",
       "NotificationEvent",
+      "LineWebhookInbox",
       "ReservationRateLimitEvent",
+      "LineFriend",
+      "LineCustomerLink",
+      "DailyJournalEntry",
     ]) {
       expect(permissions).toContain(`\`${table}\``);
     }

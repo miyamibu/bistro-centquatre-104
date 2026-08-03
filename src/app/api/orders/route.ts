@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "crypto";
-import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
+import {
+  apiError,
+  ORDER_JSON_BODY_LIMIT_BYTES,
+  readLimitedJson,
+} from "@/lib/api-security";
 import { createOrderSchema, zodFields } from "@/lib/validation";
 import {
   buildIdempotencyHash,
@@ -10,6 +14,7 @@ import {
   normalizeOrderPaymentMethod,
   runIdempotentMutation,
 } from "@/lib/order-actions";
+import { createOrderReceiptToken, hashOrderReceiptToken } from "@/lib/order-receipt";
 import { buildOrderActorKey } from "@/lib/order-identity";
 import { validatePayInStoreVisitDate } from "@/lib/order-rules";
 import { getPublishedStoreProduct } from "@/lib/store-products";
@@ -25,9 +30,6 @@ export async function POST(request: NextRequest) {
   const requestId = getRequestId(request);
   const route = "/api/orders";
 
-  const securityError = enforceWriteRequestSecurity(request, { requestId });
-  if (securityError) return securityError;
-
   const idempotencyKey = getIdempotencyKey(request);
   if (!idempotencyKey) {
     return apiError(400, {
@@ -37,10 +39,23 @@ export async function POST(request: NextRequest) {
       requestId,
     });
   }
+  if (idempotencyKey.length > 256) {
+    return apiError(400, {
+      ok: false,
+      error: "Idempotency-Key は256文字以内で指定してください",
+      code: "IDEMPOTENCY_KEY_TOO_LONG",
+      requestId,
+    });
+  }
 
   try {
-    const body = await request.json().catch(() => null);
-    const parsed = createOrderSchema.safeParse(body);
+    const json = await readLimitedJson(request, {
+      requestId,
+      maxBytes: ORDER_JSON_BODY_LIMIT_BYTES,
+    });
+    if (!json.ok) return json.response;
+
+    const parsed = createOrderSchema.safeParse(json.body);
     if (!parsed.success) {
       return apiError(400, {
         ok: false,
@@ -120,12 +135,14 @@ export async function POST(request: NextRequest) {
         const holdExpiresAt = createQuotedHoldExpiry();
 
         const humanToken = randomBytes(24).toString("base64url");
+        const receiptToken = createOrderReceiptToken();
         const actionResult = await executeCreateOrderQuoteAction({
           customerInfo: input.customerInfo,
           items: validatedItems,
           total: calculatedTotal,
           holdExpiresAt,
           humanTokenHash: hashHumanToken(humanToken),
+          receiptTokenHash: hashOrderReceiptToken(receiptToken),
           actorId: actorKey,
           requestId,
           idempotencyKey,
@@ -160,6 +177,7 @@ export async function POST(request: NextRequest) {
             orderId: String(order.id),
             expectedVersion: Number(order.version ?? 0),
             humanToken,
+            receiptToken,
             paymentMethod: normalizedPaymentMethod,
             storeVisitDate: input.storeVisitDate ?? null,
             holdExpiresAt,

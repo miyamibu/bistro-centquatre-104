@@ -17,19 +17,23 @@ See also `docs/recovery/production-db-permissions.md` for the DB role split and 
 
 ## What has been verified locally
 
-As of 2026-03-03, the following checks passed from the repo root:
+Run the following checks from the repo root for a release candidate:
 
-1. `npm run lint`
-2. `npm run test`
-3. `npm run build`
-4. Production smoke tests against `next start`
+1. `npm run check:release:production` (use `VERCEL_PLAN=pro` while the 5-minute cron is present)
+2. `npm run lint`
+3. `npm run typecheck`
+4. `npm run security:env`
+5. `npm run security:destructive-reservations`
+6. `npm run test`
+7. `npm run build`
+8. Production smoke tests against `next start`
 
 The production smoke checks confirmed:
 
 1. `GET /ai` returns `308` and redirects to `/agents`
 2. `GET /?ai=1` returns `307` and redirects to `/agents`
 3. `GET /` returns `200` and includes `Link` headers for `/agents`, `/llms.txt`, and `/api/agent`
-4. `GET /admin/reservations` returns `401` without Basic auth
+4. `GET /admin/reservations` redirects to `/admin/login` without a valid staff session
 5. `GET /api/agent?pretty=1` returns `200`
 
 ## Required production environment
@@ -39,15 +43,16 @@ Set these values in your hosting provider before the production deploy:
 1. `DATABASE_URL`
 2. `DIRECT_URL`（Prisma migration用の直接接続。`DATABASE_URL`と同じDBを指す）
 3. `BASE_URL`
-4. `ADMIN_BASIC_USER`
-5. `ADMIN_BASIC_PASS`
-6. `NEXT_PUBLIC_SUPABASE_URL`
-7. `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-8. `SUPABASE_SERVICE_ROLE_KEY`
-9. `CRON_SECRET`
-10. `BACKUP_EXPORT_SECRET`
-11. `RATE_LIMIT_HASH_SECRET`
-12. `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY`
+4. `NEXT_PUBLIC_SUPABASE_URL`
+5. `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+6. `SUPABASE_SERVICE_ROLE_KEY`
+7. `STAFF_SESSION_MAX_AGE_SECONDS`
+8. `CRON_SECRET`
+9. `BACKUP_EXPORT_SECRET`
+10. `RATE_LIMIT_HASH_SECRET`
+11. `RESERVATION_TOKEN_KEYS_JSON` + `RESERVATION_TOKEN_ACTIVE_KEY_ID`（または移行用 `RESERVATION_TOKEN_SECRET`）
+12. `BACKUP_ENCRYPTION_KEYS_JSON` + `BACKUP_ENCRYPTION_ACTIVE_KEY_ID`（または移行用 `BACKUP_ENCRYPTION_KEY`）
+13. `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY`
 
 Recommended operational values:
 
@@ -82,12 +87,26 @@ Email provider notes:
 5. Apply `20260728090000_add_reservation_email_outbox` and the following
    `20260728093000_restrict_reservation_related_deletes` Prisma migrations before deploying
    code that creates reservations.
-6. Apply `supabase/migrations/20260728230000_harden_order_notification_outbox.sql`
+6. Apply `20260803090000_customer_contact_policy_token_keyring` before enabling customer email,
+   24-hour cancellation cutoff, or token-key rotation. This migration adds customer contact,
+   cancellation audit, and token key-id columns.
+7. Apply `20260803100000_rename_private_block_audit_staff_source` immediately after the
+   customer-contact migration so existing private-block audit rows use the current
+   `ADMIN_USER` source name.
+8. Apply `supabase/migrations/20260728230000_harden_order_notification_outbox.sql`
    after the existing order outbox migration and before deploying the order worker.
-7. Apply `supabase/rls-policies.sql`, then run `supabase/verify.sql` with
+9. Apply `supabase/rls-policies.sql`, then run `supabase/verify.sql` with
    `psql -v ON_ERROR_STOP=1` in a read-only transaction. Do not proceed until
    the assertions pass.
-8. See `docs/reservation-email-outbox.md` for retry, dead-letter, and safe rollout behavior.
+10. See `docs/reservation-email-outbox.md` for retry, dead-letter, and safe rollout behavior.
+
+Customer reservation policy:
+
+1. Reservation creation requires a customer email, unless a verified LINE identity is attached.
+2. The customer confirmation email is enqueued transactionally and contains a 180-day management link.
+3. Self-service cancellation is free until 24 hours before the stored arrival time (JST); the current system has no cancellation-fee setting or automatic charge.
+4. After the cutoff, the API returns `CANCELLATION_CUTOFF_PASSED` and directs the customer to phone support.
+5. Every cancellation stores `cancelledAt`, `cancelSource`, `cancellationReason`, and a status audit row.
 
 Bank account history note:
 
@@ -109,15 +128,16 @@ Set these keys in Vercel Preview before relying on preview deploys:
 1. `DATABASE_URL`
 2. `DIRECT_URL`（Preview/staging DBへの直接接続）
 3. `BASE_URL`
-4. `ADMIN_BASIC_USER`
-5. `ADMIN_BASIC_PASS`
-6. `NEXT_PUBLIC_SUPABASE_URL`
-7. `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-8. `SUPABASE_SERVICE_ROLE_KEY`
-9. `CRON_SECRET`
-10. `BACKUP_EXPORT_SECRET`
-11. `RATE_LIMIT_HASH_SECRET`
-12. `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY`
+4. `NEXT_PUBLIC_SUPABASE_URL`
+5. `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+6. `SUPABASE_SERVICE_ROLE_KEY`
+7. `STAFF_SESSION_MAX_AGE_SECONDS`
+8. `CRON_SECRET`
+9. `BACKUP_EXPORT_SECRET`
+10. `RATE_LIMIT_HASH_SECRET`
+11. `RESERVATION_TOKEN_KEYS_JSON` + `RESERVATION_TOKEN_ACTIVE_KEY_ID`（または `RESERVATION_TOKEN_SECRET`）
+12. `BACKUP_ENCRYPTION_KEYS_JSON` + `BACKUP_ENCRYPTION_ACTIVE_KEY_ID`（または `BACKUP_ENCRYPTION_KEY`）
+13. `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY`
 
 Safe default:
 
@@ -173,8 +193,8 @@ This script validates:
 5. `npm run test`
 6. `npm run build`
 7. `npm run security:destructive-reservations`
-8. `next start` smoke checks for `/agents`, `/ai`, `/?ai=1`, `/api/agent`, and Basic auth
-9. `POST /api/reservations` accepts `Content-Type: application/json` without requiring `X-Requested-With`
+8. `next start` smoke checks for `/agents`, `/ai`, `/?ai=1`, `/api/agent`, and the Supabase staff login redirect
+9. `POST /api/reservations` requires same-origin `Origin`, `X-Requested-With: XMLHttpRequest`, and `Idempotency-Key`
 
 For a faster cross-platform env check before the full preflight, run:
 
@@ -226,7 +246,10 @@ Cron notes:
 4. `cancel-expired-orders` is bounded to 200 orders per run and can be safely rerun
 5. `delete-old-histories` deletes up to 1000 rows per run in 200-row batches
 6. `process-reservation-emails` claims at most 10 due rows per run and retries failed delivery up to 5 attempts.
-7. Its 5-minute schedule requires a Vercel plan that supports more-than-daily Cron execution.
+7. `process-order-notifications` runs daily at `0 2 * * *`.
+8. `process-reservation-emails` runs at `*/5 * * * *`; this requires a Vercel Pro plan (Hobby is incompatible).
+9. Run `VERCEL_PLAN=pro npm run check:release:production` before enabling the 5-minute schedule.
+   If `VERCEL_PLAN` is unknown, the production release check fails rather than assuming plan support.
 
 ## Post-deploy smoke checks
 
@@ -246,7 +269,7 @@ Expected results:
 1. `/ai` -> `308` to `/agents`
 2. `/?ai=1` -> `307` to `/agents`
 3. `/` -> `200` with `Link` headers
-4. `/admin/reservations` -> `401` without Basic auth
+4. `/admin/reservations` -> redirect to `/admin/login` without a staff session
 5. `/api/agent?pretty=1` -> `200`
 6. `/llms.txt` -> `200`
 
@@ -255,10 +278,15 @@ Reservation API probe:
 ```powershell
 curl.exe -s -X POST "https://your-domain.example/api/reservations" ^
   -H "Content-Type: application/json" ^
+  -H "Origin: https://your-domain.example" ^
+  -H "X-Requested-With: XMLHttpRequest" ^
+  -H "Idempotency-Key: prelaunch-validation-probe" ^
   -d "{}"
 ```
 
-The probe should return `400` with `code=VALIDATION_ERROR`. It must not fail with `MISSING_REQUEST_HEADER`.
+The probe should return `400` with `code=VALIDATION_ERROR`. The explicit same-origin
+`Origin`, `X-Requested-With`, and `Idempotency-Key` headers are intentional; without them the request may
+be rejected by the API security boundary before body validation.
 
 ## Human QA after deploy
 
@@ -269,8 +297,8 @@ Confirm these manually in a browser:
 3. `/on-line-store`
 4. `/on-line-store/apron?mode=agent&qty=2`
 5. `/on-line-store/cart?mode=agent`
-6. `/dashboard/orders` prompts for Basic auth
-7. `/admin/reservations` prompts for Basic auth
+6. `/admin/login` -> sign in with an individual Supabase Auth user, complete TOTP MFA, then open `/dashboard/orders`
+7. `/admin/reservations` -> staff user sees reservations; a user without `app_metadata.role` is denied
 
 ## Rollback
 

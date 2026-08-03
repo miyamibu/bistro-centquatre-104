@@ -75,7 +75,10 @@ const SENSITIVE_ENV_KEYS = new Set([
   "BACKUP_EXPORT_SECRET",
   "PRIVATE_BLOCK_ACCESS_CODE",
   "BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY",
-  "ADMIN_BASIC_PASS",
+  "RESERVATION_TOKEN_SECRET",
+  "RESERVATION_TOKEN_KEYS_JSON",
+  "BACKUP_ENCRYPTION_KEY",
+  "BACKUP_ENCRYPTION_KEYS_JSON",
   "RESEND_API_KEY",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "LINE_CHANNEL_ACCESS_TOKEN",
@@ -413,7 +416,7 @@ function redactGeneric(text) {
   apply(/(mysql:\/\/)[^\s"'`]+/gi, "$1[REDACTED_DB_CREDENTIALS]");
 
   apply(
-    /(EMAIL_API_KEY|RESEND_API_KEY|SUPABASE_SERVICE_ROLE_KEY|CRON_SECRET|BACKUP_EXPORT_SECRET|PRIVATE_BLOCK_ACCESS_CODE|BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY|ADMIN_BASIC_PASS|LINE_CHANNEL_SECRET|LINE_CHANNEL_ACCESS_TOKEN|LINE_LINK_TOKEN_PEPPER)(\s*[:=]\s*["'])([^"'\n]+)(["'])/gi,
+    /(EMAIL_API_KEY|RESEND_API_KEY|SUPABASE_SERVICE_ROLE_KEY|CRON_SECRET|BACKUP_EXPORT_SECRET|PRIVATE_BLOCK_ACCESS_CODE|BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY|RESERVATION_TOKEN_SECRET|RESERVATION_TOKEN_KEYS_JSON|BACKUP_ENCRYPTION_KEY|BACKUP_ENCRYPTION_KEYS_JSON|LINE_CHANNEL_SECRET|LINE_CHANNEL_ACCESS_TOKEN|LINE_LINK_TOKEN_PEPPER)(\s*[:=]\s*["'])([^"'\n]+)(["'])/gi,
     "$1$2[REDACTED_SECRET]$4"
   );
 
@@ -868,15 +871,15 @@ function collectApiRoutes(textFiles) {
         }
       }
 
-      const auth = file.content.includes("isAuthorized(")
-        ? "Basic認証"
+      const auth = file.content.includes("getStaffAuth(")
+        ? "Supabase Auth(role+MFA)"
         : file.content.includes("isCronAuthorized") || file.content.includes("CRON_SECRET")
         ? "Bearer(CRON_SECRET)"
         : "不要";
 
       const idempotency =
         file.path === "src/app/api/reservations/route.ts"
-          ? "重複候補検出あり（Idempotency-Keyは未採用）"
+          ? "永続Idempotency-Key + request hash + 保存済みresponse（ReservationIdempotency）"
           : /Idempotency-Key/i.test(file.content)
           ? "Idempotency-Key対応"
           : "明示実装なし";
@@ -1012,7 +1015,7 @@ function summarizeTestGuarantee(filePath) {
   if (key.includes("reservation-integration")) return "予約導線の統合シナリオを検証";
   if (key.includes("api-security")) return "書き込みAPIのセキュリティヘッダ/同一オリジン制約を検証";
   if (key.includes("cron-auth")) return "cron APIのBearer認証強制を検証";
-  if (key.includes("basic-auth")) return "Basic認証判定を検証";
+  if (key.includes("staff-auth")) return "スタッフrole/MFA/セッション期限を検証";
   if (key.includes("env-validation")) return "環境変数バリデーションを検証";
   if (key.includes("email-delivery")) return "メール送信失敗時fail-closed挙動を検証";
   if (key.includes("private-block")) return "貸切アクセス制御/DB整合を検証";
@@ -1038,14 +1041,14 @@ function buildFeatureStatusRows(context) {
     ["コース選択", "実装済み", "src/lib/reservation-config.ts"],
     ["顧客情報入力", "実装済み", "src/components/reserve-form.tsx"],
     ["電話番号入力", "実装済み", "src/components/reserve-form.tsx"],
-    ["メールアドレス入力", "未実装", "予約フォームにはemail項目なし"],
+    ["メールアドレス入力", "実装済み", "src/components/reserve-form.tsx"],
     ["アレルギー/要望入力", "実装済み", "src/components/reserve-form.tsx(note)"],
     ["予約確認画面", "未実装", "単一画面送信（確認ステップなし）"],
     ["予約完了画面", "実装済み", "src/components/reserve-form.tsx(result表示)"],
-    ["予約完了メール", "外部検証待ち", "src/lib/email.ts（店舗通知は実装、顧客完了メール未確認）"],
+    ["予約完了メール", "外部検証待ち", "src/lib/email.ts + src/lib/reservation-email-outbox.ts（顧客管理リンクと店舗通知を実装、外部到達は未検証）"],
     ["店舗向け通知", "実装済み", "src/lib/email.ts#sendReservationEmail"],
     ["顧客向けリマインド", "外部検証待ち", "src/app/api/crons/remind/route.ts + src/lib/line-notification.ts（LINE送信実装済み、外部実送信は未検証）"],
-    ["キャンセル導線", "実装済み", "管理画面操作 + 電話案内"],
+    ["キャンセル導線", "実装済み", "予約管理リンク（来店24時間前まで） + 期限後の電話案内"],
     ["予約変更導線", "未実装", "顧客セルフ変更UIなし"],
     ["管理画面", "実装済み", "src/app/admin/reservations/page.tsx"],
     ["予約一覧", "実装済み", "src/app/admin/reservations/page.tsx"],
@@ -1497,7 +1500,7 @@ Staff Browser
 Server boundary
   -> Next.js App Router + Route Handlers
   -> API security layer (\`src/lib/api-security.ts\`)
-  -> Basic auth middleware (\`src/middleware.ts\`, \`src/lib/basic-auth.ts\`)
+  -> Supabase Auth middleware (\`src/middleware.ts\`, \`src/lib/staff-auth.ts\`)
 
 Operations boundary
   -> docs/production-launch.md
@@ -1544,7 +1547,7 @@ Operations boundary
 
 ### 5.3 店舗管理フロー
 
-1. Basic認証で管理画面アクセス
+1. Supabase Authの個別ユーザーで管理画面へログインし、TOTP MFAを完了
 2. 予約一覧/日次状況を確認
 3. 貸切設定/解除、予約ステータス更新
 4. No-showは \`NOSHOW\` ステータスで記録
@@ -1552,12 +1555,12 @@ Operations boundary
 
 ### 5.4 通知フロー
 
-- 予約完了メール: 顧客向けは未確認、店舗通知は実装
+- 予約完了メール: 顧客向け管理リンクと店舗通知を非同期outboxで実装
 - 店舗向け新規予約通知: 実装済み
 - 予約変更通知: 未実装
-- キャンセル通知: 未実装（運用電話前提）
+- キャンセル通知: 顧客向け自動通知は未実装（期限後は電話運用、管理画面・監査ログで記録）
 - 前日/当日リマインド: cronエンドポイントとLINE送信は実装済み、外部実送信は未検証
-- retry/dead-letter: 明示的なキュー/死信箱は未実装
+- retry/dead-letter: ReservationEmailOutboxで実装
 - 通知ログ: アプリログで失敗記録
 
 ### 5.5 例外処理フロー
@@ -1629,7 +1632,7 @@ ${makeMarkdownTable(
 - expired/cancelled を自動で confirmedへ戻す実装はなし
 - キャンセル期限後 review_required 送出は未実装
 - 大人数/貸切は PHONE_ONLY/PRIVATE_BLOCK で自動確定を避ける
-- 同一 idempotency key の1回処理は予約APIでは未実装（注文API側に存在）
+- 同一 idempotency key の1回処理は予約APIで永続化（ReservationIdempotency）
 - 通知失敗は予約確定と分離
 - 空席更新は予約状態に整合`;
 
@@ -1651,7 +1654,7 @@ ${makeMarkdownTable(["要求テーブル", "状況", "証跡"], modelRows)}
 - 営業日とカレンダー日付: \`BusinessDay\` と config の二層
 - 席のみ予約とコース予約: course値で区別
 - 仮押さえTTL: 未実装
-- idempotency: 予約は重複候補検知、明示key未採用
+- idempotency: 予約は明示key、request hash、保存済みresponseをDBで管理
 - audit log hash chain: 未実装
 - SQLite前提: 現実装は PostgreSQL 前提（Prisma datasource）
 - PostgreSQL/MySQL移行論点: enum/transaction/advisory lock互換性
@@ -1672,12 +1675,12 @@ ${makeMarkdownTable(["要求API", "判定", "補足"], requiredApiRows)}
 
 API共通整理:
 - 目的: 予約受付、空席照会、管理更新、cron運用
-- 認証: 公開APIは無認証、管理APIはBasic、cronはBearer
+- 認証: 公開APIは無認証、管理APIはSupabase Authの個別ユーザー（role + TOTP MFA + セッションTTL）、cronはBearer
 - 入力: JSON + zod validation
 - 出力: JSON（\`error\`/\`code\`/\`fields\`整備）
 - 状態遷移影響: 予約作成/キャンセル/来店済み/No-show
 - 監査ログ対象: private block監査はDB、その他はログ中心
-- idempotency: 予約APIは重複候補検知、key方式は未採用
+- idempotency: 予約APIは明示key方式と重複候補検知を併用
 - PII含有: 予約作成・管理取得はPIIを含む
 - rate limit: 予約作成APIにIPベース制限実装`;
 
@@ -1690,9 +1693,9 @@ API共通整理:
 - 予約確認画面: 未実装（入力→即送信）
 - 予約完了表示: 実装済み（送信後summary表示）
 - 予約番号表示: reservationIdはAPI返却するがUI表示は限定的
-- 予約完了メール: 店舗通知中心、顧客向け完了メールは未確認
+- 予約完了メール: 顧客向け管理リンクと店舗通知を実装、外部プロバイダ到達は未検証
 - アクセス情報/営業時間/定休日表示: 実装済み
-- キャンセルポリシー表示: 文言はあるが独立ポリシー実装は未確認
+- キャンセルポリシー表示: 来店24時間前まで無料、期限後は電話というポリシーをUI/APIで実装
 - 個人情報同意: 明示同意UIは未確認
 - アレルギー・特別要望入力: note欄で受け付け
 - エラー表示: APIエラー/通信タイムアウト表示あり
@@ -1707,7 +1710,7 @@ API共通整理:
 - 多言語対応: 未実装
 
 明記:
-- 顧客に不要な入力（email等）は現状最小化されている
+- 顧客メールを管理リンク送信先として予約時に取得
 - 重要条件（締切/電話案内）を表示
 - 予約完了後に日時・人数・コース・連絡先が分かる
 - 店舗名 \`${STORE_NAME}\` の表示は主要画面に存在
@@ -1715,9 +1718,9 @@ API共通整理:
 
   const section10 = `## 10. 管理画面 / スタッフ権限 / 店舗運用
 
-- staff / manager / admin の厳密RBAC: 未実装（Basic認証ベース）
-- session TTL: Basic認証のため明示session TTLなし
-- password policy: \`ADMIN_BASIC_USER/PASS\` 依存
+- staff / admin のRBAC: Supabase Auth \`app_metadata.role\`（STAFF/ADMIN）で実装
+- session TTL: \`STAFF_SESSION_MAX_AGE_SECONDS\`（既定8時間）で実装
+- password/MFA policy: Supabase Authの個別ユーザーとTOTP MFA
 - PIN lockout: 未実装
 - 予約閲覧/変更/キャンセル/No-show: 管理APIで実装
 - 空席ブロック/営業日変更: 実装
@@ -1734,7 +1737,7 @@ API共通整理:
 
 - 環境変数で確認される主要secret:
   - APP_SECRET, SESSION_SECRET, CSRF_SECRET: **コード上は専用key未実装**
-  - ADMIN_PASSWORD: \`ADMIN_BASIC_PASS\` として管理
+  - STAFF_AUTH: Supabase Authユーザー、role、TOTP MFAとして管理
   - EMAIL_API_KEY / RESEND_API_KEY: 実装あり
   - SMS_API_KEY: 未実装
   - LINE_CHANNEL_SECRET: env定義あり
@@ -1947,8 +1950,8 @@ ${makeMarkdownTable(
     ["満席誤受付", "ロジック欠陥/運用ミス", "現場混乱", "capacity判定 + PHONE_ONLY", "本番相当検証", "P0"],
     ["営業時間外受付", "入力改ざん/バグ", "運用破綻", "booking-rules fail-closed", "E2E証跡", "P0"],
     ["アレルギー見落とし", "note運用不備", "重大事故", "メモ表示", "必須確認フロー", "P0"],
-    ["通知不達", "外部メール障害", "来店トラブル", "送信失敗ログ", "retry/dead-letter未実装", "P1"],
-    ["管理画面不正アクセス", "認証情報漏洩", "改ざん", "Basic認証", "IP制限/MFA未実装", "P0"],
+    ["通知不達", "外部メール障害", "来店トラブル", "ReservationEmailOutboxのretry/dead-letter", "provider実到達確認", "P1"],
+    ["管理画面不正アクセス", "ユーザー/role/MFA設定不備", "改ざん", "Supabase Auth + role + TOTP MFA + session TTL", "本番Auth設定と失効訓練", "P0"],
     ["DB障害", "クラウド障害", "予約停止", "runbook/backup", "復旧訓練継続", "P0"],
     ["SQLite運用限界", "将来拡張", "性能/整合性課題", "現在PostgreSQL", "多店舗向け再設計", "P2"],
     ["スマホUX不備", "入力離脱", "予約率低下", "モバイルUI最適化", "離脱計測改善", "P1"],

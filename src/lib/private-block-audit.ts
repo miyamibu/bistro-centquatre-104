@@ -5,7 +5,7 @@ import type { ReservationServicePeriodKey } from "@/lib/reservation-config";
 type AuditClient = PrismaClient | Prisma.TransactionClient;
 
 export type PrivateBlockAuditResult = "CREATED" | "NO_OP" | "RELEASED";
-export type PrivateBlockAuditSource = "PUBLIC_FORM" | "ADMIN_SHARED_BASIC";
+export type PrivateBlockAuditSource = "PUBLIC_FORM" | "ADMIN_USER";
 
 export async function createPrivateBlockAuditLog(
   client: AuditClient,

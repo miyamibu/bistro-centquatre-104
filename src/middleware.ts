@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { isAuthorized, unauthorized } from "@/lib/basic-auth";
+import { createServerClient } from "@supabase/ssr";
 
 const AI_UA_HINTS = [/GPTBot/i, /ChatGPT/i, /OpenAI/i, /Claude/i, /Anthropic/i, /Perplexity/i];
 const AGENT_ENTRY_PATH = "/agents";
@@ -27,6 +27,55 @@ function isProtectedPath(pathname: string) {
   );
 }
 
+function isLoginPath(pathname: string) {
+  return pathname === "/admin/login" || pathname.startsWith("/admin/login/");
+}
+
+function copyResponseCookies(source: NextResponse, target: NextResponse) {
+  for (const cookie of source.cookies.getAll()) {
+    target.cookies.set(cookie);
+  }
+  return target;
+}
+
+function isStaffRole(value: unknown) {
+  return value === "ADMIN" || value === "STAFF";
+}
+
+function readIssuedAt(accessToken: string) {
+  try {
+    const segment = accessToken.split(".")[1];
+    if (!segment) return null;
+    const base64 = segment.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(segment.length / 4) * 4, "=");
+    const payload = JSON.parse(atob(base64)) as { iat?: unknown };
+    return typeof payload.iat === "number" ? payload.iat : null;
+  } catch {
+    return null;
+  }
+}
+
+function authFailure(
+  request: NextRequest,
+  response: NextResponse,
+  pathname: string,
+  code: "UNAUTHORIZED" | "STAFF_ROLE_REQUIRED" | "MFA_REQUIRED" | "SESSION_EXPIRED",
+) {
+  if (pathname.startsWith("/api/")) {
+    return copyResponseCookies(
+      response,
+      NextResponse.json(
+        { error: code === "MFA_REQUIRED" ? "MFA認証が必要です" : "Unauthorized", code },
+        { status: code === "UNAUTHORIZED" || code === "SESSION_EXPIRED" ? 401 : 403, headers: { "Cache-Control": "private, no-store" } },
+      ),
+    );
+  }
+
+  const loginUrl = new URL("/admin/login", request.url);
+  loginUrl.searchParams.set("error", code.toLowerCase());
+  loginUrl.searchParams.set("next", pathname);
+  return copyResponseCookies(response, NextResponse.redirect(loginUrl));
+}
+
 function isAiHint(request: NextRequest) {
   const accept = request.headers.get("accept") ?? "";
   const userAgent = request.headers.get("user-agent") ?? "";
@@ -46,11 +95,66 @@ function isAiHint(request: NextRequest) {
   return explicitHint || acceptHint || uaHint;
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (isProtectedPath(pathname) && !isAuthorized(request)) {
-    return unauthorized();
+  const supabaseResponse = NextResponse.next({ request });
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (isProtectedPath(pathname) && !isLoginPath(pathname)) {
+    if (!supabaseUrl || !supabaseAnonKey) {
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json(
+          { error: "認証設定が未完了です", code: "AUTH_NOT_CONFIGURED" },
+          { status: 503, headers: { "Cache-Control": "no-store" } },
+        );
+      }
+      return NextResponse.redirect(new URL("/admin/login?error=auth_not_configured", request.url));
+    }
+
+    const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          for (const { name, value, options } of cookiesToSet) {
+            request.cookies.set(name, value);
+            supabaseResponse.cookies.set(name, value, options);
+          }
+        },
+      },
+    });
+
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) {
+      return authFailure(request, supabaseResponse, pathname, "UNAUTHORIZED");
+    }
+
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    const issuedAt = sessionData.session ? readIssuedAt(sessionData.session.access_token) : null;
+    const maxAge = Number(process.env.STAFF_SESSION_MAX_AGE_SECONDS ?? 28800);
+    if (
+      sessionError ||
+      !sessionData.session ||
+      issuedAt === null ||
+      !Number.isInteger(maxAge) ||
+      Math.floor(Date.now() / 1000) - issuedAt > maxAge
+    ) {
+      await supabase.auth.signOut();
+      return authFailure(request, supabaseResponse, pathname, "SESSION_EXPIRED");
+    }
+
+    if (!isStaffRole(userData.user.app_metadata?.role)) {
+      return authFailure(request, supabaseResponse, pathname, "STAFF_ROLE_REQUIRED");
+    }
+
+    const { data: assurance, error: assuranceError } =
+      await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (assuranceError || assurance.currentLevel !== "aal2") {
+      return authFailure(request, supabaseResponse, pathname, "MFA_REQUIRED");
+    }
   }
 
   if (pathname === "/" && isAiHint(request)) {
@@ -60,7 +164,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(url, 307);
   }
 
-  const response = NextResponse.next();
+  const response = supabaseResponse;
   response.headers.append("Link", `</${AGENT_ENTRY_PATH.slice(1)}>; rel="alternate"; type="text/html"`);
   response.headers.append("Link", "</llms.txt>; rel=\"alternate\"; type=\"text/plain\"");
   response.headers.append("Link", "</api/agent>; rel=\"alternate\"; type=\"application/json\"");
@@ -69,9 +173,10 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   // NOTE:
-  // - Admin/Dashboard surface is protected by Basic auth here.
+  // - Admin/Dashboard surface is protected by Supabase Auth here and by
+  //   role + MFA checks in each server API.
   // - Cron endpoints remain protected inside each route by CRON_SECRET bearer auth.
-  // - Staff hub is protected with the same Basic auth until dedicated auth is introduced.
+  // - Staff hub uses the same individual staff session.
   // - Next 16 compatibility: if middleware file naming moves to proxy.ts,
   //   keep this matcher/auth logic unchanged and relocate with a file rename only.
   matcher: [

@@ -20,7 +20,8 @@
  * is already SENT, we return "sent" — the cron skips (event.status === SENT), so
  * no double-send occurs. A CRITICAL log flags the gap for manual reconciliation.
  */
-import { ReservationStatus, ReservationType } from "@prisma/client";
+import { randomUUID } from "node:crypto";
+import { Prisma, ReservationStatus, ReservationType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   buildReminderRetryKey,
@@ -28,6 +29,7 @@ import {
   pushLineTextMessage,
   summarizeLineError,
 } from "@/lib/line";
+import { startOfJstMonth } from "@/lib/dates";
 import { logError, logInfo, logWarn } from "@/lib/logger";
 
 const STATUS_SENT = "SENT";
@@ -35,9 +37,109 @@ const STATUS_FAILED = "FAILED";
 const STATUS_SENDING = "SENDING";
 const STATUS_PENDING = "PENDING";
 const STATUS_SKIPPED_BLOCKED = "SKIPPED_BLOCKED";
+const STATUS_SKIPPED_QUOTA = "SKIPPED_QUOTA";
+const DEFAULT_MONTHLY_QUOTA = 200;
 
 /** A SENDING claim older than this is considered stale and may be reclaimed. */
 export const STALE_SENDING_MS = 30 * 60 * 1000;
+
+export type LineReminderOutcome = "sent" | "skipped" | "failed" | "quota";
+
+function resolveMonthlyQuota(limit: number | undefined): number {
+  if (Number.isSafeInteger(limit) && limit !== undefined && limit > 0) return limit;
+
+  const configured = Number(process.env.LINE_MONTHLY_REMINDER_LIMIT);
+  return Number.isSafeInteger(configured) && configured > 0
+    ? configured
+    : DEFAULT_MONTHLY_QUOTA;
+}
+
+async function claimNotificationEvent(input: {
+  eventId: string;
+  reservationId: string;
+  currentStatus: string;
+  currentClaimedAt: Date | null;
+  monthlyQuota: number;
+}): Promise<{ claimToken: string } | { skipped: true } | { quota: true }> {
+  const claimToken = randomUUID();
+  const now = new Date();
+  const staleThreshold = new Date(now.getTime() - STALE_SENDING_MS);
+  const monthStart = startOfJstMonth(now);
+  const staleReclaim =
+    input.currentStatus === STATUS_SENDING &&
+    (input.currentClaimedAt === null ||
+      input.currentClaimedAt.getTime() < staleThreshold.getTime());
+
+  return prisma.$transaction(async (tx) => {
+    // Serialize the quota check and claim across cron invocations. The lock is
+    // transaction-scoped and does not hold a reservation row lock over the provider call.
+    await tx.$executeRaw(
+      Prisma.sql`SELECT pg_advisory_xact_lock(hashtext('bistro:line-reminder-quota'))`
+    );
+
+    const used = await tx.notificationEvent.count({
+      where: {
+        channel: "LINE",
+        type: "DAY_BEFORE_REMINDER",
+        OR: [
+          { status: STATUS_SENT, sentAt: { gte: monthStart } },
+          { status: STATUS_SENDING, claimedAt: { gte: staleThreshold } },
+        ],
+      },
+    });
+
+    const eligible = {
+      id: input.eventId,
+      OR: [
+        { status: STATUS_PENDING },
+        { status: STATUS_FAILED },
+        { status: STATUS_SENDING, claimedAt: { lt: staleThreshold } },
+        { status: STATUS_SENDING, claimedAt: null },
+      ],
+    };
+
+    if (used >= input.monthlyQuota && !staleReclaim) {
+      const skipped = await tx.notificationEvent.updateMany({
+        where: eligible,
+        data: {
+          status: "SKIPPED",
+          error: STATUS_SKIPPED_QUOTA,
+          claimedAt: null,
+          claimToken: null,
+          updatedAt: now,
+        },
+      });
+
+      if (skipped.count === 1) {
+        await tx.reservation.updateMany({
+          where: { id: input.reservationId },
+          data: {
+            lineReminderStatus: STATUS_SKIPPED_QUOTA,
+            lineReminderError: "LINE monthly quota guard reached",
+          },
+        });
+        return { quota: true } as const;
+      }
+
+      return { skipped: true } as const;
+    }
+
+    const claimed = await tx.notificationEvent.updateMany({
+      where: eligible,
+      data: {
+        status: STATUS_SENDING,
+        claimedAt: now,
+        claimToken,
+        error: null,
+        updatedAt: now,
+      },
+    });
+
+    return claimed.count === 1
+      ? { claimToken }
+      : ({ skipped: true } as const);
+  });
+}
 
 /**
  * Returns true if an immediate day-before reminder should be sent right now.
@@ -53,8 +155,9 @@ export async function claimAndSendLineReminder(
   reservationId: string,
   lineUserId: string,
   targetDate: string,
-  source: string
-): Promise<"sent" | "skipped" | "failed"> {
+  source: string,
+  options: { monthlyQuota?: number } = {}
+): Promise<LineReminderOutcome> {
   const retryKey = buildReminderRetryKey(reservationId, targetDate);
 
   // Upsert event — preserve existing status (never downgrade SENT / active SENDING).
@@ -90,23 +193,26 @@ export async function claimAndSendLineReminder(
     return "skipped";
   }
 
-  // Atomically claim via conditional updateMany.
-  // Only succeeds if the current status is PENDING, FAILED, or stale SENDING.
-  const staleThreshold = new Date(Date.now() - STALE_SENDING_MS);
-  const now = new Date();
-  const claimed = await prisma.notificationEvent.updateMany({
-    where: {
-      id: event.id,
-      OR: [
-        { status: STATUS_PENDING },
-        { status: STATUS_FAILED },
-        { status: STATUS_SENDING, claimedAt: { lt: staleThreshold } },
-      ],
-    },
-    data: { status: STATUS_SENDING, claimedAt: now, updatedAt: now },
-  });
+  let claim: { claimToken: string } | { skipped: true } | { quota: true };
+  try {
+    claim = await claimNotificationEvent({
+      eventId: event.id,
+      reservationId,
+      currentStatus: event.status,
+      currentClaimedAt: event.claimedAt,
+      monthlyQuota: resolveMonthlyQuota(options.monthlyQuota),
+    });
+  } catch (error) {
+    logError("line_notification.claim_failed", {
+      errorCode: "NOTIF_EVENT_CLAIM_FAILED",
+      context: { reservationId, source, error: summarizeLineError(error) },
+    });
+    return "failed";
+  }
 
-  if (claimed.count === 0) return "skipped"; // Another worker claimed first.
+  if ("quota" in claim) return "quota";
+  if ("skipped" in claim) return "skipped";
+  const claimToken = claim.claimToken;
 
   // Re-fetch reservation immediately before sending to guard against cancellations
   // or status changes that occurred between the cron query and now.
@@ -123,14 +229,38 @@ export async function claimAndSendLineReminder(
     },
   });
 
+  async function updateClaimedEvent(data: Record<string, unknown>, errorCode: string) {
+    const updated = await prisma.notificationEvent.updateMany({
+      where: {
+        id: event.id,
+        status: STATUS_SENDING,
+        claimToken,
+      },
+      data: {
+        ...data,
+        claimToken: null,
+        claimedAt: null,
+        updatedAt: new Date(),
+      },
+    });
+
+    if (updated.count !== 1) {
+      logWarn("line_notification.claim_fence_lost", {
+        errorCode,
+        context: { reservationId, source },
+      });
+      return false;
+    }
+
+    return true;
+  }
+
   async function markSkipped(reason: string, skippedStatus?: string) {
     const skipStatus = skippedStatus ?? "SKIPPED";
-    await prisma.notificationEvent
-      .update({
-        where: { id: event.id },
-        data: { status: skipStatus, error: reason, updatedAt: new Date() },
-      })
-      .catch(() => { /* best-effort */ });
+    await updateClaimedEvent(
+      { status: skipStatus, error: reason },
+      "NOTIF_EVENT_SKIP_FENCE_LOST"
+    ).catch(() => false);
   }
 
   if (!reservation) {
@@ -186,17 +316,21 @@ export async function claimAndSendLineReminder(
 
   if (!result.ok) {
     const errMsg = summarizeLineError(result.error ?? "unknown");
-    await prisma.notificationEvent
-      .update({
-        where: { id: event.id },
-        data: { status: STATUS_FAILED, error: errMsg, updatedAt: afterSend },
-      })
-      .catch((e) =>
-        logError("line_notification.event_failed_update_error", {
-          errorCode: "NOTIF_EVENT_UPDATE_FAILED",
-          context: { reservationId, source, error: summarizeLineError(e) },
-        })
+    let eventUpdated = false;
+    try {
+      eventUpdated = await updateClaimedEvent(
+        { status: STATUS_FAILED, error: errMsg },
+        "NOTIF_EVENT_FAILED_FENCE_LOST"
       );
+    } catch (e) {
+      logError("line_notification.event_failed_update_error", {
+        errorCode: "NOTIF_EVENT_UPDATE_FAILED",
+        context: { reservationId, source, error: summarizeLineError(e) },
+      });
+    }
+
+    if (!eventUpdated) return "failed";
+
     await prisma.reservation
       .update({
         where: { id: reservationId },
@@ -215,10 +349,11 @@ export async function claimAndSendLineReminder(
   // If this fails, return "failed" so the next cron retries with the same retryKey
   // (LINE returns 409 = already accepted) and eventually marks SENT.
   try {
-    await prisma.notificationEvent.update({
-      where: { id: event.id },
-      data: { status: STATUS_SENT, sentAt: afterSend, error: null, updatedAt: afterSend },
-    });
+    const eventUpdated = await updateClaimedEvent(
+      { status: STATUS_SENT, sentAt: afterSend, error: null },
+      "NOTIF_EVENT_SENT_FENCE_LOST"
+    );
+    if (!eventUpdated) throw new Error("NOTIF_EVENT_CLAIM_FENCE_LOST_AFTER_SEND");
   } catch (notifErr) {
     logError("line_notification.event_sent_update_failed", {
       errorCode: "NOTIF_EVENT_UPDATE_FAILED_AFTER_SEND",

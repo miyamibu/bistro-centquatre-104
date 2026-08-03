@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fromMock = vi.hoisted(() => vi.fn());
+const rpcMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/supabase-server", () => ({
   supabaseServer: {
     from: fromMock,
-    rpc: vi.fn(),
+    rpc: rpcMock,
   },
 }));
 
@@ -39,6 +40,7 @@ function query(result: unknown): QueryChain {
 
 beforeEach(() => {
   fromMock.mockReset();
+  rpcMock.mockReset();
 });
 
 describe("runIdempotentMutation unknown outcomes", () => {
@@ -100,5 +102,112 @@ describe("runIdempotentMutation unknown outcomes", () => {
       replayed: false,
     });
     expect(execute).not.toHaveBeenCalled();
+  });
+});
+
+describe("executeAtomicTerminalOrderAction contract", () => {
+  const baseInput = {
+    scope: "POST:/api/orders/{id}/actions:MARK_SHIPPED",
+    actorKey: "admin",
+    requestHash: "request-hash-1",
+    orderId: "order-1",
+    expectedVersion: 4,
+    action: "MARK_SHIPPED" as const,
+    actorType: "admin" as const,
+    actorId: "admin",
+    requestId: "request-1",
+    idempotencyKey: "key-1",
+    adminNote: "packed",
+  };
+
+  it.each([
+    ["MARK_SHIPPED" as const, undefined],
+    ["CANCEL" as const, "EXPIRED_PAYMENT"],
+  ])("passes %s through the atomic RPC boundary", async (action, reasonCode) => {
+    rpcMock.mockResolvedValue({
+      data: {
+        status: 200,
+        body: { ok: true, order: { id: "order-1", status: action === "CANCEL" ? "CANCELLED" : "SHIPPED" } },
+        replayed: false,
+      },
+      error: null,
+    });
+
+    const { executeAtomicTerminalOrderAction } = await import("@/lib/order-actions");
+    const result = await executeAtomicTerminalOrderAction({
+      ...baseInput,
+      action,
+      reasonCode,
+    });
+
+    expect(result).toMatchObject({ status: 200, replayed: false });
+    expect(rpcMock).toHaveBeenCalledWith(
+      "execute_terminal_order_action",
+      expect.objectContaining({
+        p_scope: baseInput.scope,
+        p_actor_key: baseInput.actorKey,
+        p_idempotency_key: baseInput.idempotencyKey,
+        p_request_hash: baseInput.requestHash,
+        p_order_id: baseInput.orderId,
+        p_expected_version: baseInput.expectedVersion,
+        p_action: action,
+        p_reason_code: reasonCode ?? null,
+        p_actor_type: baseInput.actorType,
+        p_actor_id: baseInput.actorId,
+        p_request_id: baseInput.requestId,
+      })
+    );
+  });
+
+  it("returns the durable replay result without a client-side second mutation", async () => {
+    rpcMock.mockResolvedValue({
+      data: {
+        status: 200,
+        body: { ok: true, order: { id: "order-1", status: "SHIPPED" } },
+        replayed: true,
+      },
+      error: null,
+    });
+
+    const { executeAtomicTerminalOrderAction } = await import("@/lib/order-actions");
+    const result = await executeAtomicTerminalOrderAction(baseInput);
+
+    expect(result).toMatchObject({ status: 200, replayed: true });
+    expect(rpcMock).toHaveBeenCalledTimes(1);
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [409, "IDEMPOTENCY_CONFLICT"],
+    [409, "VERSION_CONFLICT"],
+  ])("preserves an atomic %s response for %s", async (status, code) => {
+    rpcMock.mockResolvedValue({
+      data: {
+        status,
+        body: { ok: false, error: code, code },
+        replayed: false,
+      },
+      error: null,
+    });
+
+    const { executeAtomicTerminalOrderAction } = await import("@/lib/order-actions");
+    const result = await executeAtomicTerminalOrderAction(baseInput);
+
+    expect(result).toMatchObject({ status, body: { code }, replayed: false });
+  });
+
+  it("surfaces an RPC transaction failure without attempting a separate finalize or history write", async () => {
+    rpcMock.mockResolvedValue({
+      data: null,
+      error: { message: "TERMINAL_ORDER_ACTION_FAILED" },
+    });
+
+    const { executeAtomicTerminalOrderAction } = await import("@/lib/order-actions");
+    await expect(executeAtomicTerminalOrderAction(baseInput)).rejects.toMatchObject({
+      status: 500,
+      code: "TERMINAL_ORDER_ACTION_FAILED",
+    });
+    expect(rpcMock).toHaveBeenCalledTimes(1);
+    expect(fromMock).not.toHaveBeenCalled();
   });
 });

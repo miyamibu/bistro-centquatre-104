@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
 import {
   enforceWriteRequestSecurity,
+  ORDER_JSON_BODY_LIMIT_BYTES,
   readLimitedJson,
 } from "@/lib/api-security";
 
@@ -84,6 +85,25 @@ describe("API Security", () => {
       expect(result.response.status).toBe(413);
       const body = await result.response.json();
       expect(body.code).toBe("BODY_TOO_LARGE");
+    }
+  });
+
+  it("applies the larger but explicit order body limit", async () => {
+    const request = buildRequest({
+      "content-type": "application/json",
+      origin: "http://localhost:3000",
+      "x-requested-with": "XMLHttpRequest",
+      "content-length": String(ORDER_JSON_BODY_LIMIT_BYTES + 1),
+    });
+    const result = await readLimitedJson(request, {
+      maxBytes: ORDER_JSON_BODY_LIMIT_BYTES,
+      requestId: "test-id",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(413);
+      await expect(result.response.json()).resolves.toMatchObject({ code: "BODY_TOO_LARGE" });
     }
   });
 

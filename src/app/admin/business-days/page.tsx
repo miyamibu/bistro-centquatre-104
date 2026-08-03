@@ -1,7 +1,7 @@
 "use client";
 
 import { addDays, addMonths, format, getDay, getDaysInMonth, subDays } from "date-fns";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { getDayOperatingStatus } from "@/lib/admin-operating-status";
 
@@ -50,6 +50,11 @@ type MonthStatusResponse = {
 };
 
 type BusinessConfirmMode = "CLOSE_WITH_PRIVATE_BLOCK" | "OPEN_WITH_PRIVATE_BLOCK";
+
+type LatestRequestState = {
+  generation: number;
+  controller: AbortController | null;
+};
 
 const dayLabels = ["日", "月", "火", "水", "木", "金", "土"] as const;
 
@@ -135,16 +140,25 @@ export default function BusinessDaysPage() {
 
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const monthRequestRef = useRef<LatestRequestState>({ generation: 0, controller: null });
+  const dayRequestRef = useRef<LatestRequestState>({ generation: 0, controller: null });
 
   const monthKey = useMemo(() => toMonthKey(calendarMonth), [calendarMonth]);
 
   const fetchMonthStatus = useCallback(async (targetMonth: string) => {
+    monthRequestRef.current.controller?.abort();
+    const requestGeneration = monthRequestRef.current.generation + 1;
+    const controller = new AbortController();
+    monthRequestRef.current = { generation: requestGeneration, controller };
     setMonthLoading(true);
     setMonthError(null);
 
     try {
-      const res = await fetch(`/api/admin/day-status?month=${targetMonth}`);
+      const res = await fetch(`/api/admin/day-status?month=${targetMonth}`, {
+        signal: controller.signal,
+      });
       const data = (await res.json().catch(() => null)) as MonthStatusResponse | { error?: string } | null;
+      if (monthRequestRef.current.generation !== requestGeneration) return;
       if (!res.ok || !data || !("days" in data)) {
         setMonthError((data && "error" in data && typeof data.error === "string" ? data.error : null) ?? "月次状態の取得に失敗しました。");
         return;
@@ -152,13 +166,21 @@ export default function BusinessDaysPage() {
 
       setMonthDays(data.days ?? {});
     } catch {
+      if (controller.signal.aborted || monthRequestRef.current.generation !== requestGeneration) return;
       setMonthError("月次状態の取得に失敗しました。");
     } finally {
-      setMonthLoading(false);
+      if (monthRequestRef.current.generation === requestGeneration) {
+        monthRequestRef.current.controller = null;
+        setMonthLoading(false);
+      }
     }
   }, []);
 
   const fetchDayStatus = useCallback(async (date: string) => {
+    dayRequestRef.current.controller?.abort();
+    const requestGeneration = dayRequestRef.current.generation + 1;
+    const controller = new AbortController();
+    dayRequestRef.current = { generation: requestGeneration, controller };
     setDayLoading(true);
     setDayError(null);
     setBusinessConfirmMode(null);
@@ -167,8 +189,11 @@ export default function BusinessDaysPage() {
     setDetailOpenByPeriod({ LUNCH: false, DINNER: false });
 
     try {
-      const res = await fetch(`/api/admin/day-status?date=${date}`);
+      const res = await fetch(`/api/admin/day-status?date=${date}`, {
+        signal: controller.signal,
+      });
       const data = (await res.json().catch(() => null)) as DayStatusResponse | { error?: string } | null;
+      if (dayRequestRef.current.generation !== requestGeneration) return;
       if (!res.ok || !data || !("lunch" in data)) {
         setDayError((data && "error" in data && typeof data.error === "string" ? data.error : null) ?? "日次状態の取得に失敗しました。");
         setDayStatus(null);
@@ -179,10 +204,14 @@ export default function BusinessDaysPage() {
       setIsClosedDraft(data.isClosed);
       setNoteDraft(data.note ?? "");
     } catch {
+      if (controller.signal.aborted || dayRequestRef.current.generation !== requestGeneration) return;
       setDayError("日次状態の取得に失敗しました。");
       setDayStatus(null);
     } finally {
-      setDayLoading(false);
+      if (dayRequestRef.current.generation === requestGeneration) {
+        dayRequestRef.current.controller = null;
+        setDayLoading(false);
+      }
     }
   }, []);
 
@@ -205,6 +234,15 @@ export default function BusinessDaysPage() {
     }
     fetchDayStatus(selectedDate);
   }, [fetchDayStatus, selectedDate]);
+
+  useEffect(() => {
+    return () => {
+      monthRequestRef.current.generation += 1;
+      monthRequestRef.current.controller?.abort();
+      dayRequestRef.current.generation += 1;
+      dayRequestRef.current.controller?.abort();
+    };
+  }, []);
 
   const calendarCells = useMemo(() => {
     const firstDay = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
@@ -308,6 +346,9 @@ export default function BusinessDaysPage() {
         body: JSON.stringify({
           status: "CANCELLED",
           operatorName: trimmedOperatorName,
+          expectedDate: selectedDate,
+          expectedServicePeriod: servicePeriod,
+          expectedReservationType: "PRIVATE_BLOCK",
         }),
       });
       const data = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -622,8 +663,16 @@ export default function BusinessDaysPage() {
             </div>
           </div>
 
-          {monthLoading ? <p className="mt-3 text-xs text-gray-600">月次状態を読み込み中です...</p> : null}
-          {monthError ? <p className="mt-3 text-xs text-red-700">{monthError}</p> : null}
+          {monthLoading ? (
+            <p role="status" aria-live="polite" aria-busy="true" className="mt-3 text-xs text-gray-600">
+              月次状態を読み込み中です...
+            </p>
+          ) : null}
+          {monthError ? (
+            <p role="alert" aria-live="assertive" className="mt-3 text-xs text-red-700">
+              {monthError}
+            </p>
+          ) : null}
         </section>
 
         <section className="rounded-lg border border-gray-200 bg-[#fdfbf8] p-4">
@@ -645,9 +694,13 @@ export default function BusinessDaysPage() {
               <p className="mt-1">カレンダーから日付をクリックすると、その日の営業状態を確認・変更できます。</p>
             </div>
           ) : dayLoading ? (
-            <p className="text-sm text-gray-600">日次状態を読み込み中です...</p>
+            <p role="status" aria-live="polite" aria-busy="true" className="text-sm text-gray-600">
+              日次状態を読み込み中です...
+            </p>
           ) : dayError ? (
-            <p className="text-sm text-red-700">{dayError}</p>
+            <p role="alert" aria-live="assertive" className="text-sm text-red-700">
+              {dayError}
+            </p>
           ) : dayStatus ? (
             <div className="space-y-4">
               <div className="space-y-1">

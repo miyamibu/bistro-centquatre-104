@@ -310,25 +310,23 @@ function PayContent() {
       if (notificationStatus !== "SENT" && notificationStatus !== "PENDING_RETRY") {
         throw new Error("注文確定結果を確認できないため、完了画面へ進めません");
       }
-      if (
-        !saveOrderCompletionReceipt({
-          orderId: confirmedOrderId,
-          paymentMethod,
-          storeVisitDate: paymentMethod === "PAY_IN_STORE" ? storeVisitDate : null,
-          notificationStatus,
-        })
-      ) {
-        throw new Error("注文完了情報を安全に保存できません");
-      }
-      if (!clearPendingOrderPaymentSetup(confirmedOrderId)) {
-        throw new Error("本人確認用の注文情報を安全に解除できません");
-      }
-      if (!clearOrderPaymentAttempt(confirmedOrderId, idempotencyKey)) {
-        throw new Error("支払い方法確定の安全確認情報を解除できません");
+      // The server-backed receipt is authoritative; browser storage is only a convenience.
+      saveOrderCompletionReceipt({
+        orderId: confirmedOrderId,
+        paymentMethod,
+        storeVisitDate: paymentMethod === "PAY_IN_STORE" ? storeVisitDate : null,
+        notificationStatus,
+        receiptToken: pendingSetup.receiptToken,
+      });
+      const pendingSetupCleared = clearPendingOrderPaymentSetup(confirmedOrderId);
+      if (pendingSetupCleared) {
+        clearOrderPaymentAttempt(confirmedOrderId, idempotencyKey);
       }
       idempotencyKeyRef.current = null;
       setSuccessNavigation(true);
-      router.push(`/on-line-store/order-complete?order_id=${encodeURIComponent(confirmedOrderId)}`);
+      router.push(
+        `/on-line-store/order-complete?order_id=${encodeURIComponent(confirmedOrderId)}#receipt_token=${encodeURIComponent(pendingSetup.receiptToken)}`
+      );
     } catch (error) {
       setIsError(true);
       const isRetryableHttpError =
@@ -593,7 +591,13 @@ function PayContent() {
 
 export default function StorePayPage() {
   return (
-    <Suspense fallback={<section className="mx-auto p-6">読み込み中...</section>}>
+    <Suspense
+      fallback={
+        <section role="status" aria-live="polite" className="mx-auto p-6">
+          読み込み中...
+        </section>
+      }
+    >
       <PayContent />
     </Suspense>
   );

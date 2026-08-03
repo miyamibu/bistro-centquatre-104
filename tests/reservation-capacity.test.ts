@@ -5,6 +5,7 @@ import {
   aggregateSlotCounts,
   evaluateReservationAvailability,
   fitsAllowedPattern,
+  isCapacityBlockingReservation,
   partySizeToSlotRequirement,
 } from "@/lib/reservation-capacity";
 import { formatJst, jstDateTimeFromString, todayJst } from "@/lib/dates";
@@ -48,20 +49,28 @@ describe("reservation capacity rules", () => {
   });
 
   describe("aggregateSlotCounts", () => {
-    it("ignores cancelled reservations", () => {
+    it("counts only confirmed reservations", () => {
       expect(
         aggregateSlotCounts([
           { partySize: 2, status: "CONFIRMED", servicePeriod: "LUNCH" },
           { partySize: 4, status: "CANCELLED", servicePeriod: "LUNCH" },
           { partySize: 7, status: "DONE", servicePeriod: "LUNCH" },
+          { partySize: 6, status: "NOSHOW", servicePeriod: "LUNCH" },
         ])
       ).toEqual({
         slot2: 1,
         slot4: 0,
         slot6: 0,
-        slot8: 1,
+        slot8: 0,
         hasPhoneOnly: false,
       });
+    });
+
+    it("shares the confirmed-only capacity-blocking rule", () => {
+      expect(isCapacityBlockingReservation({ status: "CONFIRMED" })).toBe(true);
+      expect(isCapacityBlockingReservation({ status: "CANCELLED" })).toBe(false);
+      expect(isCapacityBlockingReservation({ status: "DONE" })).toBe(false);
+      expect(isCapacityBlockingReservation({ status: "NOSHOW" })).toBe(false);
     });
 
     it("marks phone-only requirements when existing reservations are 9 or more", () => {
@@ -254,6 +263,28 @@ describe("reservation capacity rules", () => {
       ).toEqual({
         reason: "PRIVATE_BLOCK",
         webBookable: false,
+      });
+    });
+
+    it("does not treat terminal private-block rows as active blocks", () => {
+      expect(
+        evaluateReservationAvailability({
+          date: futureBookableDateKey,
+          servicePeriod: "DINNER",
+          partySize: 2,
+          existingReservations: [
+            {
+              partySize: 1,
+              status: "DONE",
+              servicePeriod: "DINNER",
+              reservationType: "PRIVATE_BLOCK",
+            },
+          ],
+          now: futureBookableDateNoon,
+        })
+      ).toEqual({
+        reason: "OK",
+        webBookable: true,
       });
     });
 

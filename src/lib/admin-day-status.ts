@@ -5,8 +5,14 @@ import {
   findReservationsCompat,
 } from "@/lib/reservation-compat";
 import { parseReservationNote } from "@/lib/reservation-note";
+import { isCapacityBlockingReservation } from "@/lib/reservation-capacity";
 
 type ReservationRow = Awaited<ReturnType<typeof findReservationsCompat>>[number];
+export type AdminDayReservationRow = Pick<
+  ReservationRow,
+  "id" | "date" | "servicePeriod" | "reservationType" | "status" | "partySize" | "name" | "note"
+>;
+type BusinessDayRow = Pick<BusinessDay, "date" | "isClosed" | "note">;
 
 const ACTIVE_STATUS_FILTER = {
   not: ReservationStatus.CANCELLED,
@@ -56,7 +62,7 @@ export type AdminMonthStatus = {
 
 type AdminMonthQueryData = {
   dateKeys: string[];
-  businessDayByDate: Map<string, BusinessDay>;
+  businessDayByDate: Map<string, BusinessDayRow>;
   reservationsByDate: Record<string, ReservationRow[]>;
 };
 
@@ -162,8 +168,9 @@ function extractLastName(fullName: string): string {
   return parts[0] ?? "";
 }
 
-function collectUniqueLastNames(rows: ReservationRow[], servicePeriod: "LUNCH" | "DINNER") {
+function collectUniqueLastNames(rows: AdminDayReservationRow[], servicePeriod: "LUNCH" | "DINNER") {
   return rows.reduce<string[]>((acc, row) => {
+    if (!isCapacityBlockingReservation(row)) return acc;
     if (row.reservationType === ReservationType.PRIVATE_BLOCK) return acc;
     if (row.servicePeriod !== servicePeriod) return acc;
     const lastName = extractLastName(row.name);
@@ -175,14 +182,20 @@ function collectUniqueLastNames(rows: ReservationRow[], servicePeriod: "LUNCH" |
   }, []);
 }
 
-function buildPeriodStatus(
-  reservations: ReservationRow[],
+export function buildPeriodStatus(
+  reservations: AdminDayReservationRow[],
   servicePeriod: "LUNCH" | "DINNER"
 ): AdminDayPeriodStatus {
   const inPeriod = reservations.filter((row) => row.servicePeriod === servicePeriod);
-  const privateBlock = inPeriod.find((row) => row.reservationType === ReservationType.PRIVATE_BLOCK);
+  const privateBlock = inPeriod.find(
+    (row) =>
+      isCapacityBlockingReservation(row) &&
+      row.reservationType === ReservationType.PRIVATE_BLOCK
+  );
   const normalReservations = inPeriod.filter(
-    (row) => row.reservationType !== ReservationType.PRIVATE_BLOCK
+    (row) =>
+      isCapacityBlockingReservation(row) &&
+      row.reservationType !== ReservationType.PRIVATE_BLOCK
   );
   const memoEntries = normalReservations.map((row) => {
     const parsed = parseReservationNote(row.note);
@@ -207,7 +220,11 @@ function buildPeriodStatus(
   };
 }
 
-function buildDayStatus(date: string, businessDay: BusinessDay | null, reservations: ReservationRow[]) {
+function buildDayStatus(
+  date: string,
+  businessDay: BusinessDayRow | null,
+  reservations: AdminDayReservationRow[]
+) {
   const lunch = buildPeriodStatus(reservations, "LUNCH");
   const dinner = buildPeriodStatus(reservations, "DINNER");
   return {
@@ -219,7 +236,9 @@ function buildDayStatus(date: string, businessDay: BusinessDay | null, reservati
   } satisfies AdminDayStatus;
 }
 
-function buildReservationsByDate(reservations: ReservationRow[]): Record<string, ReservationRow[]> {
+function buildReservationsByDate(
+  reservations: ReservationRow[]
+): Record<string, ReservationRow[]> {
   return reservations.reduce<Record<string, ReservationRow[]>>((acc, row) => {
     const current = acc[row.date] ?? [];
     current.push(row);
@@ -230,12 +249,12 @@ function buildReservationsByDate(reservations: ReservationRow[]): Record<string,
 
 function buildMonthQueryData(
   dateKeys: string[],
-  businessDays: BusinessDay[],
+  businessDays: BusinessDayRow[],
   reservations: ReservationRow[]
 ): AdminMonthQueryData {
   return {
     dateKeys,
-    businessDayByDate: new Map<string, BusinessDay>(
+    businessDayByDate: new Map<string, BusinessDayRow>(
       businessDays.map((businessDay) => [businessDay.date, businessDay])
     ),
     reservationsByDate: buildReservationsByDate(reservations),
@@ -288,6 +307,11 @@ async function fetchMonthQueryData(month: string): Promise<AdminMonthQueryData> 
       where: {
         date: { in: dateKeys },
       },
+      select: {
+        date: true,
+        isClosed: true,
+        note: true,
+      },
     }),
     findReservationsCompat(prisma, {
       where: {
@@ -295,6 +319,21 @@ async function fetchMonthQueryData(month: string): Promise<AdminMonthQueryData> 
         status: ACTIVE_STATUS_FILTER,
       },
       orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+      select: {
+        id: true,
+        date: true,
+        servicePeriod: true,
+        reservationType: true,
+        partySize: true,
+        arrivalTime: true,
+        name: true,
+        phone: true,
+        note: true,
+        status: true,
+        lineUserId: true,
+        lineReminderStatus: true,
+        lineReminderError: true,
+      },
     }),
   ]);
 
@@ -305,13 +344,35 @@ export async function getAdminDayStatus(date: string): Promise<AdminDayStatus> {
   await ensureReservationSchemaReady(prisma);
 
   const [businessDay, reservations] = await Promise.all([
-    prisma.businessDay.findUnique({ where: { date } }),
+    prisma.businessDay.findUnique({
+      where: { date },
+      select: {
+        date: true,
+        isClosed: true,
+        note: true,
+      },
+    }),
     findReservationsCompat(prisma, {
       where: {
         date,
         status: ACTIVE_STATUS_FILTER,
       },
       orderBy: [{ createdAt: "asc" }],
+      select: {
+        id: true,
+        date: true,
+        servicePeriod: true,
+        reservationType: true,
+        partySize: true,
+        arrivalTime: true,
+        name: true,
+        phone: true,
+        note: true,
+        status: true,
+        lineUserId: true,
+        lineReminderStatus: true,
+        lineReminderError: true,
+      },
     }),
   ]);
 

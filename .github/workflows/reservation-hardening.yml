@@ -6,6 +6,9 @@ on:
       - main
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   reservation-hardening:
     runs-on: ubuntu-latest
@@ -44,6 +47,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -60,11 +65,20 @@ jobs:
       - name: Run lint
         run: npm run lint
 
+      - name: Run typecheck
+        run: npm run typecheck
+
       - name: Run test suite
         run: npm run test
 
       - name: Run database test suite
         run: npm run test:db
+
+      - name: Run env security check
+        run: npm run security:env
+
+      - name: Run destructive reservation security check
+        run: npm run security:destructive-reservations
 
       - name: Run production build
         run: npm run build

@@ -1,9 +1,12 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { isAuthorized } from "@/lib/basic-auth";
-import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
+import { getStaffAuth } from "@/lib/staff-auth";
+import {
+  apiError,
+  ORDER_JSON_BODY_LIMIT_BYTES,
+  readLimitedJson,
+} from "@/lib/api-security";
 import { validatePayInStoreVisitDate } from "@/lib/order-rules";
-import { archiveOrderHistoryByOrderId } from "@/lib/order-history";
 import { processOrderConfirmationOutboxForOrder } from "@/lib/order-notification-outbox";
 import {
   cancelOrderPayloadSchema,
@@ -17,11 +20,10 @@ import {
 } from "@/lib/validation";
 import {
   buildIdempotencyHash,
-  executeCancelOrderAction,
+  executeAtomicTerminalOrderAction,
   executeConfirmHumanAction,
   executeMarkCollectedAction,
   executeMarkPaidAction,
-  executeMarkShippedAction,
   executeSetPaymentMethodAction,
   runIdempotentMutation,
 } from "@/lib/order-actions";
@@ -39,8 +41,11 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
   const requestId = getRequestId(request);
   const { id } = await params;
 
-  const securityError = enforceWriteRequestSecurity(request, { requestId });
-  if (securityError) return securityError;
+  const json = await readLimitedJson(request, {
+    requestId,
+    maxBytes: ORDER_JSON_BODY_LIMIT_BYTES,
+  });
+  if (!json.ok) return json.response;
 
   const idempotencyKey = getIdempotencyKey(request);
   if (!idempotencyKey) {
@@ -51,9 +56,16 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       requestId,
     });
   }
+  if (idempotencyKey.length > 256) {
+    return apiError(400, {
+      ok: false,
+      error: "Idempotency-Key は256文字以内で指定してください",
+      code: "IDEMPOTENCY_KEY_TOO_LONG",
+      requestId,
+    });
+  }
 
-  const body = await request.json().catch(() => null);
-  const parsed = orderActionRequestSchema.safeParse(body);
+  const parsed = orderActionRequestSchema.safeParse(json.body);
   if (!parsed.success) {
     return apiError(400, {
       ok: false,
@@ -198,7 +210,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       case "MARK_COLLECTED":
       case "MARK_SHIPPED":
       case "CANCEL": {
-        if (!isAuthorized(request)) {
+        const staffAuth = await getStaffAuth();
+        if (!staffAuth) {
           return apiError(401, {
             ok: false,
             error: "Unauthorized",
@@ -207,7 +220,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           });
         }
 
-        const actorKey = "admin";
+        const actorKey = `staff:${staffAuth.userId}`;
 
         if (action === "MARK_PAID") {
           const payloadResult = markPaidPayloadSchema.safeParse(payload);
@@ -298,35 +311,23 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
             });
           }
 
-          const result = await runIdempotentMutation({
+          const result = await executeAtomicTerminalOrderAction({
             scope: "POST:/api/orders/{id}/actions:MARK_SHIPPED",
             actorKey,
-            idempotencyKey,
             requestHash: buildIdempotencyHash({
               action,
               orderId: id,
               expectedVersion,
               payload: payloadResult.data,
             }),
-            execute: async () => {
-              const actionResult = await executeMarkShippedAction({
-                orderId: id,
-                expectedVersion,
-                actorType: "admin",
-                actorId: actorKey,
-                requestId,
-                idempotencyKey,
-                adminNote: payloadResult.data.adminNote,
-              });
-
-              await archiveOrderHistoryByOrderId({
-                orderId: id,
-                source: "admin",
-                requestId,
-              });
-
-              return actionResult;
-            },
+            orderId: id,
+            expectedVersion,
+            action: "MARK_SHIPPED",
+            actorType: "admin",
+            actorId: actorKey,
+            requestId,
+            idempotencyKey,
+            adminNote: payloadResult.data.adminNote,
           });
 
           return NextResponse.json(result.body, { status: result.status });
@@ -343,36 +344,24 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           });
         }
 
-        const result = await runIdempotentMutation({
+        const result = await executeAtomicTerminalOrderAction({
           scope: "POST:/api/orders/{id}/actions:CANCEL",
           actorKey,
-          idempotencyKey,
           requestHash: buildIdempotencyHash({
             action,
             orderId: id,
             expectedVersion,
             payload: payloadResult.data,
           }),
-          execute: async () => {
-            const actionResult = await executeCancelOrderAction({
-              orderId: id,
-              expectedVersion,
-              reasonCode: payloadResult.data.reasonCode,
-              actorType: "admin",
-              actorId: actorKey,
-              requestId,
-              idempotencyKey,
-              adminNote: payloadResult.data.adminNote,
-            });
-
-            await archiveOrderHistoryByOrderId({
-              orderId: id,
-              source: "admin",
-              requestId,
-            });
-
-            return actionResult;
-          },
+          orderId: id,
+          expectedVersion,
+          action: "CANCEL",
+          reasonCode: payloadResult.data.reasonCode,
+          actorType: "admin",
+          actorId: actorKey,
+          requestId,
+          idempotencyKey,
+          adminNote: payloadResult.data.adminNote,
         });
 
         return NextResponse.json(result.body, { status: result.status });

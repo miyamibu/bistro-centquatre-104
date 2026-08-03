@@ -2,11 +2,22 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { createHmac } from "node:crypto";
 
-// Top-level mock so Vitest can hoist it properly.
+const webhookMocks = vi.hoisted(() => ({
+  lineFriendUpsert: vi.fn(),
+  inboxCreate: vi.fn(),
+  inboxFindUnique: vi.fn(),
+  inboxUpdateMany: vi.fn(),
+}));
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     lineFriend: {
-      upsert: vi.fn().mockResolvedValue({}),
+      upsert: webhookMocks.lineFriendUpsert,
+    },
+    lineWebhookInbox: {
+      create: webhookMocks.inboxCreate,
+      findUnique: webhookMocks.inboxFindUnique,
+      updateMany: webhookMocks.inboxUpdateMany,
     },
   },
 }));
@@ -15,10 +26,23 @@ const originalEnv = { ...process.env };
 const SECRET = "test-line-channel-secret";
 const VALID_UID = "U" + "0".repeat(32);
 
+function resetWebhookMocks() {
+  webhookMocks.lineFriendUpsert.mockReset();
+  webhookMocks.lineFriendUpsert.mockResolvedValue({});
+  webhookMocks.inboxCreate.mockReset();
+  webhookMocks.inboxCreate.mockResolvedValue({ id: "inbox-1", status: "PENDING" });
+  webhookMocks.inboxFindUnique.mockReset();
+  webhookMocks.inboxFindUnique.mockResolvedValue({ id: "inbox-1", status: "PENDING" });
+  webhookMocks.inboxUpdateMany.mockReset();
+  webhookMocks.inboxUpdateMany.mockResolvedValue({ count: 1 });
+}
+
+resetWebhookMocks();
+
 afterEach(() => {
   vi.resetModules();
   process.env = { ...originalEnv };
-  vi.clearAllMocks();
+  resetWebhookMocks();
 });
 
 async function loadWebhook() {
@@ -44,17 +68,20 @@ function sign(body: string, secret: string): string {
   return createHmac("sha256", secret).update(body, "utf8").digest("base64");
 }
 
-async function getUpsertMock() {
-  const { prisma } = await import("@/lib/prisma");
-  return prisma.lineFriend.upsert as ReturnType<typeof vi.fn>;
+function event(type: string, webhookEventId: string, withUser = true) {
+  return {
+    type,
+    webhookEventId,
+    ...(withUser ? { source: { type: "user", userId: VALID_UID } } : {}),
+  };
 }
 
 describe("/api/line/webhook", () => {
-  it("returns 200 for a correctly signed body", async () => {
+  it("returns 200 for a correctly signed body with no events", async () => {
     const { POST } = await loadWebhook();
     const body = JSON.stringify({ destination: "U0", events: [] });
-    const signature = sign(body, SECRET);
-    const response = await POST(signedRequest(body, signature));
+    const response = await POST(signedRequest(body, sign(body, SECRET)));
+
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ ok: true });
   });
@@ -62,11 +89,10 @@ describe("/api/line/webhook", () => {
   it("returns 401 for an invalid signature", async () => {
     const { POST } = await loadWebhook();
     const body = JSON.stringify({ destination: "U0", events: [] });
-    const signature = sign(body, "wrong-secret");
-    const response = await POST(signedRequest(body, signature));
+    const response = await POST(signedRequest(body, sign(body, "wrong-secret")));
+
     expect(response.status).toBe(401);
-    const json = await response.json();
-    expect(json.code).toBe("LINE_SIGNATURE_INVALID");
+    await expect(response.json()).resolves.toMatchObject({ code: "LINE_SIGNATURE_INVALID" });
   });
 
   it("returns 401 when signature header is missing", async () => {
@@ -76,8 +102,8 @@ describe("/api/line/webhook", () => {
       headers: { "content-type": "application/json" },
       body: "{}",
     });
-    const response = await POST(request);
-    expect(response.status).toBe(401);
+
+    expect((await POST(request)).status).toBe(401);
   });
 
   it("returns 503 when LINE_CHANNEL_SECRET is not configured", async () => {
@@ -86,49 +112,112 @@ describe("/api/line/webhook", () => {
     process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role";
     delete process.env.LINE_CHANNEL_SECRET;
     const { POST } = await import("@/app/api/line/webhook/route");
-    const response = await POST(signedRequest("{}", "sig"));
-    expect(response.status).toBe(503);
+
+    expect((await POST(signedRequest("{}", "sig"))).status).toBe(503);
   });
 
-  it("returns 200 and calls upsert FRIEND on follow event", async () => {
+  it("stores the event before handling follow and marks it processed", async () => {
     const { POST } = await loadWebhook();
-    const upsertMock = await getUpsertMock();
+    const body = JSON.stringify({ destination: "U0", events: [event("follow", "evt-follow")] });
+    const response = await POST(signedRequest(body, sign(body, SECRET)));
 
-    const body = JSON.stringify({
-      destination: "U0",
-      events: [{ type: "follow", source: { type: "user", userId: VALID_UID } }],
-    });
-    const signature = sign(body, SECRET);
-    const response = await POST(signedRequest(body, signature));
     expect(response.status).toBe(200);
-    expect(upsertMock).toHaveBeenCalledOnce();
-    const call = upsertMock.mock.calls[0][0] as { create: { friendshipStatus: string }; update: { friendshipStatus: string } };
-    expect(call.create.friendshipStatus).toBe("FRIEND");
-    expect(call.update.friendshipStatus).toBe("FRIEND");
+    expect(webhookMocks.inboxCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ eventId: "evt-follow", eventType: "follow" }),
+      })
+    );
+    expect(webhookMocks.lineFriendUpsert).toHaveBeenCalledOnce();
+    expect(webhookMocks.inboxCreate.mock.invocationCallOrder[0]).toBeLessThan(
+      webhookMocks.lineFriendUpsert.mock.invocationCallOrder[0]
+    );
+    expect(webhookMocks.inboxUpdateMany).toHaveBeenCalledTimes(2);
+    expect(webhookMocks.inboxUpdateMany.mock.calls[1][0]).toEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "PROCESSED" }),
+      })
+    );
   });
 
-  it("returns 200 and calls upsert BLOCKED on unfollow event", async () => {
+  it("handles unfollow as BLOCKED", async () => {
     const { POST } = await loadWebhook();
-    const upsertMock = await getUpsertMock();
+    const body = JSON.stringify({ destination: "U0", events: [event("unfollow", "evt-unfollow")] });
+    const response = await POST(signedRequest(body, sign(body, SECRET)));
 
-    const body = JSON.stringify({
-      destination: "U0",
-      events: [{ type: "unfollow", source: { type: "user", userId: VALID_UID } }],
-    });
-    const signature = sign(body, SECRET);
-    const response = await POST(signedRequest(body, signature));
     expect(response.status).toBe(200);
-    expect(upsertMock).toHaveBeenCalledOnce();
-    const call = upsertMock.mock.calls[0][0] as { create: { friendshipStatus: string }; update: { friendshipStatus: string } };
+    const call = webhookMocks.lineFriendUpsert.mock.calls[0][0] as {
+      create: { friendshipStatus: string };
+      update: { friendshipStatus: string };
+    };
     expect(call.create.friendshipStatus).toBe("BLOCKED");
     expect(call.update.friendshipStatus).toBe("BLOCKED");
+  });
+
+  it("returns 400 for a signed event without webhookEventId", async () => {
+    const { POST } = await loadWebhook();
+    const body = JSON.stringify({
+      destination: "U0",
+      events: [{ type: "follow", source: { userId: VALID_UID } }],
+    });
+    const response = await POST(signedRequest(body, sign(body, SECRET)));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "LINE_WEBHOOK_EVENT_ID_REQUIRED",
+    });
+    expect(webhookMocks.inboxCreate).not.toHaveBeenCalled();
+  });
+
+  it("returns 200 without rerunning a processed duplicate event", async () => {
+    webhookMocks.inboxCreate.mockRejectedValue({ code: "P2002" });
+    webhookMocks.inboxFindUnique.mockResolvedValue({ id: "inbox-1", status: "PROCESSED" });
+
+    const { POST } = await loadWebhook();
+    const body = JSON.stringify({ destination: "U0", events: [event("follow", "evt-duplicate")] });
+    const response = await POST(signedRequest(body, sign(body, SECRET)));
+
+    expect(response.status).toBe(200);
+    expect(webhookMocks.lineFriendUpsert).not.toHaveBeenCalled();
+    expect(webhookMocks.inboxUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("returns retryable 503 when inbox persistence fails", async () => {
+    webhookMocks.inboxCreate.mockRejectedValue(new Error("database unavailable"));
+
+    const { POST } = await loadWebhook();
+    const body = JSON.stringify({ destination: "U0", events: [event("follow", "evt-db-failure")] });
+    const response = await POST(signedRequest(body, sign(body, SECRET)));
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({ code: "LINE_WEBHOOK_RETRY" });
+    expect(webhookMocks.lineFriendUpsert).not.toHaveBeenCalled();
+  });
+
+  it("returns retryable 503 when one handler fails and still attempts later events", async () => {
+    webhookMocks.lineFriendUpsert.mockRejectedValueOnce(new Error("handler failed"));
+
+    const { POST } = await loadWebhook();
+    const body = JSON.stringify({
+      destination: "U0",
+      events: [event("follow", "evt-partial-1"), event("unfollow", "evt-partial-2")],
+    });
+    const response = await POST(signedRequest(body, sign(body, SECRET)));
+
+    expect(response.status).toBe(503);
+    expect(webhookMocks.lineFriendUpsert).toHaveBeenCalledTimes(2);
+    expect(webhookMocks.inboxUpdateMany).toHaveBeenCalledTimes(4);
+    expect(webhookMocks.inboxUpdateMany.mock.calls[1][0]).toEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "FAILED", lastError: "PROCESSING_FAILED" }),
+      })
+    );
   });
 
   it("returns 400 when a signed body is malformed JSON", async () => {
     const { POST } = await loadWebhook();
     const body = "not-json-at-all";
-    const signature = sign(body, SECRET);
-    const response = await POST(signedRequest(body, signature));
+    const response = await POST(signedRequest(body, sign(body, SECRET)));
+
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
       code: "LINE_WEBHOOK_MALFORMED_JSON",
@@ -138,39 +227,31 @@ describe("/api/line/webhook", () => {
   it("returns 413 before processing an oversized body", async () => {
     const { POST } = await loadWebhook();
     const body = JSON.stringify({ destination: "U0", events: [] });
-    const signature = sign(body, SECRET);
     const request = new NextRequest("http://localhost:3000/api/line/webhook", {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-line-signature": signature,
+        "x-line-signature": sign(body, SECRET),
         "content-length": String(129 * 1024),
       },
       body,
     });
 
-    const response = await POST(request);
-    expect(response.status).toBe(413);
-    await expect(response.json()).resolves.toMatchObject({
-      code: "LINE_WEBHOOK_BODY_TOO_LARGE",
-    });
+    expect((await POST(request)).status).toBe(413);
+    expect(webhookMocks.inboxCreate).not.toHaveBeenCalled();
   });
 
-  it("does not log the userId into console output on follow event", async () => {
+  it("does not log the userId into console output", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
 
     const { POST } = await loadWebhook();
-    const body = JSON.stringify({
-      destination: "U0",
-      events: [{ type: "follow", source: { userId: VALID_UID } }],
-    });
-    const signature = sign(body, SECRET);
-    await POST(signedRequest(body, signature));
+    const body = JSON.stringify({ destination: "U0", events: [event("follow", "evt-log")] });
+    await POST(signedRequest(body, sign(body, SECRET)));
 
     const allOutput = [...logSpy.mock.calls, ...infoSpy.mock.calls]
       .flat()
-      .map((v) => (typeof v === "string" ? v : JSON.stringify(v)))
+      .map((value) => (typeof value === "string" ? value : JSON.stringify(value)))
       .join("\n");
 
     expect(allOutput).not.toContain(VALID_UID);

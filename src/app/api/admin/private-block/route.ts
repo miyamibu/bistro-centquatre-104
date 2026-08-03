@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma, ReservationStatus, ReservationType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { isAuthorized } from "@/lib/basic-auth";
+import { getStaffAuth } from "@/lib/staff-auth";
 import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
 import { getRequestId, logError, logInfo } from "@/lib/logger";
 import { createPrivateBlockAuditLog } from "@/lib/private-block-audit";
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
   const requestId = getRequestId(request);
   const route = "/api/admin/private-block";
 
-  if (!isAuthorized(request)) {
+  if (!(await getStaffAuth("ADMIN"))) {
     return apiError(401, { error: "Unauthorized", code: "UNAUTHORIZED", requestId });
   }
 
@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
             date,
             servicePeriod,
             result: "NO_OP",
-            source: "ADMIN_SHARED_BASIC",
+            source: "ADMIN_USER",
             requestId,
             note: normalizedNote ?? null,
           });
@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
           date,
           servicePeriod,
           result: "CREATED",
-          source: "ADMIN_SHARED_BASIC",
+          source: "ADMIN_USER",
           requestId,
           note: normalizedNote ?? null,
         });

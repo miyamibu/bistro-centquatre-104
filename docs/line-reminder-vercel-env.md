@@ -45,6 +45,10 @@
 | `LINE_MONTHLY_REMINDER_LIMIT` | 設定値 | 月間送信上限（省略時 200） | Production + Preview |
 | `LINE_MONTHLY_REMINDER_WARN_THRESHOLD` | 設定値 | 月間警告閾値（省略時 180） | Production + Preview |
 
+加えて、予約発行tokenの生値をDBへ保存せず冪等再送で再生成するため、共通必須secret
+`RESERVATION_TOKEN_SECRET`（32文字以上）をProduction + Preview + Developmentへ設定する。
+これはLINE専用8項目の件数には含めない。
+
 **LINE Developers Console で各 LIFF の設定値**:
 - `NEXT_PUBLIC_LIFF_BOOKING_ID`: Booking LIFF の ID（Endpoint URL: `https://本番ドメイン/booking`）
 - `NEXT_PUBLIC_LIFF_LINK_ID`: Link LIFF の ID（Endpoint URL: `https://本番ドメイン/line/link`）

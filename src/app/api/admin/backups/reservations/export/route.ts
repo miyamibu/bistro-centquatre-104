@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const MAX_EXPORT_RANGE_DAYS = 31;
-const BACKUP_SCHEMA_VERSION = 1;
+const BACKUP_SCHEMA_VERSION = 2;
 const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
 
 const exportQuerySchema = z
@@ -236,6 +236,33 @@ export async function GET(request: NextRequest) {
       }),
     ]);
 
+    const reservationIds = reservations.map((row) => row.id);
+    const relatedRows =
+      reservationIds.length === 0
+        ? null
+        : await Promise.all([
+            prisma.reservationStatusAuditLog.findMany({
+              where: { reservationId: { in: reservationIds } },
+              orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+            }),
+            prisma.reservationEmailOutbox.findMany({
+              where: { reservationId: { in: reservationIds } },
+              orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+            }),
+            prisma.reservationLineLinkToken.findMany({
+              where: { reservationId: { in: reservationIds } },
+              orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+            }),
+            prisma.notificationEvent.findMany({
+              where: { reservationId: { in: reservationIds } },
+              orderBy: [{ targetDate: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+            }),
+          ]);
+    const reservationStatusAuditLogs = relatedRows?.[0] ?? [];
+    const reservationEmailOutbox = relatedRows?.[1] ?? [];
+    const reservationLineLinkTokens = relatedRows?.[2] ?? [];
+    const notificationEvents = relatedRows?.[3] ?? [];
+
     const payload = {
       schemaVersion: BACKUP_SCHEMA_VERSION,
       generatedAt: new Date().toISOString(),
@@ -244,6 +271,10 @@ export async function GET(request: NextRequest) {
         businessDays: businessDays.length,
         reservations: reservations.length,
         privateBlockAuditLogs: privateBlockAuditLogs.length,
+        reservationStatusAuditLogs: reservationStatusAuditLogs.length,
+        reservationEmailOutbox: reservationEmailOutbox.length,
+        reservationLineLinkTokens: reservationLineLinkTokens.length,
+        notificationEvents: notificationEvents.length,
       },
       businessDays: businessDays.map((row) => ({
         id: row.id,
@@ -261,12 +292,27 @@ export async function GET(request: NextRequest) {
         arrivalTime: row.arrivalTime,
         name: row.name,
         phone: row.phone,
+        customerEmail: row.customerEmail,
+        customerEmailVerifiedAt: row.customerEmailVerifiedAt?.toISOString() ?? null,
+        contactChannel: row.contactChannel,
         note: row.note,
         status: row.status,
-        // lineUserId is a LINE personal identifier. This export is for operational
-        // recovery only and must be encrypted at rest, access-controlled, and never
-        // shared externally. If used for audit/analytics, replace with an HMAC hash.
+        cancellationPolicyVersion: row.cancellationPolicyVersion,
+        cancellationPolicyAcceptedAt: row.cancellationPolicyAcceptedAt?.toISOString() ?? null,
+        cancelledAt: row.cancelledAt?.toISOString() ?? null,
+        cancelSource: row.cancelSource,
+        cancellationReason: row.cancellationReason,
         lineUserId: row.lineUserId,
+        lineReminderSentAt: row.lineReminderSentAt?.toISOString() ?? null,
+        lineReminderStatus: row.lineReminderStatus,
+        lineReminderError: row.lineReminderError,
+        lineClaimTokenHash: row.lineClaimTokenHash,
+        lineClaimExpiresAt: row.lineClaimExpiresAt?.toISOString() ?? null,
+        lineConfirmationSentAt: row.lineConfirmationSentAt?.toISOString() ?? null,
+        lineLinkedAt: row.lineLinkedAt?.toISOString() ?? null,
+        lineLinkSource: row.lineLinkSource,
+        linePushStatus: row.linePushStatus,
+        linePushCheckedAt: row.linePushCheckedAt?.toISOString() ?? null,
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString(),
       })),
@@ -284,14 +330,71 @@ export async function GET(request: NextRequest) {
         note: row.note,
         createdAt: row.createdAt.toISOString(),
       })),
+      reservationStatusAuditLogs: reservationStatusAuditLogs.map((row) => ({
+        id: row.id,
+        reservationId: row.reservationId,
+        actorName: row.actorName,
+        requestId: row.requestId,
+        ipAddress: row.ipAddress,
+        userAgent: row.userAgent,
+        previousStatus: row.previousStatus,
+        nextStatus: row.nextStatus,
+        reason: row.reason,
+        createdAt: row.createdAt.toISOString(),
+      })),
+      reservationEmailOutbox: reservationEmailOutbox.map((row) => ({
+        id: row.id,
+        reservationId: row.reservationId,
+        notificationType: row.notificationType,
+        status: row.status,
+        attempts: row.attempts,
+        maxAttempts: row.maxAttempts,
+        nextAttemptAt: row.nextAttemptAt?.toISOString() ?? null,
+        claimedAt: row.claimedAt?.toISOString() ?? null,
+        lockedUntil: row.lockedUntil?.toISOString() ?? null,
+        // claimToken is a live worker credential and is intentionally excluded.
+        sentAt: row.sentAt?.toISOString() ?? null,
+        lastError: row.lastError,
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+      })),
+      reservationLineLinkTokens: reservationLineLinkTokens.map((row) => ({
+        id: row.id,
+        reservationId: row.reservationId,
+        // Only the one-way hash is recoverable; a reusable raw token is never exported.
+        tokenHash: row.tokenHash,
+        keyId: row.keyId,
+        expiresAt: row.expiresAt.toISOString(),
+        usedAt: row.usedAt?.toISOString() ?? null,
+        createdAt: row.createdAt.toISOString(),
+      })),
+      notificationEvents: notificationEvents.map((row) => ({
+        id: row.id,
+        reservationId: row.reservationId,
+        channel: row.channel,
+        type: row.type,
+        targetDate: row.targetDate,
+        status: row.status,
+        retryKey: row.retryKey,
+        claimedAt: row.claimedAt?.toISOString() ?? null,
+        sentAt: row.sentAt?.toISOString() ?? null,
+        error: row.error,
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+      })),
     };
 
     const checksumSource = JSON.stringify({
       schemaVersion: payload.schemaVersion,
       range: payload.range,
+      counts: payload.counts,
       businessDays: payload.businessDays,
       reservations: payload.reservations,
       privateBlockAuditLogs: payload.privateBlockAuditLogs,
+      reservationStatusAuditLogs: payload.reservationStatusAuditLogs,
+      reservationEmailOutbox: payload.reservationEmailOutbox,
+      reservationLineLinkTokens: payload.reservationLineLinkTokens,
+      notificationEvents: payload.notificationEvents,
     });
 
     const checksumSha256 = createHash("sha256").update(checksumSource).digest("hex");
@@ -306,6 +409,10 @@ export async function GET(request: NextRequest) {
         reservationCount: payload.counts.reservations,
         businessDayCount: payload.counts.businessDays,
         privateBlockAuditLogCount: payload.counts.privateBlockAuditLogs,
+        reservationStatusAuditLogCount: payload.counts.reservationStatusAuditLogs,
+        reservationEmailOutboxCount: payload.counts.reservationEmailOutbox,
+        reservationLineLinkTokenCount: payload.counts.reservationLineLinkTokens,
+        notificationEventCount: payload.counts.notificationEvents,
       },
     });
 

@@ -11,6 +11,7 @@ import {
 } from "@/lib/admin-operating-status";
 import { formatJst } from "@/lib/dates";
 import { parseReservationNote } from "@/lib/reservation-note";
+import { getReservationStatusLabel } from "@/lib/reservation-labels";
 import {
   isReservationSchemaNotReadyError,
 } from "@/lib/reservation-compat";
@@ -186,15 +187,8 @@ export default async function AdminReservations({
       name: reservation.name,
       phone: reservation.phone,
       note,
-      isCancelled: reservation.status === ReservationStatus.CANCELLED,
-      statusLabel:
-        reservation.status === ReservationStatus.DONE
-          ? "来店済み"
-          : reservation.status === ReservationStatus.NOSHOW
-          ? "無断キャンセル"
-          : reservation.status === ReservationStatus.CANCELLED
-          ? "キャンセル"
-          : "確定",
+      canCancel: reservation.status === ReservationStatus.CONFIRMED,
+      statusLabel: getReservationStatusLabel(reservation.status),
       lineStatus: buildLineStatus(reservation),
       lineReminderError: reservation.lineReminderError ?? null,
     };

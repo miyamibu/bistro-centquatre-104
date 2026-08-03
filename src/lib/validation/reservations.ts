@@ -14,6 +14,7 @@ export const createReservationSchema = z.object({
     .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "HH:mm形式で入力してください"),
   name: z.string().trim().min(1, "氏名は必須です").max(80),
   phone: z.string().trim().min(6, "電話番号は必須です").max(32),
+  customerEmail: z.string().trim().email("メールアドレスの形式が不正です").max(254).optional(),
   note: z.string().max(2000).optional(),
   // クライアントから lineUserId を直接保存しない。後方互換のため受け取っても無視する。
   lineUserId: z.unknown().optional(),

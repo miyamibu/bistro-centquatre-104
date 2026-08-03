@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getDefaultArrivalTimeForCourse,
+  getPrivateBlockMarkerAriaLabel,
   getPrivateBlockMarkerText,
   getReservationSlotGroups,
   inferReservationServicePeriodFromArrivalTime,
@@ -62,6 +63,7 @@ interface SubmittedReservationSummary {
   course: string;
   name: string;
   phone: string;
+  customerEmail: string;
 }
 
 interface LineNotificationResponse {
@@ -80,6 +82,7 @@ const reservationFieldLabels: Record<string, string> = {
   lastName: "姓",
   firstName: "名",
   phone: "電話番号",
+  customerEmail: "メールアドレス",
   note: "要望",
   root: "予約内容",
 };
@@ -121,6 +124,7 @@ const reservationFieldTargetIds: Record<string, string> = {
   lastName: "last-name",
   firstName: "first-name",
   phone: "phone",
+  customerEmail: "customer-email",
   note: "note",
 };
 
@@ -152,6 +156,20 @@ const nonSelectableReasons = new Set([
 const servicePeriods: ReservationServicePeriodKey[] = ["LUNCH", "DINNER"];
 const LIFF_OPERATION_TIMEOUT_MS = 10_000;
 const AVAILABILITY_REQUEST_TIMEOUT_MS = 10_000;
+
+function createReservationIdempotencyKey() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+
+  throw new Error("Secure browser randomness is unavailable");
+}
 
 function isAbortError(error: unknown) {
   return error instanceof DOMException && error.name === "AbortError";
@@ -243,6 +261,7 @@ export function ReserveForm({
     lastName: "",
     firstName: "",
     phone: "",
+    customerEmail: "",
     note: "",
   });
   const [availability, setAvailability] = useState<AvailabilityState>(
@@ -253,6 +272,8 @@ export function ReserveForm({
   );
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
+  // Keep the same key across timeout/network retries until the reservation is confirmed.
+  const reservationIdempotencyKeyRef = useRef<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -261,6 +282,7 @@ export function ReserveForm({
     useState<SubmittedReservationSummary | null>(null);
   const [lineNotification, setLineNotification] =
     useState<LineNotificationResponse | null>(null);
+  const [managementUrl, setManagementUrl] = useState<string | null>(null);
   // LIFF ID token は予約送信時にだけ使う。localStorage 等には保存しない。
   const lineIdTokenRef = useRef<string | null>(null);
   const [lineLinkStatus, setLineLinkStatus] = useState<
@@ -668,6 +690,7 @@ export function ReserveForm({
     setFieldErrors({});
     setResult(null);
     setSubmittedReservation(null);
+    setManagementUrl(null);
 
     const controller = new AbortController();
     const timeoutMs = 20000;
@@ -683,6 +706,7 @@ export function ReserveForm({
         servicePeriod: submittedServicePeriod,
         course: form.course,
         phone: form.phone,
+        customerEmail: form.customerEmail,
         name: fullName,
         lastName: form.lastName,
         firstName: form.firstName,
@@ -693,11 +717,15 @@ export function ReserveForm({
       if (linkedLineIdToken) {
         payload.lineIdToken = linkedLineIdToken;
       }
+      const idempotencyKey =
+        reservationIdempotencyKeyRef.current ?? createReservationIdempotencyKey();
+      reservationIdempotencyKeyRef.current = idempotencyKey;
       const res = await fetch("/api/reservations", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "X-Requested-With": "XMLHttpRequest",
+          "Idempotency-Key": idempotencyKey,
         },
         body: JSON.stringify(payload),
         signal: controller.signal,
@@ -705,15 +733,22 @@ export function ReserveForm({
 
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
+        const confirmedReservationId =
+          typeof data.reservationId === "string" && data.reservationId.trim()
+            ? data.reservationId
+            : null;
+        if (confirmedReservationId) {
+          reservationIdempotencyKeyRef.current = null;
+        }
         setResult(data.summary ?? "ご予約を受け付けました。");
+        if (typeof data.managementUrl === "string" && data.managementUrl.trim()) {
+          setManagementUrl(data.managementUrl);
+        }
         if (data.lineNotification) {
           setLineNotification(data.lineNotification as LineNotificationResponse);
         }
         setSubmittedReservation({
-          reservationId:
-            typeof data.reservationId === "string" && data.reservationId.trim()
-              ? data.reservationId
-              : undefined,
+          reservationId: confirmedReservationId ?? undefined,
           date: form.date,
           servicePeriod: submittedServicePeriod,
           partySize: Number(form.partySize),
@@ -721,6 +756,7 @@ export function ReserveForm({
           course: form.course,
           name: fullName,
           phone: form.phone,
+          customerEmail: form.customerEmail,
         });
         const [nextDaily, nextMonthly] = await Promise.all([
           loadDailyAvailability(form.date, submittedServicePeriod, form.partySize).catch(
@@ -751,6 +787,9 @@ export function ReserveForm({
           `${getJstMonthKey(startOfJstMonth(calendarMonth))}:${form.partySize}`
         );
       } else {
+        if (res.status === 400 || data.code === "IDEMPOTENCY_CONFLICT") {
+          reservationIdempotencyKeyRef.current = null;
+        }
         const parsedFieldErrors = parseReservationFieldErrors(data.fields);
         const apiErrorMessage =
           typeof data.error === "string" && data.error.trim()
@@ -867,6 +906,7 @@ export function ReserveForm({
   const courseFieldError = getReservationFieldError(fieldErrors, "course");
   const nameFieldError = getReservationFieldError(fieldErrors, "name", "lastName", "firstName");
   const phoneFieldError = getReservationFieldError(fieldErrors, "phone");
+  const customerEmailFieldError = getReservationFieldError(fieldErrors, "customerEmail");
   const noteFieldError = getReservationFieldError(fieldErrors, "note");
   const calendarErrorAttributes = dateFieldError ? { "aria-invalid": true } : {};
 
@@ -1131,7 +1171,7 @@ export function ReserveForm({
                       : markerText === "休"
                       ? "休業"
                       : markerText === "夜のみ" || markerText === "昼のみ"
-                      ? `${markerText}のみ予約可`
+                      ? getPrivateBlockMarkerAriaLabel(markerText)
                       : markerText === "終日貸切"
                       ? "終日貸切"
                       : "";
@@ -1334,6 +1374,26 @@ export function ReserveForm({
                 />
                 <InlineFieldError id="reservation-error-phone" message={phoneFieldError} />
               </div>
+            </div>
+
+            <div className="grid" style={{ rowGap: `${fieldLabelGap}px` }}>
+              <Label htmlFor="customer-email">メールアドレス（予約管理リンク送信用）</Label>
+              <Input
+                id="customer-email"
+                value={form.customerEmail}
+                onChange={(e) => updateField("customerEmail", e.target.value)}
+                type="email"
+                autoComplete="email"
+                className="border-black focus:ring-black/20 focus:border-black"
+                style={{ borderRadius: `${formFieldRadius}px` }}
+                aria-invalid={customerEmailFieldError ? true : undefined}
+                aria-describedby={customerEmailFieldError ? "reservation-error-customer-email" : undefined}
+                required
+              />
+              <p className="text-xs leading-5 text-[#6b5644]">
+                予約内容の確認・キャンセルリンクを送ります。入力間違いにご注意ください。
+              </p>
+              <InlineFieldError id="reservation-error-customer-email" message={customerEmailFieldError} />
             </div>
 
             <div className="space-y-2">
@@ -1556,7 +1616,25 @@ export function ReserveForm({
             <p>コース: {submittedReservation.course}</p>
             <p>ご予約名: {submittedReservation.name}</p>
             <p>電話番号: {submittedReservation.phone}</p>
+            <p>管理リンク送信先: {submittedReservation.customerEmail}</p>
           </div>
+          {managementUrl ? (
+            <div className="space-y-2 rounded-md border border-[#cfa96d]/45 bg-white/70 px-3 py-3">
+              <p className="font-semibold text-[#2f1b0f]">
+                予約内容の確認・キャンセル
+              </p>
+              <p className="text-sm leading-6 text-[#6b5644]">
+                下の管理リンクは、予約内容の確認とキャンセルに使えます。リンクは他の方と共有しないでください。
+              </p>
+              <a
+                href={managementUrl}
+                referrerPolicy="no-referrer"
+                className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#7a5528] px-4 py-2 text-sm font-semibold text-white underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7a5528]/40"
+              >
+                予約内容を確認・キャンセルする
+              </a>
+            </div>
+          ) : null}
           {lineNotification?.enabled ? (
             <p className="rounded-md bg-[#e8f7ec] px-3 py-2 text-sm text-[#1a8a3f]">
               LINE前日通知を設定済みです。
@@ -1575,7 +1653,7 @@ export function ReserveForm({
             </div>
           ) : null}
           <div className="space-y-1 text-[#6b5644]">
-            <p>キャンセルや変更はお電話にて承ります。</p>
+            <p>管理リンクが見つからない場合や変更をご希望の場合は、お電話にて承ります。</p>
             <p>
               連絡先:
               <a className="ml-1 underline" href={CONTACT_TEL_LINK}>

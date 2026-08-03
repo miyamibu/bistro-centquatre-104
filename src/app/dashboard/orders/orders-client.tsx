@@ -385,7 +385,11 @@ export function OrdersClient({
           {!showBankForm ? (
             <>
               {bankAccountError ? (
-                <p role="alert" className="mb-4 rounded border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+                <p
+                  role="alert"
+                  aria-live="assertive"
+                  className="mb-4 rounded border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900"
+                >
                   {bankAccountError}
                 </p>
               ) : bankAccount ? (
@@ -539,7 +543,11 @@ export function OrdersClient({
           <h2 className="text-2xl font-semibold text-[#2f1b0f] mb-4">注文一覧</h2>
 
           {ordersError ? (
-            <p role="alert" className="rounded border border-amber-300 bg-amber-50 px-4 py-8 text-center text-sm text-amber-900">
+            <p
+              role="alert"
+              aria-live="assertive"
+              className="rounded border border-amber-300 bg-amber-50 px-4 py-8 text-center text-sm text-amber-900"
+            >
               {ordersError}
             </p>
           ) : orders.length === 0 ? (

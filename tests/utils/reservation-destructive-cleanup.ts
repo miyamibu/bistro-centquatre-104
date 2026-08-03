@@ -23,5 +23,7 @@ export async function clearReservationArtifacts(
   await prisma.$executeRawUnsafe('DELETE FROM "NotificationEvent"');
   await prisma.$executeRawUnsafe('DELETE FROM "ReservationStatusAuditLog"');
   await prisma.$executeRawUnsafe('DELETE FROM "ReservationLineLinkToken"');
+  await prisma.$executeRawUnsafe('DELETE FROM "ReservationManagementToken"');
+  await prisma.$executeRawUnsafe('DELETE FROM "ReservationIdempotency"');
   await prisma.$executeRawUnsafe('DELETE FROM "Reservation"');
 }

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { isAuthorized } from "@/lib/basic-auth";
+import { getStaffAuth } from "@/lib/staff-auth";
 import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
-import { upsertBusinessDaySchema, zodFields } from "@/lib/validation";
+import { dateStringSchema, upsertBusinessDaySchema, zodFields } from "@/lib/validation";
 import { getRequestId, logError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -10,15 +10,25 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const requestId = getRequestId(request);
 
-  if (!isAuthorized(request)) {
+  if (!(await getStaffAuth("ADMIN"))) {
     return apiError(401, { error: "Unauthorized", code: "UNAUTHORIZED", requestId });
   }
 
   try {
     const date = request.nextUrl.searchParams.get("date");
     if (date) {
-      const day = await prisma.businessDay.findUnique({ where: { date } });
-      return NextResponse.json(day ?? { date, isClosed: false });
+      const parsedDate = dateStringSchema.safeParse(date);
+      if (!parsedDate.success) {
+        return apiError(400, {
+          error: "入力内容が不正です",
+          code: "VALIDATION_ERROR",
+          fields: zodFields(parsedDate.error),
+          requestId,
+        });
+      }
+
+      const day = await prisma.businessDay.findUnique({ where: { date: parsedDate.data } });
+      return NextResponse.json(day ?? { date: parsedDate.data, isClosed: false });
     }
     const days = await prisma.businessDay.findMany({ orderBy: { date: "asc" } });
     return NextResponse.json(days);
@@ -40,7 +50,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const requestId = getRequestId(request);
 
-  if (!isAuthorized(request)) {
+  if (!(await getStaffAuth("ADMIN"))) {
     return apiError(401, { error: "Unauthorized", code: "UNAUTHORIZED", requestId });
   }
 
@@ -62,8 +72,8 @@ export async function POST(request: NextRequest) {
     const { date, isClosed, note } = parsed.data;
     const saved = await prisma.businessDay.upsert({
       where: { date },
-      update: { isClosed: !!isClosed, note: note ?? null },
-      create: { date, isClosed: !!isClosed, note: note ?? null },
+      update: { isClosed, note: note ?? null },
+      create: { date, isClosed, note: note ?? null },
     });
 
     return NextResponse.json(saved);

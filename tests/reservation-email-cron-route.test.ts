@@ -16,9 +16,9 @@ vi.mock("@/lib/logger", () => ({
   logError: vi.fn(),
 }));
 
-function request(method: "GET" | "POST", token?: string) {
+function request(method: "GET" | "POST", token?: string, query = "") {
   return new NextRequest(
-    "http://localhost:3000/api/crons/process-reservation-emails",
+    `http://localhost:3000/api/crons/process-reservation-emails${query}`,
     {
       method,
       headers: token ? { authorization: `Bearer ${token}` } : {},
@@ -79,6 +79,28 @@ describe("reservation email outbox cron route", () => {
     const response = await POST(request("POST", "cron-secret"));
 
     expect(response.status).toBe(200);
+  });
+
+  it("forwards bounded batch, deadline, and cursor query parameters", async () => {
+    const { GET } = await import(
+      "@/app/api/crons/process-reservation-emails/route"
+    );
+
+    const response = await GET(
+      request(
+        "GET",
+        "cron-secret",
+        "?batchSize=7&deadlineMs=900&cursor=cursor-token"
+      )
+    );
+
+    expect(response.status).toBe(200);
+    expect(processReservationEmailOutboxMock).toHaveBeenCalledWith({
+      requestId: "request-cron-test",
+      batchSize: 7,
+      deadlineMs: 900,
+      cursor: "cursor-token",
+    });
   });
 
   it("returns 500 when retry or dead-letter work needs operator attention", async () => {

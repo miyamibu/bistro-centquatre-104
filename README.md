@@ -56,17 +56,23 @@ Codex 作業ガイド:
 - `DATABASE_URL`
 - `DIRECT_URL`（Prisma migration用の直接接続。poolerを経由せず、`DATABASE_URL`と同じDBを指す）
 - `TEST_DATABASE_URL`（破壊的DBテスト専用。`DATABASE_URL` と共有しない）
-- `ADMIN_BASIC_USER`, `ADMIN_BASIC_PASS`
 - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
+- `STAFF_SESSION_MAX_AGE_SECONDS`（900〜86400秒。既定8時間）
 - `CRON_SECRET`
 - `BACKUP_EXPORT_SECRET`
 - `RATE_LIMIT_HASH_SECRET`
+- `RESERVATION_TOKEN_KEYS_JSON` + `RESERVATION_TOKEN_ACTIVE_KEY_ID`（推奨。32文字以上の鍵を複数保持）
+  または移行期間のみ `RESERVATION_TOKEN_SECRET`（32文字以上）
 - `PRIVATE_BLOCK_ACCESS_CODE`（公開予約フォームで貸切モードを解放する管理用パスコード）
 - `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY`
 - `CONTACT_PHONE_E164`, `CONTACT_PHONE_DISPLAY`, `CONTACT_MESSAGE`
 
 `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY` は銀行口座履歴専用キーです。  
 他用途 secret へのフォールバックは行わず、未設定時は安全側で失敗します。
+
+予約token鍵輪番は `RESERVATION_TOKEN_KEYS_JSON='{"v1":"旧鍵...","v2":"新鍵..."}'` と
+`RESERVATION_TOKEN_ACTIVE_KEY_ID=v2` で設定します。旧鍵は既存の管理リンク有効期間
+（現在180日）が終わるまで保持し、期限経過後にだけ保管庫から廃棄します。
 
 ローカルで `npm run build` まで通したい場合は、`.env.local.example` を `.env.local` にコピーして最低限の値を埋めてください。  
 本番 secret をローカルに複製する必要はありませんが、`DATABASE_URL` や Supabase URL などは形式が正しい値が必要です。
@@ -82,22 +88,23 @@ Codex 作業ガイド:
 
 ## 認証・保護範囲
 
-### Basic 認証（middleware）
+### Supabase Auth（個別スタッフ・RBAC・MFA）
 
-以下パスは Basic 認証で保護されます。
+以下パスはSupabase Authの個別セッションで保護されます。
 
 - `/admin/:path*`
 - `/dashboard/:path*`
 - `/api/admin/:path*`
 - `/api/dashboard/:path*`
 
-将来互換メモ（Next 16）: `middleware.ts` が `proxy.ts` へ改称される場合も、
-Basic 認証ロジックは `src/lib/basic-auth.ts` を共通利用し、認証判定の実装差分を出さない方針です。
+Supabase Authユーザーの `app_metadata.role` に `STAFF` または `ADMIN` を設定し、
+TOTP MFAを登録してください。管理APIはサーバー側でもroleと `aal2` を再検証します。
+`ADMIN` のみ営業日・貸切・口座情報などの管理者操作を実行できます。
+`STAFF_SESSION_MAX_AGE_SECONDS` を超えたセッションは再ログインが必要です。
 
-Basic認証の401応答はキャッシュさせません。認証失敗を監査ログへ記録する場合も、
-資格情報や入力ユーザー名を残してはいけません。
-サーバーレス環境ではプロセスローカルな回数カウンターをブルートフォース防御として扱えないため、
-本番ではVercel Firewall/WAFまたは共有・永続型のレート制限を別途設定し、監査ログと合わせて検証してください。
+初回ユーザー作成・招待はSupabase公式画面で行い、既存ユーザーへのrole付与だけを
+`npm run staff:provision -- --email=<登録済みメール> --role=STAFF` で実施できます。
+パスワードやMFA秘密値はスクリプトやリポジトリに渡しません。
 
 ### Cron 認証（Bearer）
 
@@ -106,6 +113,8 @@ cron API は `Authorization: Bearer $CRON_SECRET` で保護されます。
 - `/api/crons/remind`
 - `/api/crons/cancel-expired-orders`
 - `/api/crons/delete-old-histories`
+- `/api/crons/process-order-notifications`
+- `/api/crons/process-reservation-emails`
 - `/api/cron/remind`（旧互換。内部で `/api/crons/remind` に委譲）
 
 実行メソッドは `POST` を正とします。`GET` は Vercel Cron 互換のため、
@@ -116,6 +125,20 @@ cron API は `Authorization: Bearer $CRON_SECRET` で保護されます。
 - `cancel-expired-orders`: 1回実行あたり最大 200 件（`STATUS_FETCH_LIMIT=50` を反復）
 - `delete-old-histories`: 1回実行あたり最大 1000 件（200件バッチ削除）
 
+`vercel.json` の本番cron scheduleは次のとおりです。
+
+| Endpoint | Schedule | 備考 |
+| --- | --- | --- |
+| `/api/crons/cancel-expired-orders` | `0 0 * * *` | 期限切れ注文を処理 |
+| `/api/crons/delete-old-histories` | `0 1 * * *` | 古い注文履歴をバッチ処理 |
+| `/api/crons/process-order-notifications` | `0 2 * * *` | 注文通知outboxを処理 |
+| `/api/crons/process-reservation-emails` | `*/5 * * * *` | 5分ごと。Vercel Pro相当のcron実行条件が必要 |
+| `/api/crons/remind` | `0 3 * * *` | 予約リマインド |
+
+5分cronを有効にする場合は、release check実行時に `VERCEL_PLAN=pro` を指定してください。
+`hobby` は失敗扱い、未指定はlocal/previewでは警告、productionでは失敗扱いです。
+Vercel側の実プランとProduction環境変数は、デプロイ前に管理画面で確認してください。
+
 ## API 防御方針（CORS/CSRF）
 
 書き込み API では共通防御 `src/lib/api-security.ts` を適用しています。
@@ -124,6 +147,7 @@ cron API は `Authorization: Bearer $CRON_SECRET` で保護されます。
 - `Origin` ヘッダーが必須で、同一オリジン（`request.nextUrl.origin` / `BASE_URL`）であること
 - `Sec-Fetch-Site: cross-site` を拒否
 - `X-Requested-With: XMLHttpRequest` は既定で必須
+- `POST /api/reservations` は `Idempotency-Key` と同一bodyの再送を要求し、異なるbodyの同一keyを拒否する
 - `POST /api/reservations` も同一オリジンのブラウザ予約フォームからのみ受け付ける
 - AIエージェントの直接予約完了はlaunch-disabledで、`/booking?mode=agent` のhandoffのみを公開する
 
@@ -151,6 +175,8 @@ cron API は `Authorization: Bearer $CRON_SECRET` で保護されます。
 - `POST /api/crons/remind`
 - `POST /api/crons/cancel-expired-orders`
 - `POST /api/crons/delete-old-histories`
+- `POST /api/crons/process-order-notifications`
+- `POST /api/crons/process-reservation-emails`
 - `POST /api/pdf-to-image`
 
 ## エラーレスポンス形式
@@ -177,7 +203,7 @@ cron API は `Authorization: Bearer $CRON_SECRET` で保護されます。
 - Web予約可能時間はランチ `11:30-12:30`、ディナー `17:30-19:30`
 - 営業時間はランチ `11:30-14:00`、ディナー `17:30-22:00`（L.O. `21:00`）
 - 店頭支払い（`cash-store`）の来店日は 木〜日かつ 注文日+14〜30日
-- 顧客の自己キャンセル/変更 UI は未実装。連絡導線（電話）で運用
+- 予約完了画面または確認メールの管理リンクから、来店時刻の24時間前まで無料キャンセル可能。期限後の変更・キャンセルは電話で受付。現在、キャンセル料の設定・自動請求はなし
 - `SHIPPED` / `CANCELLED` 到達時は `order_history` に終端スナップショットを archive する
 - 問い合わせ/注文確認メールは fail-close。配信失敗時は API がエラーを返し、成功扱いにしない
 
@@ -227,6 +253,7 @@ npx prisma migrate status
 ```bash
 npm run check:release
 npm run lint
+npm run typecheck
 npm run test
 npm run build
 ```
@@ -234,15 +261,24 @@ npm run build
 破壊的DBテストを含める場合:
 
 ```bash
-TEST_DATABASE_URL=postgresql://user:password@127.0.0.1:5432/bistro_test npx vitest run tests/*-db.test.ts
+TEST_DATABASE_URL=postgresql://user:password@127.0.0.1:5432/bistro_test ALLOW_DESTRUCTIVE_TEST_DB=1 npm run test:db
 ```
+
+`npm run test:db` は `TEST_DATABASE_URL` が未設定なら実行せず成功終了し、
+localhost/127.0.0.1 の `*_test` DB以外は拒否します。DBテスト本体を直接呼び出す
+`npm run test:db:runner` は安全確認を迂回するため、通常の検証では使用しません。
 
 ## バックアップ保護
 
 - 予約バックアップの既定保存先はリポジトリ内ではなく、OSごとのユーザーデータ領域です。
 - 標準の保存先: `backups/reservation-daily-backups`
 - 必要なら `BACKUP_OUTPUT_DIR` で上書きできます。
-- バックアップJSONは個人情報を含むため、Gitには含めない運用です。
+- 新規の予約payloadはアプリ層のAES-256-GCMで暗号化し、`*.json.enc` として保存します。
+  復号鍵は `BACKUP_ENCRYPTION_KEYS_JSON` + `BACKUP_ENCRYPTION_ACTIVE_KEY_ID`（または移行用の
+  `BACKUP_ENCRYPTION_KEY`）から取得し、CLI引数には渡しません。暗号文には鍵IDだけを記録します。
+- `latest-run.json` や `runs/*.json` は件数・checksum等のメタデータのみで、予約payloadを含めません。
+- 月1回 `npm run backup:restore-drill -- --file=<.enc>` を別ディレクトリで実行し、復号・件数・鍵IDを検証します。DBへは書き戻しません。
+- 既存の平文バックアップ `*.json` は変更・削除せず、Gitにも含めない運用を継続します。
 - `npm run backup:workspace:snapshot` を使うと、予約バックアップ実行後に Git bundle を外部ディレクトリへ保存します。
 
 まとめて流す場合は以下でも構いません。
@@ -255,14 +291,15 @@ Preview へ出す前は、ローカル確認に加えて Vercel の `Preview` �
 
 - `DATABASE_URL`
 - `BASE_URL`
-- `ADMIN_BASIC_USER`
-- `ADMIN_BASIC_PASS`
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `STAFF_SESSION_MAX_AGE_SECONDS`
 - `CRON_SECRET`
 - `BACKUP_EXPORT_SECRET`
 - `RATE_LIMIT_HASH_SECRET`
+- token keyring (`RESERVATION_TOKEN_KEYS_JSON` + `RESERVATION_TOKEN_ACTIVE_KEY_ID`, or migration secret)
+- backup keyring (`BACKUP_ENCRYPTION_KEYS_JSON` + `BACKUP_ENCRYPTION_ACTIVE_KEY_ID`, or migration key)
 - `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY`
 
 全て成功してからデプロイしてください。

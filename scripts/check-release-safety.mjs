@@ -17,11 +17,10 @@ if (!supportedModes.has(mode)) {
 const baseRequiredKeys = [
   "DATABASE_URL",
   "BASE_URL",
-  "ADMIN_BASIC_USER",
-  "ADMIN_BASIC_PASS",
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
+  "STAFF_SESSION_MAX_AGE_SECONDS",
   "CRON_SECRET",
   "BACKUP_EXPORT_SECRET",
   "RATE_LIMIT_HASH_SECRET",
@@ -59,6 +58,10 @@ const recommendedKeys = [
   "NEXT_PUBLIC_LIFF_BOOKING_ID",
   "NEXT_PUBLIC_LIFF_LINK_ID",
   "LINE_LINK_TOKEN_PEPPER",
+  "RESERVATION_TOKEN_KEYS_JSON",
+  "RESERVATION_TOKEN_ACTIVE_KEY_ID",
+  "BACKUP_ENCRYPTION_KEYS_JSON",
+  "BACKUP_ENCRYPTION_ACTIVE_KEY_ID",
 ];
 
 const placeholderMarkers = [
@@ -115,6 +118,15 @@ function resolveEnv() {
     ...recommendedKeys,
     "EMAIL_API_KEY",
     "RESEND_API_KEY",
+    "RESERVATION_TOKEN_SECRET",
+    "RESERVATION_TOKEN_KEYS_JSON",
+    "RESERVATION_TOKEN_ACTIVE_KEY_ID",
+    "BACKUP_ENCRYPTION_KEY",
+    "BACKUP_ENCRYPTION_KEY_ID",
+    "BACKUP_ENCRYPTION_KEYS_JSON",
+    "BACKUP_ENCRYPTION_ACTIVE_KEY_ID",
+    "VERCEL_PLAN",
+    "VERCEL_CONFIG_PATH",
   ]);
 
   for (const key of keysToResolve) {
@@ -136,12 +148,42 @@ function isPlaceholder(value) {
   return placeholderMarkers.some((marker) => normalized.includes(marker));
 }
 
-function isValidRateLimitHashSecret(value) {
+function isValidStrongSecret(value) {
   return (
     typeof value === "string" &&
     value.length >= 32 &&
     !/^(change-?me|dummy|test|placeholder|replace-with)/i.test(value)
   );
+}
+
+function validateKeyring(rawKeyring, activeKeyId, label, requireRealValue) {
+  if (!rawKeyring || rawKeyring.trim() === "") return [];
+
+  let parsed;
+  try {
+    parsed = JSON.parse(rawKeyring);
+  } catch {
+    return [`${label} must be valid JSON`];
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return [`${label} must be a JSON object of key id to secret`];
+  }
+
+  const errors = [];
+  const entries = Object.entries(parsed);
+  if (entries.length === 0) errors.push(`${label} must contain at least one key`);
+  if (!activeKeyId || typeof parsed[activeKeyId] !== "string") {
+    errors.push(`${label} active key id must reference a key in ${label}`);
+  }
+  for (const [keyId, secret] of entries) {
+    if (!isValidStrongSecret(secret)) {
+      errors.push(`${label}.${keyId} must be a non-placeholder value of at least 32 characters`);
+    } else if (requireRealValue && isPlaceholder(secret)) {
+      errors.push(`${label}.${keyId} still looks like a placeholder`);
+    }
+  }
+  return errors;
 }
 
 function hasUsableEmailApiKey(value, requireRealValue) {
@@ -197,6 +239,97 @@ function validateEmailConfiguration(envMap, requireCompleteConfiguration) {
   return errors;
 }
 
+function readVercelCronConfig(envMap) {
+  const configPath =
+    envMap.VERCEL_CONFIG_PATH?.trim() || path.join(repoRoot, "vercel.json");
+
+  if (!fs.existsSync(configPath)) {
+    return { configPath: null, highFrequencyCrons: [] };
+  }
+
+  let config;
+  try {
+    config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  } catch (error) {
+    return {
+      configPath,
+      error: `vercel.json could not be parsed: ${error instanceof Error ? error.message : String(error)}`,
+      highFrequencyCrons: [],
+    };
+  }
+
+  if (!config || typeof config !== "object" || Array.isArray(config)) {
+    return {
+      configPath,
+      error: "vercel.json must contain a JSON object",
+      highFrequencyCrons: [],
+    };
+  }
+
+  if (config.crons !== undefined && !Array.isArray(config.crons)) {
+    return {
+      configPath,
+      error: "vercel.json crons must be an array",
+      highFrequencyCrons: [],
+    };
+  }
+
+  const highFrequencyCrons = (config.crons ?? []).filter((entry) => {
+    if (!entry || typeof entry.path !== "string" || typeof entry.schedule !== "string") {
+      return false;
+    }
+
+    const fields = entry.schedule.trim().split(/\s+/);
+    const minuteStep = /^\*\/(\d+)$/.exec(fields[0] ?? "");
+    return (
+      fields.length === 5 &&
+      minuteStep !== null &&
+      Number(minuteStep[1]) > 0 &&
+      Number(minuteStep[1]) <= 5 &&
+      fields.slice(1).every((field) => field === "*")
+    );
+  });
+
+  return { configPath, highFrequencyCrons };
+}
+
+function validateVercelCronPlan(mode, envMap) {
+  const cronConfig = readVercelCronConfig(envMap);
+  if (cronConfig.error) {
+    return [cronConfig.error];
+  }
+
+  if (cronConfig.highFrequencyCrons.length === 0) {
+    return [];
+  }
+
+  const plan = envMap.VERCEL_PLAN?.trim().toLowerCase() ?? "";
+  const cronDescription = cronConfig.highFrequencyCrons
+    .map((entry) => `${entry.path} (${entry.schedule})`)
+    .join(", ");
+
+  if (plan === "pro") {
+    console.log(`Vercel Cron plan check passed: VERCEL_PLAN=pro for ${cronDescription}`);
+    return [];
+  }
+
+  if (plan === "hobby") {
+    return [
+      `Vercel Cron plan is Hobby, but high-frequency cron requires Pro: ${cronDescription}`,
+    ];
+  }
+
+  const message =
+    `Vercel Cron plan is unknown for high-frequency cron: ${cronDescription}. ` +
+    "Set VERCEL_PLAN=pro, or remove the 5-minute cron before production release.";
+  if (mode === "production") {
+    return [message];
+  }
+
+  console.warn(`${message} This is a warning in ${mode} mode.`);
+  return [];
+}
+
 function getGitAuthorEmail() {
   try {
     return execSync("git config user.email", {
@@ -214,16 +347,67 @@ function printSection(title) {
 }
 
 const envMap = resolveEnv();
-const missingRequired = requiredKeys.filter((key) => !envMap[key] || envMap[key].trim() === "");
 const enforceRealSecrets = mode !== "local-build";
+const missingRequired = requiredKeys.filter((key) => !envMap[key] || envMap[key].trim() === "");
+if (
+  (!envMap.RESERVATION_TOKEN_KEYS_JSON || !envMap.RESERVATION_TOKEN_ACTIVE_KEY_ID) &&
+  (!envMap.RESERVATION_TOKEN_SECRET || envMap.RESERVATION_TOKEN_SECRET.trim() === "")
+) {
+  missingRequired.push(
+    "RESERVATION_TOKEN_KEYS_JSON + RESERVATION_TOKEN_ACTIVE_KEY_ID (or RESERVATION_TOKEN_SECRET)",
+  );
+}
+if (
+  (!envMap.BACKUP_ENCRYPTION_KEYS_JSON || !envMap.BACKUP_ENCRYPTION_ACTIVE_KEY_ID) &&
+  (!envMap.BACKUP_ENCRYPTION_KEY || envMap.BACKUP_ENCRYPTION_KEY.trim() === "")
+) {
+  missingRequired.push(
+    "BACKUP_ENCRYPTION_KEYS_JSON + BACKUP_ENCRYPTION_ACTIVE_KEY_ID (or BACKUP_ENCRYPTION_KEY)",
+  );
+}
 const placeholderRequired = enforceRealSecrets
   ? requiredKeys.filter((key) => envMap[key] && isPlaceholder(envMap[key]))
   : [];
 const invalidRequired = [];
-if (enforceRealSecrets && envMap.RATE_LIMIT_HASH_SECRET && !isValidRateLimitHashSecret(envMap.RATE_LIMIT_HASH_SECRET)) {
+if (enforceRealSecrets && envMap.RATE_LIMIT_HASH_SECRET && !isValidStrongSecret(envMap.RATE_LIMIT_HASH_SECRET)) {
   invalidRequired.push("RATE_LIMIT_HASH_SECRET must be a non-placeholder value of at least 32 characters");
 }
+if (
+  enforceRealSecrets &&
+  envMap.RESERVATION_TOKEN_SECRET &&
+  !isValidStrongSecret(envMap.RESERVATION_TOKEN_SECRET)
+) {
+  invalidRequired.push(
+    "RESERVATION_TOKEN_SECRET must be a non-placeholder value of at least 32 characters",
+  );
+}
+if (enforceRealSecrets && envMap.BACKUP_ENCRYPTION_KEY && !isValidStrongSecret(envMap.BACKUP_ENCRYPTION_KEY)) {
+  invalidRequired.push(
+    "BACKUP_ENCRYPTION_KEY must be a non-placeholder value of at least 32 characters",
+  );
+}
+invalidRequired.push(
+  ...validateKeyring(
+    envMap.RESERVATION_TOKEN_KEYS_JSON,
+    envMap.RESERVATION_TOKEN_ACTIVE_KEY_ID,
+    "RESERVATION_TOKEN_KEYS_JSON",
+    enforceRealSecrets,
+  ),
+  ...validateKeyring(
+    envMap.BACKUP_ENCRYPTION_KEYS_JSON,
+    envMap.BACKUP_ENCRYPTION_ACTIVE_KEY_ID,
+    "BACKUP_ENCRYPTION_KEYS_JSON",
+    enforceRealSecrets,
+  ),
+);
+if (enforceRealSecrets && envMap.STAFF_SESSION_MAX_AGE_SECONDS) {
+  const maxAge = Number(envMap.STAFF_SESSION_MAX_AGE_SECONDS);
+  if (!Number.isInteger(maxAge) || maxAge < 900 || maxAge > 86400) {
+    invalidRequired.push("STAFF_SESSION_MAX_AGE_SECONDS must be an integer between 900 and 86400");
+  }
+}
 const emailConfigurationErrors = validateEmailConfiguration(envMap, enforceRealSecrets);
+const vercelCronErrors = validateVercelCronPlan(mode, envMap);
 const missingRecommended = recommendedKeys.filter((key) => !envMap[key] || envMap[key].trim() === "");
 
 printSection(`Release safety check (${mode})`);
@@ -245,6 +429,10 @@ if (invalidRequired.length > 0) {
 
 if (emailConfigurationErrors.length > 0) {
   console.error(`Invalid mail configuration: ${emailConfigurationErrors.join("; ")}`);
+}
+
+if (vercelCronErrors.length > 0) {
+  console.error(`Invalid Vercel Cron plan configuration: ${vercelCronErrors.join("; ")}`);
 }
 
 if (missingRecommended.length > 0) {
@@ -276,7 +464,8 @@ if (
   missingRequired.length > 0 ||
   placeholderRequired.length > 0 ||
   invalidRequired.length > 0 ||
-  emailConfigurationErrors.length > 0
+  emailConfigurationErrors.length > 0 ||
+  vercelCronErrors.length > 0
 ) {
   process.exit(1);
 }

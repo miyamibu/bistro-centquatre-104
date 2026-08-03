@@ -13,6 +13,11 @@ type BackupRunSummary = {
   schemaVersion: number;
   pulledAt: string;
   dryRun: boolean;
+  encryption?: {
+    format?: string;
+    encryptionVersion?: number;
+    algorithm?: string;
+  } | null;
   config?: {
     baseUrl?: string;
     routePath?: string;
@@ -25,6 +30,10 @@ type BackupRunSummary = {
     businessDays?: number;
     reservations?: number;
     privateBlockAuditLogs?: number;
+    reservationStatusAuditLogs?: number;
+    reservationEmailOutbox?: number;
+    reservationLineLinkTokens?: number;
+    notificationEvents?: number;
   };
   chunks?: Array<{
     from: string;
@@ -111,6 +120,7 @@ async function main() {
       baseUrl: latestRun.config?.baseUrl ?? null,
       routePath: latestRun.config?.routePath ?? null,
     },
+    encryption: latestRun.encryption ?? null,
     coverage: {
       from: latestRun.config?.from ?? null,
       to: latestRun.config?.to ?? null,
@@ -121,6 +131,10 @@ async function main() {
       reservations: latestRun.totals?.reservations ?? 0,
       businessDays: latestRun.totals?.businessDays ?? 0,
       privateBlockAuditLogs: latestRun.totals?.privateBlockAuditLogs ?? 0,
+      reservationStatusAuditLogs: latestRun.totals?.reservationStatusAuditLogs ?? 0,
+      reservationEmailOutbox: latestRun.totals?.reservationEmailOutbox ?? 0,
+      reservationLineLinkTokens: latestRun.totals?.reservationLineLinkTokens ?? 0,
+      notificationEvents: latestRun.totals?.notificationEvents ?? 0,
     },
     chunkChecksums: (latestRun.chunks ?? []).map((chunk) => ({
       from: chunk.from,

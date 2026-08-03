@@ -366,7 +366,11 @@ export function AdminDailyJournalClient() {
                     <Send size={18} strokeWidth={1.8} aria-hidden="true" />
                     {isSaving ? "保存中" : "公開する"}
                   </button>
-                  {message ? <p className="text-sm text-[#6b5644]">{message}</p> : null}
+                  {message || isSaving ? (
+                    <p role="status" aria-live="polite" className="text-sm text-[#6b5644]">
+                      {isSaving ? "保存中" : message}
+                    </p>
+                  ) : null}
                 </div>
               </form>
             ) : (

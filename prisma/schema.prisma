@@ -33,6 +33,11 @@ enum ServicePeriod {
   DINNER
 }
 
+enum ReservationContactChannel {
+  EMAIL
+  LINE
+}
+
 enum PrivateBlockAuditResult {
   CREATED
   NO_OP
@@ -41,7 +46,7 @@ enum PrivateBlockAuditResult {
 
 enum PrivateBlockAuditSource {
   PUBLIC_FORM
-  ADMIN_SHARED_BASIC
+  ADMIN_USER
 }
 
 enum DailyJournalStatus {
@@ -53,11 +58,20 @@ enum ReservationEmailOutboxStatus {
   PENDING
   PROCESSING
   SENT
+  SKIPPED
   DEAD_LETTER
 }
 
 enum ReservationEmailNotificationType {
   RESERVATION_CONFIRMATION
+  CUSTOMER_CONFIRMATION
+}
+
+enum LineWebhookInboxStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
 }
 
 model Reservation {
@@ -70,8 +84,16 @@ model Reservation {
   arrivalTime            String?
   name                   String
   phone                  String
+  customerEmail          String?
+  customerEmailVerifiedAt DateTime?
+  contactChannel         ReservationContactChannel?
   note                   String?
   status                 ReservationStatus           @default(CONFIRMED)
+  cancellationPolicyVersion String?
+  cancellationPolicyAcceptedAt DateTime?
+  cancelledAt            DateTime?
+  cancelSource           String?
+  cancellationReason     String?
   lineUserId             String?
   lineReminderSentAt     DateTime?
   lineReminderStatus     String?
@@ -88,8 +110,10 @@ model Reservation {
   privateBlockAuditLogs  PrivateBlockAuditLog[]
   statusAuditLogs        ReservationStatusAuditLog[]
   lineLinkTokens         ReservationLineLinkToken[]
+  managementTokens       ReservationManagementToken[]
   notificationEvents     NotificationEvent[]
   emailOutboxEntries     ReservationEmailOutbox[]
+  idempotencyRecords     ReservationIdempotency[]
 
   @@index([date, servicePeriod])
   @@index([date, servicePeriod, reservationType])
@@ -108,6 +132,8 @@ model ReservationEmailOutbox {
   lockedUntil      DateTime?
   claimToken       String?
   sentAt           DateTime?
+  providerMessageId     String?
+  providerIdempotencyKey String?
   lastError        String?
   createdAt        DateTime                         @default(now())
   updatedAt        DateTime                         @updatedAt
@@ -116,6 +142,22 @@ model ReservationEmailOutbox {
   @@unique([reservationId, notificationType])
   @@index([status, nextAttemptAt])
   @@index([status, lockedUntil])
+  @@index([createdAt])
+}
+
+model ReservationIdempotency {
+  idempotencyKey String       @unique
+  id              String       @id @default(cuid())
+  requestHash     String
+  responseStatus  Int?
+  responseBody    Json?
+  reservationId   String?
+  tokenKeyId      String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  reservation     Reservation? @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+
+  @@index([reservationId])
   @@index([createdAt])
 }
 
@@ -140,8 +182,23 @@ model ReservationLineLinkToken {
   id            String      @id @default(cuid())
   reservationId String
   tokenHash     String      @unique
+  keyId         String      @default("v1")
   expiresAt     DateTime
   usedAt        DateTime?
+  createdAt     DateTime    @default(now())
+  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+
+  @@index([reservationId])
+  @@index([expiresAt])
+}
+
+model ReservationManagementToken {
+  id            String      @id @default(cuid())
+  reservationId String
+  tokenHash     String      @unique
+  keyId         String      @default("v1")
+  expiresAt     DateTime
+  revokedAt     DateTime?
   createdAt     DateTime    @default(now())
   reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Restrict)
 
@@ -159,6 +216,26 @@ model LineFriend {
   updatedAt        DateTime  @updatedAt
 }
 
+model LineWebhookInbox {
+  id          String                 @id @default(cuid())
+  eventId     String                 @unique
+  eventType   String
+  payload     Json
+  status      LineWebhookInboxStatus @default(PENDING)
+  attempts    Int                    @default(0)
+  claimedAt   DateTime?
+  lockedUntil DateTime?
+  claimToken  String?
+  processedAt DateTime?
+  lastError   String?
+  requestId   String?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  @@index([status, lockedUntil])
+  @@index([createdAt])
+}
+
 model NotificationEvent {
   id            String      @id @default(cuid())
   reservationId String
@@ -168,6 +245,7 @@ model NotificationEvent {
   status        String      @default("PENDING")
   retryKey      String      @unique
   claimedAt     DateTime?
+  claimToken    String?
   sentAt        DateTime?
   error         String?
   createdAt     DateTime    @default(now())

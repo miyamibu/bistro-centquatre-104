@@ -46,9 +46,8 @@ DATABASE_URL=postgresql://user:password@localhost:5432/bistro
 # Base URL
 BASE_URL=http://localhost:3000
 
-# Admin Authentication
-ADMIN_BASIC_USER=admin
-ADMIN_BASIC_PASS=changeme
+# Admin authentication (Supabase Auth; create one user per staff member)
+STAFF_SESSION_MAX_AGE_SECONDS=28800
 
 # Email Configuration
 EMAIL_PROVIDER=resend
@@ -82,17 +81,19 @@ CRON_SECRET=your-cron-secret-token-here
 Add these from **Vercel Dashboard**:
 
 1. `DATABASE_URL` - Production PostgreSQL connection string
-2. `ADMIN_BASIC_USER` - Admin username
-3. `ADMIN_BASIC_PASS` - Strong admin password
-4. `EMAIL_PROVIDER` - Email service provider
-5. `EMAIL_API_KEY` - Email service API key
-6. `EMAIL_FROM` - Sender email address
-7. `STORE_NOTIFY_EMAIL` - Notification email
-8. `NEXT_PUBLIC_SUPABASE_URL` - Supabase project URL
-9. `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Supabase anon key
-10. `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key (**NEVER expose to client**)
-11. `CRON_SECRET` - Strong random token for cron jobs
-12. `LINE_CHANNEL_*` - LINE Bot credentials (if used)
+2. `NEXT_PUBLIC_SUPABASE_URL` - Supabase project URL
+3. `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Supabase anon key
+4. `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key (**NEVER expose to client**)
+5. `STAFF_SESSION_MAX_AGE_SECONDS` - Maximum staff session age (default 8 hours)
+6. `EMAIL_PROVIDER` - Email service provider
+7. `EMAIL_API_KEY` - Email service API key
+8. `EMAIL_FROM` - Sender email address
+9. `STORE_NOTIFY_EMAIL` - Notification email
+10. `CRON_SECRET` - Strong random token for cron jobs
+11. `BACKUP_EXPORT_SECRET` - Backup export bearer token
+12. `BACKUP_ENCRYPTION_KEYS_JSON` / `BACKUP_ENCRYPTION_ACTIVE_KEY_ID` - Encrypted backup keyring
+13. `RESERVATION_TOKEN_KEYS_JSON` / `RESERVATION_TOKEN_ACTIVE_KEY_ID` - Reservation token keyring
+14. `LINE_CHANNEL_*` - LINE Bot credentials (if used)
 
 ### Security Best Practices for Environment Variables
 
@@ -101,6 +102,8 @@ Add these from **Vercel Dashboard**:
 - Rotate secrets every 90 days
 - Use different values for dev/staging/production
 - Keep `SUPABASE_SERVICE_ROLE_KEY` as server-side only
+- Create individual Supabase Auth users, assign `app_metadata.role` (`ADMIN` or `STAFF`), and enroll TOTP MFA
+- Retain the previous reservation-token key for the token TTL and the previous backup key until old files are migrated
 
 ❌ **DON'T:**
 - Commit `.env` files to Git (already in `.gitignore`)

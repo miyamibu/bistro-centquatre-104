@@ -74,7 +74,7 @@ LINE Login channel 内の「LIFF」タブで、予約フォーム用と後付け
 
 - 予約フォーム用 **LIFF ID** → 後で `NEXT_PUBLIC_LIFF_BOOKING_ID` として Vercel に投入。
 - 後付け連携用 **LIFF ID** → 後で `NEXT_PUBLIC_LIFF_LINK_ID` として Vercel に投入。
-- 後付け連携用 **LIFF URL**（`https://liff.line.me/<NEXT_PUBLIC_LIFF_LINK_ID>`） → 友だち追加後の電話番号通知登録導線として使う。
+- 後付け連携用 **LIFF URL**（`https://liff.line.me/<NEXT_PUBLIC_LIFF_LINK_ID>`） → 予約完了画面の予約発行token付きLINE連携導線として使う。
 
 ---
 
@@ -117,16 +117,9 @@ LINE Login channel 内の「LIFF」タブで、予約フォーム用と後付け
 
 ## 5. Webhook の登録（推奨）
 
-Webhook は follow/unfollow を `LineFriend` に反映し、follow 時には電話番号によるLINE通知登録リンクを返信する。Push リマインダー自体は `Reservation.lineUserId` が保存されていれば動くが、ブロック状態の検知と事前通知登録の導線として Webhook 登録を推奨する。
+Webhook は、受信した各イベントを `LineWebhookInbox` に先に保存してから冪等処理し、follow/unfollow を `LineFriend` に反映する。follow 時には電話番号登録URLを返信せず、予約完了画面の予約発行token付き連携リンクを案内する。Push リマインダー自体は `Reservation.lineUserId` が保存されていれば動くため、予約後のtoken連携とWebhook登録を確認する。
 
-電話番号登録の導線:
-
-- follow 返信: `https://liff.line.me/<LIFF_LINK_ID>?mode=customer`
-- 登録API: `/api/line/customer-link`
-- 保存先: `LineCustomerLink.normalizedPhoneHash`（電話番号そのものは保存しない）
-- 有効期限: `lastLinkedAt` から 180 日以内の `status = ACTIVE` のみ自動連携に使う
-- 解除: 同じ登録画面で同じ電話番号を入力して解除すると `status = REVOKED` になり、自動連携対象外になる
-- 予約時: 予約フォームでLINEボタンを完了していなくても、電話番号ハッシュが一意に一致し、ブロック済みでなければ `Reservation.lineUserId` を保存する
+電話番号だけの自動紐付けと、予約日・電話番号・名前の一部によるlookup連携は、電話所有証明がないため無効化している。`/api/line/customer-link` とlookup形式の `/api/line/link-reservation` は、予約発行tokenを含む正規経路へ誘導するため 410 を返す。
 
 設定する場合:
 
@@ -152,6 +145,7 @@ Webhook は follow/unfollow を `LineFriend` に反映し、follow 時には電�
 | Messaging API Channel access token (long-lived) | `LINE_CHANNEL_ACCESS_TOKEN` | **secret**（Push API の Bearer） |
 | Messaging API Channel secret | `LINE_CHANNEL_SECRET` | **secret**（Webhook 署名検証） |
 | 32 文字以上のランダム文字列 | `LINE_LINK_TOKEN_PEPPER` | **secret**（連携トークン/電話番号ハッシュ用） |
+| 32 文字以上のランダム文字列 | `RESERVATION_TOKEN_SECRET` | **secret**（予約発行Bearer tokenの決定的導出用。生tokenをDBへ保存しない） |
 
 ---
 

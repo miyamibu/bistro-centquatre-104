@@ -4,6 +4,12 @@ import { apiError, readLimitedJson } from "@/lib/api-security";
 import { sendContactEmail } from "@/lib/email";
 import { logError, logInfo, getRequestId } from "@/lib/logger";
 import { createContactSchema, zodFields } from "@/lib/validation";
+import {
+  CONTACT_RATE_LIMIT_WINDOW_SECONDS,
+  enforceContactRateLimit,
+  isContactRateLimitExceededError,
+} from "@/lib/contact-rate-limit";
+import { getClientIp } from "@/lib/request-meta";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +33,48 @@ export async function POST(request: NextRequest) {
       fields: zodFields(parsed.error),
       requestId,
     });
+  }
+
+  try {
+    await enforceContactRateLimit({
+      ipAddress: getClientIp(request),
+      email: parsed.data.email,
+    });
+  } catch (error) {
+    if (isContactRateLimitExceededError(error)) {
+      return apiError(
+        429,
+        {
+          error: error.message,
+          code: error.code,
+          requestId,
+        },
+        {
+          headers: {
+            "Cache-Control": "private, no-store",
+            "Retry-After": String(CONTACT_RATE_LIMIT_WINDOW_SECONDS),
+          },
+        },
+      );
+    }
+
+    logError("contact.rate_limit.failed", {
+      requestId,
+      route: "/api/contact",
+      errorCode: "CONTACT_RATE_LIMIT_UNAVAILABLE",
+      context: {
+        emailHash: hashLogValue(parsed.data.email),
+      },
+    });
+    return apiError(
+      503,
+      {
+        error: "お問い合わせ受付を一時停止しています。時間をおいて再試行してください。",
+        code: "CONTACT_RATE_LIMIT_UNAVAILABLE",
+        requestId,
+      },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
   }
 
   const emailResult = await sendContactEmail(parsed.data);

@@ -17,7 +17,7 @@ export type AdminReservationTableRow = {
   name: string;
   phone: string;
   note: string | null;
-  isCancelled: boolean;
+  canCancel: boolean;
   statusLabel: string;
   lineStatus: string;
   lineReminderError: string | null;
@@ -129,7 +129,11 @@ export default function AdminReservationsTable({
       </div>
 
       {dataError ? (
-        <p role="alert" className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <p
+          role="alert"
+          aria-live="assertive"
+          className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        >
           {dataError} 空の一覧とは区別して表示しています。
         </p>
       ) : null}
@@ -157,7 +161,14 @@ export default function AdminReservationsTable({
                 ) : null}
               </div>
               {section.privateBlockId ? (
-                <CancelButton id={section.privateBlockId} label="貸切解除" requireOperatorName={true} />
+                <CancelButton
+                  id={section.privateBlockId}
+                  label="貸切解除"
+                  requireOperatorName={true}
+                  expectedDate={selectedDate}
+                  expectedServicePeriod={section.key}
+                  expectedReservationType="PRIVATE_BLOCK"
+                />
               ) : null}
             </div>
 
@@ -221,7 +232,7 @@ export default function AdminReservationsTable({
                       ) : null}
                       <CancelButton
                         id={reservation.id}
-                        disabled={reservation.isCancelled}
+                        disabled={!reservation.canCancel}
                         label="キャンセル"
                       />
                     </div>
@@ -296,6 +307,9 @@ export default function AdminReservationsTable({
                             id={section.privateBlockId}
                             label="貸切解除"
                             requireOperatorName={true}
+                            expectedDate={selectedDate}
+                            expectedServicePeriod={section.key}
+                            expectedReservationType="PRIVATE_BLOCK"
                           />
                         ) : null}
                       </div>
@@ -369,7 +383,7 @@ export default function AdminReservationsTable({
                             <td className="px-4 py-2">
                               <CancelButton
                                 id={reservation.id}
-                                disabled={reservation.isCancelled}
+                                disabled={!reservation.canCancel}
                                 label="キャンセル"
                               />
                             </td>

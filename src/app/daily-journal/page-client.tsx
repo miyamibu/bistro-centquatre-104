@@ -136,7 +136,12 @@ export function DailyJournalPageClient() {
             </div>
           </article>
         ) : (
-          <div className="rounded-2xl border border-dashed border-[#cfa96d]/45 bg-[#fffdfa] p-8 text-center text-sm leading-7 text-[#6b5644]">
+          <div
+            role="status"
+            aria-live="polite"
+            aria-busy={isLoading}
+            className="rounded-2xl border border-dashed border-[#cfa96d]/45 bg-[#fffdfa] p-8 text-center text-sm leading-7 text-[#6b5644]"
+          >
             {isLoading ? "読み込み中です。" : "まだ公開中の記事はありません。"}
           </div>
         )}

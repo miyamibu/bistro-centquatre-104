@@ -88,7 +88,7 @@ Important:
 node - <<'NODE'
 const fs=require('fs');
 const files=['.env','.env.local'];
-const need=['DATABASE_URL','BASE_URL','ADMIN_BASIC_USER','ADMIN_BASIC_PASS','NEXT_PUBLIC_SUPABASE_URL','NEXT_PUBLIC_SUPABASE_ANON_KEY','SUPABASE_SERVICE_ROLE_KEY','CRON_SECRET'];
+const need=['DATABASE_URL','BASE_URL','NEXT_PUBLIC_SUPABASE_URL','NEXT_PUBLIC_SUPABASE_ANON_KEY','SUPABASE_SERVICE_ROLE_KEY','STAFF_SESSION_MAX_AGE_SECONDS','CRON_SECRET','BACKUP_EXPORT_SECRET'];
 const have=new Set();
 for (const f of files) {
   if (!fs.existsSync(f)) continue;

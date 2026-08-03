@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { Prisma, LineWebhookInboxStatus } from "@prisma/client";
 import { getLineChannelSecret, hasLineWebhookEnv } from "@/lib/env";
 import { prisma } from "@/lib/prisma";
 import { replyLineTextMessage } from "@/lib/line";
@@ -9,6 +10,9 @@ import { getRequestId, logInfo, logWarn } from "@/lib/logger";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 const MAX_WEBHOOK_BODY_BYTES = 128 * 1024;
+const MAX_EVENT_ID_LENGTH = 256;
+const MAX_EVENT_TYPE_LENGTH = 64;
+const INBOX_LOCK_MS = 5 * 60 * 1000;
 
 function verifyLineSignature(rawBody: string, signature: string, secret: string): boolean {
   const expected = createHmac("sha256", secret).update(rawBody, "utf8").digest();
@@ -22,28 +26,129 @@ function verifyLineSignature(rawBody: string, signature: string, secret: string)
   return timingSafeEqual(expected, provided);
 }
 
-type LineEventSource = { userId?: string };
+type LineEventSource = { userId?: unknown };
 type LineEvent = {
+  webhookEventId: string;
   type: string;
   source?: LineEventSource;
-  replyToken?: string;
+  replyToken?: unknown;
+  [key: string]: unknown;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseEvents(rawBody: string): LineEvent[] {
+  const payload = JSON.parse(rawBody) as { events?: unknown };
+  if (!Array.isArray(payload.events)) return [];
+
+  return payload.events.map((event): LineEvent => {
+    if (!isRecord(event)) throw new Error("LINE_WEBHOOK_EVENT_INVALID");
+
+    const eventId = event.webhookEventId;
+    const eventType = event.type;
+    if (
+      typeof eventId !== "string" ||
+      eventId.length === 0 ||
+      eventId.length > MAX_EVENT_ID_LENGTH ||
+      typeof eventType !== "string" ||
+      eventType.length === 0 ||
+      eventType.length > MAX_EVENT_TYPE_LENGTH
+    ) {
+      throw new Error("LINE_WEBHOOK_EVENT_ID_REQUIRED");
+    }
+
+    return event as LineEvent;
+  });
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") ||
+    (isRecord(error) && error.code === "P2002")
+  );
+}
+
+async function persistInboxEvent(event: LineEvent, requestId: string) {
+  try {
+    return await prisma.lineWebhookInbox.create({
+      data: {
+        eventId: event.webhookEventId,
+        eventType: event.type,
+        payload: event as Prisma.InputJsonValue,
+        requestId,
+      },
+    });
+  } catch (error) {
+    if (!isUniqueConstraintError(error)) throw error;
+
+    const existing = await prisma.lineWebhookInbox.findUnique({
+      where: { eventId: event.webhookEventId },
+    });
+    if (!existing) throw error;
+    return existing;
+  }
+}
+
+async function claimInboxEvent(id: string): Promise<string | null> {
+  const claimToken = randomUUID();
+  const now = new Date();
+  const lockedUntil = new Date(now.getTime() + INBOX_LOCK_MS);
+  const claimed = await prisma.lineWebhookInbox.updateMany({
+    where: {
+      id,
+      status: {
+        in: [
+          LineWebhookInboxStatus.PENDING,
+          LineWebhookInboxStatus.FAILED,
+          LineWebhookInboxStatus.PROCESSING,
+        ],
+      },
+      OR: [{ lockedUntil: null }, { lockedUntil: { lt: now } }],
+    },
+    data: {
+      status: LineWebhookInboxStatus.PROCESSING,
+      attempts: { increment: 1 },
+      claimedAt: now,
+      lockedUntil,
+      claimToken,
+      lastError: null,
+    },
+  });
+
+  return claimed.count > 0 ? claimToken : null;
+}
+
+async function markInboxFailed(id: string, claimToken: string): Promise<void> {
+  try {
+    await prisma.lineWebhookInbox.updateMany({
+      where: {
+        id,
+        status: LineWebhookInboxStatus.PROCESSING,
+        claimToken,
+      },
+      data: {
+        status: LineWebhookInboxStatus.FAILED,
+        lockedUntil: null,
+        claimToken: null,
+        lastError: "PROCESSING_FAILED",
+      },
+    });
+  } catch (error) {
+    logWarn("line.webhook.inbox_failure_update_failed", {
+      route: "/api/line/webhook",
+      context: { message: error instanceof Error ? error.message : String(error) },
+    });
+  }
+}
+
 function buildFollowReplyText(): string {
-  const liffLinkId =
-    process.env.NEXT_PUBLIC_LIFF_LINK_ID ?? process.env.NEXT_PUBLIC_LIFF_ID;
-  const linkUrl = liffLinkId
-    ? `https://liff.line.me/${liffLinkId}?mode=customer`
-    : null;
-  const lines = [
+  return [
     "bistro centquatre 104 公式アカウントへのご登録ありがとうございます。",
     "",
-    "電話番号を登録すると、通常予約時にLINE連携ボタンを完了していなくても、前日にお知らせメッセージをお送りします。",
-  ];
-  if (linkUrl) {
-    lines.push("", `LINE通知登録はこちら:\n${linkUrl}`);
-  }
-  return lines.join("\n");
+    "LINE通知の設定は、予約完了画面に表示される連携リンクから行ってください。",
+  ].join("\n");
 }
 
 async function handleFollow(userId: string, replyToken?: string): Promise<void> {
@@ -88,6 +193,58 @@ async function handleUnfollow(userId: string): Promise<void> {
       updatedAt: now,
     },
   });
+}
+
+async function processInboxEvent(
+  event: LineEvent,
+  requestId: string
+): Promise<"processed" | "duplicate"> {
+  const inbox = await persistInboxEvent(event, requestId);
+  if (inbox.status === LineWebhookInboxStatus.PROCESSED) return "duplicate";
+
+  const claimToken = await claimInboxEvent(inbox.id);
+  if (!claimToken) {
+    const current = await prisma.lineWebhookInbox.findUnique({
+      where: { eventId: event.webhookEventId },
+      select: { status: true },
+    });
+    if (current?.status === LineWebhookInboxStatus.PROCESSED) return "duplicate";
+    throw new Error("LINE_WEBHOOK_INBOX_BUSY");
+  }
+
+  try {
+    const source = isRecord(event.source) ? event.source : null;
+    const userId = typeof source?.userId === "string" ? source.userId : undefined;
+    const replyToken = typeof event.replyToken === "string" ? event.replyToken : undefined;
+
+    if (event.type === "follow" && userId) {
+      await handleFollow(userId, replyToken);
+    } else if (event.type === "unfollow" && userId) {
+      await handleUnfollow(userId);
+    }
+    // Unsupported and structurally incomplete signed events are still durable
+    // and marked processed; they have no application side effect to retry.
+
+    const completed = await prisma.lineWebhookInbox.updateMany({
+      where: {
+        id: inbox.id,
+        status: LineWebhookInboxStatus.PROCESSING,
+        claimToken,
+      },
+      data: {
+        status: LineWebhookInboxStatus.PROCESSED,
+        processedAt: new Date(),
+        lockedUntil: null,
+        claimToken: null,
+        lastError: null,
+      },
+    });
+    if (completed.count === 0) throw new Error("LINE_WEBHOOK_INBOX_FINALIZE_FAILED");
+    return "processed";
+  } catch (error) {
+    await markInboxFailed(inbox.id, claimToken);
+    throw error;
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -166,13 +323,16 @@ export async function POST(request: NextRequest) {
   // Only after signature verification do we parse the body.
   let events: LineEvent[] = [];
   try {
-    const payload = JSON.parse(rawBody) as { events?: unknown[] };
-    events = Array.isArray(payload.events) ? (payload.events as LineEvent[]) : [];
-  } catch {
+    events = parseEvents(rawBody);
+  } catch (parseError) {
     logWarn("line.webhook.malformed_body", { requestId, route: "/api/line/webhook" });
     return apiError(400, {
-      error: "malformed JSON",
-      code: "LINE_WEBHOOK_MALFORMED_JSON",
+      error: parseError instanceof Error && parseError.message === "LINE_WEBHOOK_EVENT_ID_REQUIRED"
+        ? "webhookEventId is required"
+        : "malformed JSON",
+      code: parseError instanceof Error && parseError.message === "LINE_WEBHOOK_EVENT_ID_REQUIRED"
+        ? "LINE_WEBHOOK_EVENT_ID_REQUIRED"
+        : "LINE_WEBHOOK_MALFORMED_JSON",
       requestId,
     });
   }
@@ -183,28 +343,29 @@ export async function POST(request: NextRequest) {
     context: { eventCount: events.length },
   });
 
-  // Process events sequentially. Never log userId, body, or signature.
+  // Persist and process events sequentially. Never log userId, body, or signature.
   let followCount = 0;
   let unfollowCount = 0;
   let unsupportedCount = 0;
+  let duplicateCount = 0;
+  let failedCount = 0;
 
   for (const event of events) {
-    const userId = event.source?.userId;
-
     try {
-      if (event.type === "follow" && userId) {
-        await handleFollow(userId, event.replyToken);
+      const result = await processInboxEvent(event, requestId);
+      if (result === "duplicate") {
+        duplicateCount += 1;
+      } else if (event.type === "follow" && isRecord(event.source) && typeof event.source.userId === "string") {
         followCount += 1;
-      } else if (event.type === "unfollow" && userId) {
-        await handleUnfollow(userId);
+      } else if (event.type === "unfollow" && isRecord(event.source) && typeof event.source.userId === "string") {
         unfollowCount += 1;
       } else if (event.type === "accountLink") {
-        // accountLink requires nonce verification against stored state.
-        // Full implementation is deferred; log the count for observability.
+        unsupportedCount += 1;
+      } else {
         unsupportedCount += 1;
       }
-      // Other event types (message, postback, etc.) are intentionally ignored.
     } catch (handlerError) {
+      failedCount += 1;
       logWarn("line.webhook.handler_error", {
         requestId,
         route: "/api/line/webhook",
@@ -213,15 +374,24 @@ export async function POST(request: NextRequest) {
           message: handlerError instanceof Error ? handlerError.message : String(handlerError),
         },
       });
-      // Continue processing remaining events even if one fails.
+      // Continue so other events can be durably accepted; the final non-200
+      // response asks LINE to retry failed events.
     }
   }
 
   logInfo("line.webhook.processed", {
     requestId,
     route: "/api/line/webhook",
-    context: { followCount, unfollowCount, unsupportedCount },
+    context: { followCount, unfollowCount, unsupportedCount, duplicateCount, failedCount },
   });
+
+  if (failedCount > 0) {
+    return apiError(503, {
+      error: "webhook event processing failed; retryable",
+      code: "LINE_WEBHOOK_RETRY",
+      requestId,
+    });
+  }
 
   return NextResponse.json({ ok: true });
 }

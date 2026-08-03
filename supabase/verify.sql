@@ -16,19 +16,27 @@ BEGIN
     'bank_account',
     'order_actions',
     'human_tokens',
+    'order_receipt_tokens',
     'api_idempotency',
+    'contact_rate_limit_buckets',
     'order_notification_outbox',
     'bank_account_history',
     'Reservation',
     'PrivateBlockAuditLog',
     'ReservationStatusAuditLog',
     'ReservationEmailOutbox',
+    'ReservationIdempotency',
     'ReservationLineLinkToken',
+    'ReservationManagementToken',
     'NotificationEvent',
+    'LineWebhookInbox',
     'ReservationRateLimitEvent',
     'BusinessDay',
     'MenuItem',
-    'Photo'
+    'Photo',
+    'LineFriend',
+    'LineCustomerLink',
+    'DailyJournalEntry'
   ]::text[]) AS required(table_name)
   WHERE to_regclass(format('%I.%I', 'public', required.table_name)) IS NULL;
 
@@ -50,19 +58,27 @@ BEGIN
     'bank_account',
     'order_actions',
     'human_tokens',
+    'order_receipt_tokens',
     'api_idempotency',
+    'contact_rate_limit_buckets',
     'order_notification_outbox',
     'bank_account_history',
     'Reservation',
     'PrivateBlockAuditLog',
     'ReservationStatusAuditLog',
     'ReservationEmailOutbox',
+    'ReservationIdempotency',
     'ReservationLineLinkToken',
+    'ReservationManagementToken',
     'NotificationEvent',
+    'LineWebhookInbox',
     'ReservationRateLimitEvent',
     'BusinessDay',
     'MenuItem',
-    'Photo'
+    'Photo',
+    'LineFriend',
+    'LineCustomerLink',
+    'DailyJournalEntry'
   ]::text[]) AS required(table_name)
   WHERE NOT EXISTS (
     SELECT 1
@@ -92,19 +108,27 @@ BEGIN
       ('bank_account', 'bank_account'),
       ('order_actions', 'order_actions'),
       ('human_tokens', 'human_tokens'),
+      ('order_receipt_tokens', 'order_receipt_tokens'),
       ('api_idempotency', 'api_idempotency'),
+      ('contact_rate_limit_buckets', 'contact_rate_limit_buckets'),
       ('order_notification_outbox', 'order_notification_outbox'),
       ('bank_account_history', 'bank_account_history'),
       ('Reservation', 'reservation'),
       ('PrivateBlockAuditLog', 'private_block_audit'),
       ('ReservationStatusAuditLog', 'reservation_status_audit'),
       ('ReservationEmailOutbox', 'reservation_email_outbox'),
+      ('ReservationIdempotency', 'reservation_idempotency'),
       ('ReservationLineLinkToken', 'reservation_line_link_token'),
+      ('ReservationManagementToken', 'reservation_management_token'),
       ('NotificationEvent', 'notification_event'),
+      ('LineWebhookInbox', 'line_webhook_inbox'),
       ('ReservationRateLimitEvent', 'reservation_rate_limit'),
       ('BusinessDay', 'business_day'),
       ('MenuItem', 'menu_item'),
-      ('Photo', 'photo')
+      ('Photo', 'photo'),
+      ('LineFriend', 'line_friend'),
+      ('LineCustomerLink', 'line_customer_link'),
+      ('DailyJournalEntry', 'daily_journal_entry')
   ),
   expected_rules(policy_suffix, role_name, expected_expression) AS (
     VALUES
@@ -150,8 +174,14 @@ BEGIN
   -- any policy that can expose rows to public/anon/authenticated is a FAIL.
   WITH protected_tables(table_name) AS (
     VALUES
+      ('ReservationIdempotency'),
       ('ReservationLineLinkToken'),
-      ('NotificationEvent')
+      ('ReservationManagementToken'),
+      ('NotificationEvent'),
+      ('LineWebhookInbox'),
+      ('LineFriend'),
+      ('LineCustomerLink'),
+      ('DailyJournalEntry')
   ),
   normalized_policies AS (
     SELECT
@@ -202,8 +232,10 @@ BEGIN
     VALUES
       ('ReservationStatusAuditLog', 'ReservationStatusAuditLog_reservationId_fkey'),
       ('ReservationLineLinkToken', 'ReservationLineLinkToken_reservationId_fkey'),
+      ('ReservationManagementToken', 'ReservationManagementToken_reservationId_fkey'),
       ('NotificationEvent', 'NotificationEvent_reservationId_fkey'),
-      ('ReservationEmailOutbox', 'ReservationEmailOutbox_reservationId_fkey')
+      ('ReservationEmailOutbox', 'ReservationEmailOutbox_reservationId_fkey'),
+      ('ReservationIdempotency', 'ReservationIdempotency_reservationId_fkey')
   )
   SELECT array_agg(expected.constraint_name ORDER BY expected.constraint_name)
   INTO missing_or_invalid_foreign_keys
@@ -259,9 +291,15 @@ BEGIN
         ('PrivateBlockAuditLog', ARRAY['SELECT', 'INSERT']::text[]),
         ('ReservationStatusAuditLog', ARRAY['SELECT', 'INSERT']::text[]),
         ('ReservationEmailOutbox', ARRAY['SELECT', 'INSERT', 'UPDATE']::text[]),
+        ('ReservationIdempotency', ARRAY['SELECT', 'INSERT', 'UPDATE']::text[]),
         ('ReservationLineLinkToken', ARRAY['SELECT', 'INSERT', 'UPDATE']::text[]),
+        ('ReservationManagementToken', ARRAY['SELECT', 'INSERT', 'UPDATE']::text[]),
         ('NotificationEvent', ARRAY['SELECT', 'INSERT', 'UPDATE']::text[]),
-        ('ReservationRateLimitEvent', ARRAY['SELECT', 'INSERT']::text[])
+        ('LineWebhookInbox', ARRAY['SELECT', 'INSERT', 'UPDATE']::text[]),
+        ('ReservationRateLimitEvent', ARRAY['SELECT', 'INSERT']::text[]),
+        ('LineFriend', ARRAY['SELECT', 'INSERT', 'UPDATE']::text[]),
+        ('LineCustomerLink', ARRAY['SELECT', 'INSERT', 'UPDATE']::text[]),
+        ('DailyJournalEntry', ARRAY['SELECT', 'INSERT', 'UPDATE']::text[])
     ),
     expanded_requirements AS (
       SELECT requirement.table_name, privilege_row.privilege_name
@@ -293,9 +331,15 @@ BEGIN
         ('PrivateBlockAuditLog'),
         ('ReservationStatusAuditLog'),
         ('ReservationEmailOutbox'),
+        ('ReservationIdempotency'),
         ('ReservationLineLinkToken'),
+        ('ReservationManagementToken'),
         ('NotificationEvent'),
-        ('ReservationRateLimitEvent')
+        ('LineWebhookInbox'),
+        ('ReservationRateLimitEvent'),
+        ('LineFriend'),
+        ('LineCustomerLink'),
+        ('DailyJournalEntry')
     ),
     forbidden_privileges(privilege_name) AS (
       VALUES ('DELETE'), ('TRUNCATE')
@@ -334,19 +378,27 @@ WHERE table_schema = 'public'
     'bank_account',
     'order_actions',
     'human_tokens',
+    'order_receipt_tokens',
     'api_idempotency',
+    'contact_rate_limit_buckets',
     'order_notification_outbox',
     'bank_account_history',
     'Reservation',
     'PrivateBlockAuditLog',
     'ReservationStatusAuditLog',
     'ReservationEmailOutbox',
+    'ReservationIdempotency',
     'ReservationLineLinkToken',
+    'ReservationManagementToken',
     'NotificationEvent',
+    'LineWebhookInbox',
     'ReservationRateLimitEvent',
     'BusinessDay',
     'MenuItem',
-    'Photo'
+    'Photo',
+    'LineFriend',
+    'LineCustomerLink',
+    'DailyJournalEntry'
   )
 ORDER BY table_name;
 
@@ -362,19 +414,27 @@ WHERE table_namespace.nspname = 'public'
     'bank_account',
     'order_actions',
     'human_tokens',
+    'order_receipt_tokens',
     'api_idempotency',
+    'contact_rate_limit_buckets',
     'order_notification_outbox',
     'bank_account_history',
     'Reservation',
     'PrivateBlockAuditLog',
     'ReservationStatusAuditLog',
     'ReservationEmailOutbox',
+    'ReservationIdempotency',
     'ReservationLineLinkToken',
+    'ReservationManagementToken',
     'NotificationEvent',
+    'LineWebhookInbox',
     'ReservationRateLimitEvent',
     'BusinessDay',
     'MenuItem',
-    'Photo'
+    'Photo',
+    'LineFriend',
+    'LineCustomerLink',
+    'DailyJournalEntry'
   )
 ORDER BY table_class.relname;
 
@@ -387,19 +447,27 @@ WHERE schemaname = 'public'
     'bank_account',
     'order_actions',
     'human_tokens',
+    'order_receipt_tokens',
     'api_idempotency',
+    'contact_rate_limit_buckets',
     'order_notification_outbox',
     'bank_account_history',
     'Reservation',
     'PrivateBlockAuditLog',
     'ReservationStatusAuditLog',
     'ReservationEmailOutbox',
+    'ReservationIdempotency',
     'ReservationLineLinkToken',
+    'ReservationManagementToken',
     'NotificationEvent',
+    'LineWebhookInbox',
     'ReservationRateLimitEvent',
     'BusinessDay',
     'MenuItem',
-    'Photo'
+    'Photo',
+    'LineFriend',
+    'LineCustomerLink',
+    'DailyJournalEntry'
   )
 ORDER BY tablename, policyname;
 
@@ -417,8 +485,10 @@ WHERE table_constraint.constraint_schema = 'public'
   AND table_constraint.table_name IN (
     'ReservationStatusAuditLog',
     'ReservationLineLinkToken',
+    'ReservationManagementToken',
     'NotificationEvent',
-    'ReservationEmailOutbox'
+    'ReservationEmailOutbox',
+    'ReservationIdempotency'
   )
 ORDER BY table_constraint.table_name;
 
@@ -427,12 +497,15 @@ FROM information_schema.routines
 WHERE routine_schema = 'public'
   AND routine_name IN (
     'generate_unique_payment_reference_8',
+    'create_order_quote_with_receipt_action',
+    'consume_contact_rate_limit',
     'confirm_order_human_action',
     'set_order_payment_method_action',
     'mark_order_paid_action',
     'mark_order_collected_action',
     'mark_order_shipped_action',
-    'cancel_order_action'
+    'cancel_order_action',
+    'execute_terminal_order_action'
   )
 ORDER BY routine_name;
 

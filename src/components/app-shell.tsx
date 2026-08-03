@@ -34,6 +34,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith("/legal/") ||
     pathname === "/access" ||
     pathname.startsWith("/access/") ||
+    pathname === "/reservation/manage" ||
+    pathname.startsWith("/reservation/manage/") ||
     pathname === "/on-line-store" ||
     pathname.startsWith("/on-line-store/");
 

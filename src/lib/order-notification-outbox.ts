@@ -83,6 +83,9 @@ type BankAccountRow = {
   account_holder: string;
 };
 
+const BANK_ACCOUNT_SELECT =
+  "bank_name, branch_name, account_type, account_number, account_holder";
+
 function buildClaimableOutboxFilter(now: string) {
   return [
     "and(status.eq.PENDING,next_attempt_at.is.null)",
@@ -292,7 +295,10 @@ async function sendOutboxRow(row: OutboxRow, requestId: string, claimToken: stri
   const order = orderRow as OrderEmailRow;
   let bankAccount: BankAccountRow | undefined;
   if (order.payment_method === "BANK_TRANSFER") {
-    const { data, error } = await supabaseServer.from("bank_account").select("*").limit(1);
+    const { data, error } = await supabaseServer
+      .from("bank_account")
+      .select(BANK_ACCOUNT_SELECT)
+      .limit(1);
     if (error) {
       throw new Error("BANK_ACCOUNT_FETCH_FAILED:" + error.message);
     }
