@@ -355,6 +355,66 @@ export async function sendCustomerReservationEmail({
   };
 }
 
+export async function sendCustomerReservationStatusEmail({
+  reservation,
+  status,
+  idempotencyKey,
+}: {
+  reservation: Reservation;
+  status: "CANCELLED" | "NOSHOW";
+  idempotencyKey?: string;
+}) {
+  const to = reservation.customerEmail?.trim();
+
+  if (reservation.reservationType === "PRIVATE_BLOCK") {
+    return { skipped: true, reason: "PRIVATE_BLOCK" as const };
+  }
+
+  if (reservation.status !== status) {
+    return { skipped: true, reason: "RESERVATION_STATUS_MISMATCH" as const };
+  }
+
+  if (!to) {
+    return { skipped: true, reason: "MISSING_CUSTOMER_EMAIL" as const };
+  }
+
+  const isNoShow = status === "NOSHOW";
+  const subject = isNoShow
+    ? `【ご予約のお知らせ】${reservation.date} ${reservation.partySize}名`
+    : `【予約キャンセルのお知らせ】${reservation.date} ${reservation.partySize}名`;
+  const text = [
+    `${reservation.name} 様`,
+    isNoShow
+      ? "ご予約は無断キャンセルとして記録されました。"
+      : "店舗側でご予約をキャンセルしました。",
+    `日付: ${reservation.date}`,
+    `時間帯: ${reservation.servicePeriod === "LUNCH" ? "ランチ" : "ディナー"}`,
+    `人数: ${reservation.partySize}`,
+    `来店目安: ${reservation.arrivalTime ?? "未入力"}`,
+    "ご不明点がある場合は店舗へお問い合わせください。",
+  ].join("\n");
+
+  const delivery = await sendEmail({
+    to,
+    subject,
+    text,
+    ...(env.STORE_NOTIFY_EMAIL ? { replyTo: env.STORE_NOTIFY_EMAIL } : {}),
+    ...(idempotencyKey ? { idempotencyKey } : {}),
+  });
+
+  if (!delivery.sent) {
+    return { skipped: true, reason: delivery.reason };
+  }
+
+  return {
+    sent: true as const,
+    provider: delivery.provider,
+    ...(delivery.providerMessageId
+      ? { providerMessageId: delivery.providerMessageId }
+      : {}),
+  };
+}
+
 export async function sendContactEmail({ name, email, subject, message }: ContactEmailPayload) {
   const to = env.ADMIN_EMAIL ?? env.STORE_NOTIFY_EMAIL;
 

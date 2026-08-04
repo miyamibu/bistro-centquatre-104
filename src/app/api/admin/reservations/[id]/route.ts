@@ -6,7 +6,10 @@ import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
 import { updateReservationStatusSchema, zodFields } from "@/lib/validation";
 import { getRequestId, logError, logInfo } from "@/lib/logger";
 import { createPrivateBlockAuditLog } from "@/lib/private-block-audit";
-import { suppressReservationConfirmationEmail } from "@/lib/reservation-email-outbox";
+import {
+  enqueueReservationStatusEmail,
+  suppressReservationConfirmationEmail,
+} from "@/lib/reservation-email-outbox";
 import { getClientIp, getUserAgent, hashClientIp } from "@/lib/request-meta";
 import {
   RESERVATION_SCHEMA_NOT_READY_CODE,
@@ -65,7 +68,8 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
   const route = "/api/admin/reservations/[id]";
   const { id } = await params;
 
-  if (!(await getStaffAuth())) {
+  const staffAuth = await getStaffAuth();
+  if (!staffAuth) {
     return apiError(401, { error: "Unauthorized", code: "UNAUTHORIZED", requestId });
   }
 
@@ -105,7 +109,8 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
   const route = "/api/admin/reservations/[id]";
   const { id } = await params;
 
-  if (!(await getStaffAuth())) {
+  const staffAuth = await getStaffAuth();
+  if (!staffAuth) {
     return apiError(401, { error: "Unauthorized", code: "UNAUTHORIZED", requestId });
   }
 
@@ -129,7 +134,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       });
     }
 
-    const operatorName = parsed.data.operatorName?.trim() || null;
+    const operatorLabel = parsed.data.operatorName?.trim() || null;
     const reason = parsed.data.reason?.trim() || null;
     const updated = await prisma.$transaction(async (tx) => {
       const current = await findReservationByIdCompat(tx, id);
@@ -185,9 +190,20 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
           currentStatus: current.status,
           nextStatus: parsed.data.status,
         }) &&
-        !operatorName
+        !operatorLabel
       ) {
         throw new Error("MISSING_OPERATOR_NAME");
+      }
+
+      if (
+        new Set<ReservationStatus>([
+          ReservationStatus.CANCELLED,
+          ReservationStatus.DONE,
+          ReservationStatus.NOSHOW,
+        ]).has(parsed.data.status) &&
+        !reason
+      ) {
+        throw new Error("MISSING_STATUS_REASON");
       }
 
       const next = await updateReservationStatusCompat(tx, id, current.status, parsed.data.status);
@@ -198,18 +214,29 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       await tx.reservationStatusAuditLog.create({
         data: {
           reservationId: next.id,
-          actorName: operatorName,
+          actorName: staffAuth.email ?? staffAuth.userId,
+          actorUserId: staffAuth.userId,
+          actorEmail: staffAuth.email,
+          actorRole: staffAuth.role,
+          operatorLabel,
           requestId,
           ipAddress,
           userAgent,
           previousStatus: current.status,
           nextStatus: next.status,
-          reason: reason ?? (privateBlockReleaseRequested ? "PRIVATE_BLOCK_RELEASE" : null),
+          reason,
         },
       });
 
       if (next.status === ReservationStatus.CANCELLED) {
         await suppressReservationConfirmationEmail(tx, next.id);
+      }
+
+      if (
+        next.reservationType === ReservationType.NORMAL &&
+        (next.status === ReservationStatus.CANCELLED || next.status === ReservationStatus.NOSHOW)
+      ) {
+        await enqueueReservationStatusEmail(tx, next.id, next.status);
       }
 
       if (privateBlockReleaseRequested) {
@@ -219,7 +246,11 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
           servicePeriod: next.servicePeriod,
           result: "RELEASED",
           source: "ADMIN_USER",
-          actorName: operatorName,
+          actorName: staffAuth.email ?? staffAuth.userId,
+          actorUserId: staffAuth.userId,
+          actorEmail: staffAuth.email,
+          actorRole: staffAuth.role,
+          operatorLabel,
           requestId,
           ipAddress,
           userAgent,
@@ -248,7 +279,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         nextStatus: updated.next.status,
         date: updated.next.date,
         servicePeriod: updated.next.servicePeriod,
-        operatorName,
+        operatorLabel,
         ipHash: hashClientIp(ipAddress),
         userAgent,
         privateBlockReleaseRequested:
@@ -263,6 +294,14 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       return apiError(400, {
         error: "貸切解除には担当者名が必須です",
         code: "MISSING_OPERATOR_NAME",
+        requestId,
+      });
+    }
+
+    if (error instanceof Error && error.message === "MISSING_STATUS_REASON") {
+      return apiError(400, {
+        error: "終端ステータスへの変更には理由が必要です",
+        code: "MISSING_STATUS_REASON",
         requestId,
       });
     }

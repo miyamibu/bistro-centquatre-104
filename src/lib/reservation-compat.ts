@@ -51,7 +51,7 @@ export class ReservationSchemaNotReadyError extends Error {
 function isMissingReservationInfrastructureError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   const hasReservationSchemaHint =
-    /(serviceperiod|reservationtype|privateblockauditlog|reservationratelimitevent|reservationidempotency|reservationmanagementtoken|lineuserid|linereminder|lineclaim|lineconfirmation|linelinkedat|linelinksource|linepushstatus|linepushcheckedat|reservationlinelinktoken|notificationevent|linefriend|linecustomerlink|reservationemailoutbox)/i.test(
+    /(serviceperiod|reservationtype|privateblockauditlog|businessdayauditlog|reservationcorrectionauditlog|reservationratelimitevent|reservationidempotency|reservationmanagementtoken|lineuserid|linereminder|lineclaim|lineconfirmation|linelinkedat|linelinksource|linepushstatus|linepushcheckedat|reservationlinelinktoken|notificationevent|linefriend|linecustomerlink|reservationemailoutbox|actoruserid|actoremail|actorrole|operatorlabel|reservation_cancelled_customer|reservation_noshow_customer)/i.test(
       message
     );
   const hasMissingHint = /(does not exist|not found|unknown|invalid|missing|undefined column)/i.test(
@@ -99,6 +99,13 @@ async function runReservationSchemaReadyCheck(client: ReservationClient) {
         reservationManagementTokenReady: boolean;
         reservationIdempotencyReady: boolean;
         reservationContactReady: boolean;
+        businessDayAuditLogReady: boolean;
+        businessDayAuditFieldsReady: boolean;
+        reservationCorrectionAuditLogReady: boolean;
+        reservationCorrectionAuditFieldsReady: boolean;
+        reservationStatusAuditFieldsReady: boolean;
+        privateBlockAuditFieldsReady: boolean;
+        reservationStatusEmailTypesReady: boolean;
       }>>(
       Prisma.sql`
       SELECT
@@ -143,6 +150,51 @@ async function runReservationSchemaReadyCheck(client: ReservationClient) {
               'cancelledAt', 'cancelSource', 'cancellationReason'
             )
         ) AS "reservationContactReady"
+        ,to_regclass('"BusinessDayAuditLog"') IS NOT NULL AS "businessDayAuditLogReady"
+        ,(
+          SELECT COUNT(*) = 16
+          FROM information_schema.columns
+          WHERE table_schema = current_schema()
+            AND table_name = 'BusinessDayAuditLog'
+            AND column_name IN (
+              'id', 'businessDayId', 'date', 'previousIsClosed', 'nextIsClosed',
+              'previousNote', 'nextNote', 'actorName', 'actorUserId', 'actorEmail',
+              'actorRole', 'requestId', 'ipAddress', 'userAgent', 'reason', 'createdAt'
+            )
+        ) AS "businessDayAuditFieldsReady"
+        ,to_regclass('"ReservationCorrectionAuditLog"') IS NOT NULL AS "reservationCorrectionAuditLogReady"
+        ,(
+          SELECT COUNT(*) = 13
+          FROM information_schema.columns
+          WHERE table_schema = current_schema()
+            AND table_name = 'ReservationCorrectionAuditLog'
+            AND column_name IN (
+              'id', 'reservationId', 'actorName', 'actorUserId', 'actorEmail',
+              'actorRole', 'requestId', 'ipAddress', 'userAgent', 'reason',
+              'beforeData', 'afterData', 'createdAt'
+            )
+        ) AS "reservationCorrectionAuditFieldsReady"
+        ,(
+          SELECT COUNT(*) = 4
+          FROM information_schema.columns
+          WHERE table_schema = current_schema()
+            AND table_name = 'ReservationStatusAuditLog'
+            AND column_name IN ('actorUserId', 'actorEmail', 'actorRole', 'operatorLabel')
+        ) AS "reservationStatusAuditFieldsReady"
+        ,(
+          SELECT COUNT(*) = 4
+          FROM information_schema.columns
+          WHERE table_schema = current_schema()
+            AND table_name = 'PrivateBlockAuditLog'
+            AND column_name IN ('actorUserId', 'actorEmail', 'actorRole', 'operatorLabel')
+        ) AS "privateBlockAuditFieldsReady"
+        ,(
+          SELECT COUNT(*) = 2
+          FROM pg_enum
+          JOIN pg_type ON pg_type.oid = pg_enum.enumtypid
+          WHERE pg_type.typname = 'ReservationEmailNotificationType'
+            AND pg_enum.enumlabel IN ('RESERVATION_CANCELLED_CUSTOMER', 'RESERVATION_NOSHOW_CUSTOMER')
+        ) AS "reservationStatusEmailTypesReady"
       `
     );
     const schema = schemaRows[0];

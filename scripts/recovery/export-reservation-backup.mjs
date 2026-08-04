@@ -14,6 +14,8 @@ import {
 } from "../backup-encryption.mjs";
 
 const DEFAULT_ROUTE_PATH = "/api/admin/backups/reservations/export";
+const LOCAL_BACKUP_SCHEMA_VERSION = 3;
+const SUPPORTED_API_SCHEMA_VERSIONS = new Set([2, LOCAL_BACKUP_SCHEMA_VERSION]);
 
 function parseCliArgs(argv) {
   const args = new Map();
@@ -139,6 +141,12 @@ function readCount(counts, key) {
   return value;
 }
 
+function readOptionalCount(counts, key) {
+  const value = counts?.[key];
+  if (value === undefined) return 0;
+  return readCount(counts, key);
+}
+
 function sanitizeExportPayload(exported) {
   if (!Array.isArray(exported.reservationEmailOutbox)) {
     throw new Error("バックアップAPI応答のreservationEmailOutboxが配列ではありません");
@@ -146,6 +154,12 @@ function sanitizeExportPayload(exported) {
 
   return {
     ...exported,
+    businessDayAuditLogs: Array.isArray(exported.businessDayAuditLogs)
+      ? exported.businessDayAuditLogs
+      : [],
+    reservationCorrectionAuditLogs: Array.isArray(exported.reservationCorrectionAuditLogs)
+      ? exported.reservationCorrectionAuditLogs
+      : [],
     reservationEmailOutbox: exported.reservationEmailOutbox.map((row) => {
       const sanitized = { ...row };
       delete sanitized.claimToken;
@@ -230,8 +244,12 @@ async function main() {
     throw new Error(`バックアップAPIエラー: ${apiError}`);
   }
 
-  if (!json || typeof json !== "object" || json.schemaVersion !== 2) {
-    throw new Error("バックアップAPI応答のschemaVersionが未対応です");
+  if (
+    !json ||
+    typeof json !== "object" ||
+    !SUPPORTED_API_SCHEMA_VERSIONS.has(json.schemaVersion)
+  ) {
+    throw new Error("バックアップAPI応答のschemaVersionが未対応です（2または3が必要です）");
   }
 
   const counts = json.counts;
@@ -246,7 +264,12 @@ async function main() {
   const reservations = readCount(counts, "reservations");
   const businessDays = readCount(counts, "businessDays");
   const privateBlockAuditLogs = readCount(counts, "privateBlockAuditLogs");
+  const businessDayAuditLogs = readOptionalCount(counts, "businessDayAuditLogs");
   const reservationStatusAuditLogs = readCount(counts, "reservationStatusAuditLogs");
+  const reservationCorrectionAuditLogs = readOptionalCount(
+    counts,
+    "reservationCorrectionAuditLogs",
+  );
   const reservationEmailOutbox = readCount(counts, "reservationEmailOutbox");
   const reservationLineLinkTokens = readCount(counts, "reservationLineLinkTokens");
   const notificationEvents = readCount(counts, "notificationEvents");
@@ -254,7 +277,9 @@ async function main() {
     ["businessDays", businessDays],
     ["reservations", reservations],
     ["privateBlockAuditLogs", privateBlockAuditLogs],
+    ["businessDayAuditLogs", businessDayAuditLogs],
     ["reservationStatusAuditLogs", reservationStatusAuditLogs],
+    ["reservationCorrectionAuditLogs", reservationCorrectionAuditLogs],
     ["reservationEmailOutbox", reservationEmailOutbox],
     ["reservationLineLinkTokens", reservationLineLinkTokens],
     ["notificationEvents", notificationEvents],
@@ -276,13 +301,15 @@ async function main() {
 
     const exportPayload = {
       ...sanitizedPayload,
-      schemaVersion: 2,
+      schemaVersion: LOCAL_BACKUP_SCHEMA_VERSION,
       exportedAt: runAt,
       counts: {
         reservations,
         businessDays,
         privateBlockAuditLogs,
+        businessDayAuditLogs,
         reservationStatusAuditLogs,
+        reservationCorrectionAuditLogs,
         reservationEmailOutbox,
         reservationLineLinkTokens,
         notificationEvents,
@@ -297,7 +324,7 @@ async function main() {
     const encryptedFileSha256 = createHash("sha256").update(encrypted).digest("hex");
 
     const latestRun = {
-      schemaVersion: 2,
+      schemaVersion: LOCAL_BACKUP_SCHEMA_VERSION,
       runAt,
       backupFile: backupFilePath,
       payloadSchemaVersion: json.schemaVersion,
@@ -313,7 +340,9 @@ async function main() {
         reservations,
         businessDays,
         privateBlockAuditLogs,
+        businessDayAuditLogs,
         reservationStatusAuditLogs,
+        reservationCorrectionAuditLogs,
         reservationEmailOutbox,
         reservationLineLinkTokens,
         notificationEvents,

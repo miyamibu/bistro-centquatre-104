@@ -10,7 +10,7 @@ import {
   enforceReservationWriteRateLimitInTransaction,
   isReservationRateLimitError,
 } from "@/lib/reservation-rate-limit";
-import { buildReservationAdvisoryLockKey } from "@/lib/reservation-lock";
+import { acquireReservationAdvisoryLock } from "@/lib/reservation-advisory-lock";
 import { evaluateReservationAvailability } from "@/lib/reservation-capacity";
 import { getClientIp, hashClientIp } from "@/lib/request-meta";
 import {
@@ -94,18 +94,6 @@ type PersistedReservationResponseBody = Omit<
   lineLinkIssued: boolean;
   tokenKeyId: string;
 };
-
-async function acquireReservationAdvisoryLock(
-  tx: Prisma.TransactionClient,
-  date: string,
-  servicePeriod: string
-) {
-  const lockKey = buildReservationAdvisoryLockKey(date, servicePeriod);
-  await tx.$executeRawUnsafe(
-    "SELECT pg_advisory_xact_lock(hashtext($1))",
-    lockKey
-  );
-}
 
 async function createLineLinkToken(
   client: Prisma.TransactionClient,

@@ -63,6 +63,9 @@ async function loadRouteWithBackupRows() {
           },
         ]),
       },
+      businessDayAuditLog: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
       reservationStatusAuditLog: {
         findMany: vi.fn().mockResolvedValue([
           {
@@ -129,6 +132,16 @@ async function loadRouteWithBackupRows() {
           },
         ]),
       },
+      reservationCorrectionAuditLog: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      $transaction: vi.fn().mockImplementation(async (callback) =>
+        callback({
+          $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
+          $queryRaw: vi.fn().mockResolvedValue([{ count: 0 }]),
+          $executeRaw: vi.fn().mockResolvedValue(undefined),
+        }),
+      ),
     },
   }));
   vi.doMock("@/lib/reservation-compat", async () => {
@@ -182,14 +195,21 @@ async function loadRouteWithDataAccessSpies() {
     logInfo: vi.fn(),
   }));
   vi.doMock("@/lib/prisma", () => ({
-    prisma: {
+      prisma: {
       businessDay: {
         findMany: businessDayFindMany,
       },
-      privateBlockAuditLog: {
-        findMany: privateBlockAuditFindMany,
+        privateBlockAuditLog: {
+          findMany: privateBlockAuditFindMany,
+        },
+        $transaction: vi.fn().mockImplementation(async (callback) =>
+          callback({
+            $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
+            $queryRaw: vi.fn().mockResolvedValue([{ count: 0 }]),
+            $executeRaw: vi.fn().mockResolvedValue(undefined),
+          }),
+        ),
       },
-    },
   }));
   vi.doMock("@/lib/reservation-compat", async () => {
     const actual = await vi.importActual<typeof import("@/lib/reservation-compat")>(
@@ -325,7 +345,7 @@ describe("backup export auth boundary", () => {
     expect(response.headers.get("cache-control")).toBe("no-store");
     const body = await response.json();
     expect(body).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       range: {
         from: "2026-04-21",
         to: "2026-04-21",

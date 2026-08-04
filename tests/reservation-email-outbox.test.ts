@@ -3,9 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   findMany: vi.fn(),
   findFirst: vi.fn(),
+  findUnique: vi.fn(),
+  findUniqueOrThrow: vi.fn(),
   updateMany: vi.fn(),
   upsert: vi.fn(),
+  create: vi.fn(),
   sendReservationEmail: vi.fn(),
+  sendCustomerReservationStatusEmail: vi.fn(),
   logError: vi.fn(),
   logInfo: vi.fn(),
   logWarn: vi.fn(),
@@ -24,6 +28,7 @@ vi.mock("@/lib/prisma", () => ({
 vi.mock("@/lib/email", () => ({
   sendReservationEmail: mocks.sendReservationEmail,
   sendCustomerReservationEmail: vi.fn(),
+  sendCustomerReservationStatusEmail: mocks.sendCustomerReservationStatusEmail,
 }));
 
 vi.mock("@/lib/env", () => ({
@@ -64,6 +69,13 @@ beforeEach(() => {
   mocks.findMany.mockResolvedValue([{ id: "outbox-1" }]);
   mocks.updateMany.mockResolvedValue({ count: 1 });
   mocks.findFirst.mockResolvedValue(claimedRow());
+  mocks.findUnique.mockResolvedValue(null);
+  mocks.findUniqueOrThrow.mockResolvedValue({ id: "outbox-1", status: "PENDING" });
+  mocks.create.mockResolvedValue({ id: "outbox-1", status: "PENDING" });
+  mocks.sendCustomerReservationStatusEmail.mockResolvedValue({
+    sent: true,
+    provider: "resend",
+  });
 });
 
 afterEach(() => {
@@ -114,23 +126,55 @@ describe("reservation confirmation email outbox", () => {
 
   it("uses a fresh provider idempotency key for an explicit customer resend", async () => {
     const upsert = vi.fn().mockResolvedValue({ id: "outbox-1", status: "PENDING" });
-    const tx = { reservationEmailOutbox: { upsert } };
+    const tx = {
+      reservationEmailOutbox: {
+        upsert,
+        findUnique: mocks.findUnique,
+        updateMany: mocks.updateMany,
+        findUniqueOrThrow: mocks.findUniqueOrThrow,
+        create: mocks.create,
+      },
+    };
+    mocks.findUnique.mockResolvedValue({ id: "outbox-1", status: "SENT" });
     const { enqueueReservationCustomerEmail } = await import(
       "@/lib/reservation-email-outbox"
     );
 
     await enqueueReservationCustomerEmail(tx as never, "reservation-1", { reset: true });
 
-    expect(upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        update: expect.objectContaining({
-          status: "PENDING",
-          providerIdempotencyKey: expect.stringMatching(
-            /^reservation-email-outbox\/resend\/[0-9a-f-]{36}$/,
-          ),
-        }),
+    expect(upsert).not.toHaveBeenCalled();
+    expect(mocks.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "outbox-1",
+        status: { not: "PROCESSING" },
+      },
+      data: expect.objectContaining({
+        status: "PENDING",
+        providerIdempotencyKey: expect.stringMatching(
+          /^reservation-email-outbox\/resend\/[0-9a-f-]{36}$/,
+        ),
       }),
+    });
+  });
+
+  it("does not reset an outbox row while a worker is processing it", async () => {
+    mocks.findUnique.mockResolvedValue({ id: "outbox-1", status: "PROCESSING" });
+    const { enqueueReservationCustomerEmail, ReservationEmailOutboxBusyError } = await import(
+      "@/lib/reservation-email-outbox"
     );
+    const tx = {
+      reservationEmailOutbox: {
+        findUnique: mocks.findUnique,
+        updateMany: mocks.updateMany,
+        findUniqueOrThrow: mocks.findUniqueOrThrow,
+        create: mocks.create,
+      },
+    };
+
+    await expect(
+      enqueueReservationCustomerEmail(tx as never, "reservation-1", { reset: true }),
+    ).rejects.toBeInstanceOf(ReservationEmailOutboxBusyError);
+    expect(mocks.updateMany).not.toHaveBeenCalled();
   });
 
   it("suppresses a pending confirmation when a reservation is cancelled", async () => {
@@ -214,6 +258,36 @@ describe("reservation confirmation email outbox", () => {
     expect(mocks.sendReservationEmail.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.updateMany.mock.invocationCallOrder[1]
     );
+  });
+
+  it("sends a customer notification for a matching cancellation status event", async () => {
+    mocks.findMany.mockResolvedValue([{ id: "outbox-1" }]);
+    mocks.findFirst.mockResolvedValue(
+      claimedRow({
+        notificationType: "RESERVATION_CANCELLED_CUSTOMER",
+        reservation: {
+          id: "reservation-1",
+          reservationType: "NORMAL",
+          status: "CANCELLED",
+          customerEmail: "guest@example.com",
+        },
+      }),
+    );
+
+    const { processReservationEmailOutbox } = await import(
+      "@/lib/reservation-email-outbox"
+    );
+    const summary = await processReservationEmailOutbox({ requestId: "request-status-1" });
+
+    expect(summary.sent).toBe(1);
+    expect(mocks.sendCustomerReservationStatusEmail).toHaveBeenCalledWith({
+      reservation: expect.objectContaining({
+        id: "reservation-1",
+        status: "CANCELLED",
+      }),
+      status: "CANCELLED",
+      idempotencyKey: "reservation-email-outbox/outbox-1",
+    });
   });
 
   it("returns a failed delivery to PENDING with exponential backoff", async () => {

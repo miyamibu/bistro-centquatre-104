@@ -6,7 +6,11 @@ import {
   ReservationEmailNotificationType,
   ReservationEmailOutboxStatus,
 } from "@prisma/client";
-import { sendCustomerReservationEmail, sendReservationEmail } from "@/lib/email";
+import {
+  sendCustomerReservationEmail,
+  sendCustomerReservationStatusEmail,
+  sendReservationEmail,
+} from "@/lib/email";
 import { env } from "@/lib/env";
 import { logError, logInfo, logWarn } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
@@ -76,6 +80,15 @@ function buildAdminUrl(reservationId: string): string | undefined {
 
 export function buildReservationEmailIdempotencyKey(outboxId: string): string {
   return `${IDEMPOTENCY_KEY_PREFIX}${outboxId}`;
+}
+
+export class ReservationEmailOutboxBusyError extends Error {
+  readonly code = "RESERVATION_EMAIL_SEND_IN_PROGRESS";
+
+  constructor() {
+    super("A reservation email is already being sent");
+    this.name = "ReservationEmailOutboxBusyError";
+  }
 }
 
 type OutboxCursor = {
@@ -151,37 +164,96 @@ export async function enqueueReservationCustomerEmail(
   reservationId: string,
   options: { reset?: boolean } = {},
 ) {
-  return tx.reservationEmailOutbox.upsert({
-    where: {
-      reservationId_notificationType: {
+  const notificationType = ReservationEmailNotificationType.CUSTOMER_CONFIRMATION;
+  if (!options.reset) {
+    return tx.reservationEmailOutbox.upsert({
+      where: { reservationId_notificationType: { reservationId, notificationType } },
+      create: {
         reservationId,
-        notificationType: ReservationEmailNotificationType.CUSTOMER_CONFIRMATION,
+        notificationType,
+        status: ReservationEmailOutboxStatus.PENDING,
+        attempts: 0,
+        maxAttempts: MAX_ATTEMPTS,
+        nextAttemptAt: new Date(),
       },
+      update: {},
+      select: { id: true, status: true },
+    });
+  }
+
+  const existing = await tx.reservationEmailOutbox.findUnique({
+    where: { reservationId_notificationType: { reservationId, notificationType } },
+    select: { id: true, status: true },
+  });
+
+  if (existing?.status === ReservationEmailOutboxStatus.PROCESSING) {
+    throw new ReservationEmailOutboxBusyError();
+  }
+
+  if (!existing) {
+    return tx.reservationEmailOutbox.create({
+      data: {
+        reservationId,
+        notificationType,
+        status: ReservationEmailOutboxStatus.PENDING,
+        attempts: 0,
+        maxAttempts: MAX_ATTEMPTS,
+        nextAttemptAt: new Date(),
+        providerIdempotencyKey: `${IDEMPOTENCY_KEY_PREFIX}resend/${randomUUID()}`,
+      },
+      select: { id: true, status: true },
+    });
+  }
+
+  const updated = await tx.reservationEmailOutbox.updateMany({
+    where: {
+      id: existing.id,
+      status: { not: ReservationEmailOutboxStatus.PROCESSING },
     },
+    data: {
+      status: ReservationEmailOutboxStatus.PENDING,
+      attempts: 0,
+      nextAttemptAt: new Date(),
+      claimedAt: null,
+      lockedUntil: null,
+      claimToken: null,
+      sentAt: null,
+      providerMessageId: null,
+      providerIdempotencyKey: `${IDEMPOTENCY_KEY_PREFIX}resend/${randomUUID()}`,
+      lastError: null,
+    },
+  });
+  if (updated.count !== 1) {
+    throw new ReservationEmailOutboxBusyError();
+  }
+
+  return tx.reservationEmailOutbox.findUniqueOrThrow({
+    where: { id: existing.id },
+    select: { id: true, status: true },
+  });
+}
+
+export async function enqueueReservationStatusEmail(
+  tx: Prisma.TransactionClient,
+  reservationId: string,
+  status: "CANCELLED" | "NOSHOW",
+) {
+  const notificationType =
+    status === "CANCELLED"
+      ? ReservationEmailNotificationType.RESERVATION_CANCELLED_CUSTOMER
+      : ReservationEmailNotificationType.RESERVATION_NOSHOW_CUSTOMER;
+
+  return tx.reservationEmailOutbox.upsert({
+    where: { reservationId_notificationType: { reservationId, notificationType } },
     create: {
       reservationId,
-      notificationType: ReservationEmailNotificationType.CUSTOMER_CONFIRMATION,
+      notificationType,
       status: ReservationEmailOutboxStatus.PENDING,
       attempts: 0,
       maxAttempts: MAX_ATTEMPTS,
       nextAttemptAt: new Date(),
     },
-    update: options.reset
-      ? {
-          status: ReservationEmailOutboxStatus.PENDING,
-          attempts: 0,
-          nextAttemptAt: new Date(),
-          claimedAt: null,
-          lockedUntil: null,
-          claimToken: null,
-          sentAt: null,
-          providerMessageId: null,
-          // A manual resend must use a new provider idempotency key. Reusing
-          // the original key would let providers deduplicate the resend.
-          providerIdempotencyKey: `${IDEMPOTENCY_KEY_PREFIX}resend/${randomUUID()}`,
-          lastError: null,
-        }
-      : {},
+    update: {},
     select: { id: true, status: true },
   });
 }
@@ -414,14 +486,33 @@ async function processOutboxItem(
     return markSkipped(`SKIPPED_RESERVATION_TYPE_${reservation.reservationType}`);
   }
 
-  if (reservation.status !== ReservationStatus.CONFIRMED) {
+  const customerDeliveryTypes = new Set<ReservationEmailNotificationType>([
+    ReservationEmailNotificationType.CUSTOMER_CONFIRMATION,
+    ReservationEmailNotificationType.RESERVATION_CANCELLED_CUSTOMER,
+    ReservationEmailNotificationType.RESERVATION_NOSHOW_CUSTOMER,
+  ]);
+  const customerStatusDeliveryTypes = new Set<ReservationEmailNotificationType>([
+    ReservationEmailNotificationType.RESERVATION_CANCELLED_CUSTOMER,
+    ReservationEmailNotificationType.RESERVATION_NOSHOW_CUSTOMER,
+  ]);
+  const isCustomerDelivery = customerDeliveryTypes.has(claimed.notificationType);
+  const isCustomerStatusDelivery = customerStatusDeliveryTypes.has(claimed.notificationType);
+
+  if (!isCustomerStatusDelivery && reservation.status !== ReservationStatus.CONFIRMED) {
     return markSkipped(`SKIPPED_RESERVATION_STATUS_${reservation.status}`);
   }
-
-  const isCustomerDelivery =
-    claimed.notificationType === ReservationEmailNotificationType.CUSTOMER_CONFIRMATION;
   if (isCustomerDelivery && !reservation.customerEmail) {
     return markSkipped("SKIPPED_MISSING_CUSTOMER_EMAIL");
+  }
+
+  if (
+    isCustomerStatusDelivery &&
+    ((claimed.notificationType === ReservationEmailNotificationType.RESERVATION_CANCELLED_CUSTOMER &&
+      reservation.status !== ReservationStatus.CANCELLED) ||
+      (claimed.notificationType === ReservationEmailNotificationType.RESERVATION_NOSHOW_CUSTOMER &&
+        reservation.status !== ReservationStatus.NOSHOW))
+  ) {
+    return markSkipped("SKIPPED_RESERVATION_STATUS_MISMATCH");
   }
 
   // Keep one key across provider retries, but allow an explicit resend to
@@ -431,10 +522,19 @@ async function processOutboxItem(
   let providerMessageId: string | undefined = claimed.providerMessageId ?? undefined;
 
   try {
-    const managementUrl = isCustomerDelivery
+    const managementUrl = !isCustomerStatusDelivery && isCustomerDelivery
       ? await buildCustomerManagementUrl(claimed.reservationId)
       : undefined;
-    const delivery = isCustomerDelivery
+    const delivery = isCustomerStatusDelivery
+      ? await sendCustomerReservationStatusEmail({
+          reservation,
+          status:
+            claimed.notificationType === ReservationEmailNotificationType.RESERVATION_CANCELLED_CUSTOMER
+              ? "CANCELLED"
+              : "NOSHOW",
+          idempotencyKey: providerIdempotencyKey,
+        })
+      : isCustomerDelivery
       ? await sendCustomerReservationEmail({
           reservation,
           managementUrl: managementUrl ?? undefined,
@@ -456,7 +556,8 @@ async function processOutboxItem(
         reason === "PRIVATE_BLOCK" ||
         reason === "RESERVATION_NOT_CONFIRMED" ||
         reason === "MISSING_CUSTOMER_EMAIL" ||
-        reason === "MISSING_MANAGEMENT_URL"
+        reason === "MISSING_MANAGEMENT_URL" ||
+        reason === "RESERVATION_STATUS_MISMATCH"
       ) {
         return markSkipped(`SKIPPED_${reason}`);
       }

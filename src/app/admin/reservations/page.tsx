@@ -227,7 +227,7 @@ export default async function AdminReservations({
         </div>
       </header>
 
-      <p className="text-sm text-gray-600">※キャンセル済みは一覧から除外しています。</p>
+      <p className="text-sm text-gray-600">※通常は有効予約のみ表示しています。キャンセル済みは一覧上部から確認できます。</p>
 
       <AdminReservationsTable
         selectedDate={date}

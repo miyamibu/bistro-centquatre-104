@@ -34,7 +34,8 @@ export async function POST(request: NextRequest) {
   const requestId = getRequestId(request);
   const route = "/api/admin/private-block";
 
-  if (!(await getStaffAuth("ADMIN"))) {
+  const staffAuth = await getStaffAuth("ADMIN");
+  if (!staffAuth) {
     return apiError(401, { error: "Unauthorized", code: "UNAUTHORIZED", requestId });
   }
 
@@ -113,6 +114,10 @@ export async function POST(request: NextRequest) {
             servicePeriod,
             result: "NO_OP",
             source: "ADMIN_USER",
+            actorName: staffAuth.email ?? staffAuth.userId,
+            actorUserId: staffAuth.userId,
+            actorEmail: staffAuth.email,
+            actorRole: staffAuth.role,
             requestId,
             note: normalizedNote ?? null,
           });
@@ -142,6 +147,10 @@ export async function POST(request: NextRequest) {
           servicePeriod,
           result: "CREATED",
           source: "ADMIN_USER",
+          actorName: staffAuth.email ?? staffAuth.userId,
+          actorUserId: staffAuth.userId,
+          actorEmail: staffAuth.email,
+          actorRole: staffAuth.role,
           requestId,
           note: normalizedNote ?? null,
         });

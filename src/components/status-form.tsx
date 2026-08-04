@@ -76,6 +76,7 @@ export function StatusForm({
     }
 
     let operatorName: string | undefined;
+    let reason: string | undefined;
     if (isPrivateBlock && nextStatus === ReservationStatus.CANCELLED) {
       const input = window.prompt("貸切解除の担当者名を入力してください");
       if (input == null) {
@@ -92,6 +93,23 @@ export function StatusForm({
       }
 
       operatorName = trimmed;
+    }
+
+    if (terminalStatuses.has(nextStatus) && nextStatus !== currentStatus) {
+      const input = window.prompt("ステータス変更の理由を入力してください");
+      if (input == null) {
+        setStatus(currentStatus);
+        setMessage({ type: "info", text: "ステータス変更をキャンセルしました" });
+        return;
+      }
+
+      const trimmed = input.trim();
+      if (!trimmed) {
+        setStatus(currentStatus);
+        setMessage({ type: "error", text: "変更理由は必須です" });
+        return;
+      }
+      reason = trimmed;
     }
 
     setLoading(true);
@@ -111,6 +129,7 @@ export function StatusForm({
         body: JSON.stringify({
           status: nextStatus,
           operatorName,
+          reason,
           ...(isPrivateBlock && nextStatus === ReservationStatus.CANCELLED
             ? {
                 expectedDate,

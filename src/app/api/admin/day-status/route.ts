@@ -12,7 +12,8 @@ export async function GET(request: NextRequest) {
   const requestId = getRequestId(request);
   const route = "/api/admin/day-status";
 
-  if (!(await getStaffAuth())) {
+  const staffAuth = await getStaffAuth();
+  if (!staffAuth) {
     return apiError(401, { error: "Unauthorized", code: "UNAUTHORIZED", requestId });
   }
 
@@ -40,7 +41,10 @@ export async function GET(request: NextRequest) {
 
     try {
       const dayStatus = await getAdminDayStatus(parsedDate.data);
-      return NextResponse.json(dayStatus);
+      return NextResponse.json({
+        ...dayStatus,
+        permissions: { canManageBusinessDays: staffAuth.role === "ADMIN" },
+      });
     } catch (error) {
       if (isReservationSchemaNotReadyError(error)) {
         return apiError(503, {
@@ -76,7 +80,10 @@ export async function GET(request: NextRequest) {
 
   try {
     const monthStatus = await getAdminMonthStatus(parsedMonth.data);
-    return NextResponse.json(monthStatus);
+    return NextResponse.json({
+      ...monthStatus,
+      permissions: { canManageBusinessDays: staffAuth.role === "ADMIN" },
+    });
   } catch (error) {
     if (isReservationSchemaNotReadyError(error)) {
       return apiError(503, {

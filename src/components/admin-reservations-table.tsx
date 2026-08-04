@@ -62,13 +62,20 @@ export default function AdminReservationsTable({
 }: AdminReservationsTableProps) {
   const [openReservationIds, setOpenReservationIds] = useState<Record<string, boolean>>({});
   const [searchQuery, setSearchQuery] = useState("");
+  const [showCancelled, setShowCancelled] = useState(false);
   const memoHeadingId = useId();
   const normalizedSearch = searchQuery.trim().toLowerCase();
   const normalReservations = reservations.filter((reservation) => !reservation.isPrivateBlock);
+  const cancelledReservations = normalReservations.filter(
+    (reservation) => reservation.statusLabel === "キャンセル済み",
+  );
+  const visibleBaseReservations = showCancelled
+    ? normalReservations
+    : normalReservations.filter((reservation) => reservation.statusLabel !== "キャンセル済み");
   const filteredReservations =
     normalizedSearch.length === 0
-      ? normalReservations
-      : normalReservations.filter((reservation) =>
+      ? visibleBaseReservations
+      : visibleBaseReservations.filter((reservation) =>
           [
             reservation.name,
             reservation.phone,
@@ -103,7 +110,7 @@ export default function AdminReservationsTable({
     };
   });
   const visibleReservationCount = filteredReservations.length;
-  const totalReservationCount = normalReservations.length;
+  const totalReservationCount = visibleBaseReservations.length;
 
   return (
     <div className="space-y-3">
@@ -123,8 +130,16 @@ export default function AdminReservationsTable({
             />
           </label>
           <p className="text-sm text-gray-600">
-            {visibleReservationCount}件表示 / 全{totalReservationCount}件
+            {visibleReservationCount}件表示 / 有効{totalReservationCount}件
           </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setShowCancelled((current) => !current)}
+          >
+            {showCancelled ? "キャンセル済みを隠す" : `キャンセル済みを表示（${cancelledReservations.length}件）`}
+          </Button>
         </div>
       </div>
 

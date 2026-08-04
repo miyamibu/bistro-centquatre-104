@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { StatusForm } from "@/components/status-form";
+import { ReservationCorrectionForm } from "@/components/reservation-correction-form";
 import { formatJst } from "@/lib/dates";
 import { buildMockReservations } from "@/lib/admin-reservation-mock";
 import { parseReservationNote } from "@/lib/reservation-note";
@@ -98,6 +99,20 @@ export default async function AdminReservationDetail({
           expectedReservationType={reservation.reservationType}
         />
       </div>
+
+      {!isPrivateBlock ? (
+        <ReservationCorrectionForm
+          id={reservation.id}
+          date={reservation.date}
+          servicePeriod={reservation.servicePeriod}
+          partySize={reservation.partySize}
+          arrivalTime={reservation.arrivalTime}
+          name={reservation.name}
+          phone={reservation.phone}
+          note={reservation.note}
+          updatedAt={reservation.updatedAt.toISOString()}
+        />
+      ) : null}
     </div>
   );
 }

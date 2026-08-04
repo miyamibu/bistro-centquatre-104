@@ -30,7 +30,8 @@ import {
 } from "./backup-encryption.mjs";
 
 const DEFAULT_ROUTE_PATH = "/api/admin/backups/reservations/export";
-const BACKUP_SCHEMA_VERSION = 2;
+const BACKUP_SCHEMA_VERSION = 3;
+const SUPPORTED_API_SCHEMA_VERSIONS = [2, 3] as const;
 
 const dateStringSchema = z.string().regex(DATE_PATTERN);
 const businessDaySchema = z.object({
@@ -38,6 +39,24 @@ const businessDaySchema = z.object({
   date: dateStringSchema,
   isClosed: z.boolean(),
   note: z.string().nullable(),
+});
+const businessDayAuditLogSchema = z.object({
+  id: z.string(),
+  businessDayId: z.string(),
+  date: dateStringSchema,
+  previousIsClosed: z.boolean().nullable(),
+  nextIsClosed: z.boolean(),
+  previousNote: z.string().nullable(),
+  nextNote: z.string().nullable(),
+  actorName: z.string().nullable().optional(),
+  actorUserId: z.string().nullable().optional(),
+  actorEmail: z.string().nullable().optional(),
+  actorRole: z.string().nullable().optional(),
+  requestId: z.string(),
+  ipAddress: z.string().nullable(),
+  userAgent: z.string().nullable(),
+  reason: z.string().nullable(),
+  createdAt: z.string(),
 });
 const reservationSchema = z.object({
   id: z.string(),
@@ -81,6 +100,10 @@ const privateBlockAuditLogSchema = z.object({
   result: z.enum(["CREATED", "NO_OP", "RELEASED"]),
   source: z.enum(["PUBLIC_FORM", "ADMIN_USER"]),
   actorName: z.string().nullable(),
+  actorUserId: z.string().nullable().optional(),
+  actorEmail: z.string().nullable().optional(),
+  actorRole: z.string().nullable().optional(),
+  operatorLabel: z.string().nullable().optional(),
   requestId: z.string(),
   ipAddress: z.string().nullable(),
   userAgent: z.string().nullable(),
@@ -91,6 +114,10 @@ const reservationStatusAuditLogSchema = z.object({
   id: z.string(),
   reservationId: z.string(),
   actorName: z.string().nullable(),
+  actorUserId: z.string().nullable().optional(),
+  actorEmail: z.string().nullable().optional(),
+  actorRole: z.string().nullable().optional(),
+  operatorLabel: z.string().nullable().optional(),
   requestId: z.string(),
   ipAddress: z.string().nullable(),
   userAgent: z.string().nullable(),
@@ -113,6 +140,21 @@ const reservationEmailOutboxSchema = z.object({
   lastError: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
+});
+const reservationCorrectionAuditLogSchema = z.object({
+  id: z.string(),
+  reservationId: z.string(),
+  actorName: z.string().nullable(),
+  actorUserId: z.string().nullable().optional(),
+  actorEmail: z.string().nullable().optional(),
+  actorRole: z.string().nullable().optional(),
+  requestId: z.string(),
+  ipAddress: z.string().nullable(),
+  userAgent: z.string().nullable(),
+  reason: z.string(),
+  beforeData: z.unknown(),
+  afterData: z.unknown(),
+  createdAt: z.string(),
 });
 const reservationLineLinkTokenSchema = z.object({
   id: z.string(),
@@ -138,7 +180,10 @@ const notificationEventSchema = z.object({
   updatedAt: z.string(),
 });
 const exportResponseSchema = z.object({
-  schemaVersion: z.literal(BACKUP_SCHEMA_VERSION),
+  schemaVersion: z.union([
+    z.literal(SUPPORTED_API_SCHEMA_VERSIONS[0]),
+    z.literal(SUPPORTED_API_SCHEMA_VERSIONS[1]),
+  ]),
   generatedAt: z.string(),
   range: z.object({
     from: dateStringSchema,
@@ -149,15 +194,19 @@ const exportResponseSchema = z.object({
     businessDays: z.number().int().nonnegative(),
     reservations: z.number().int().nonnegative(),
     privateBlockAuditLogs: z.number().int().nonnegative(),
+    businessDayAuditLogs: z.number().int().nonnegative().optional().default(0),
     reservationStatusAuditLogs: z.number().int().nonnegative(),
+    reservationCorrectionAuditLogs: z.number().int().nonnegative().optional().default(0),
     reservationEmailOutbox: z.number().int().nonnegative(),
     reservationLineLinkTokens: z.number().int().nonnegative(),
     notificationEvents: z.number().int().nonnegative(),
   }),
   businessDays: z.array(businessDaySchema),
+  businessDayAuditLogs: z.array(businessDayAuditLogSchema).default([]),
   reservations: z.array(reservationSchema),
   privateBlockAuditLogs: z.array(privateBlockAuditLogSchema),
   reservationStatusAuditLogs: z.array(reservationStatusAuditLogSchema),
+  reservationCorrectionAuditLogs: z.array(reservationCorrectionAuditLogSchema).default([]),
   reservationEmailOutbox: z.array(reservationEmailOutboxSchema),
   reservationLineLinkTokens: z.array(reservationLineLinkTokenSchema),
   notificationEvents: z.array(notificationEventSchema),
@@ -169,7 +218,9 @@ const exportResponseSchema = z.object({
     ["businessDays", value.businessDays.length],
     ["reservations", value.reservations.length],
     ["privateBlockAuditLogs", value.privateBlockAuditLogs.length],
+    ["businessDayAuditLogs", value.businessDayAuditLogs.length],
     ["reservationStatusAuditLogs", value.reservationStatusAuditLogs.length],
+    ["reservationCorrectionAuditLogs", value.reservationCorrectionAuditLogs.length],
     ["reservationEmailOutbox", value.reservationEmailOutbox.length],
     ["reservationLineLinkTokens", value.reservationLineLinkTokens.length],
     ["notificationEvents", value.notificationEvents.length],
@@ -203,17 +254,21 @@ type DayBackupFile = {
     requestId: string;
   };
   businessDay: z.infer<typeof businessDaySchema> | null;
+  businessDayAuditLogs: Array<z.infer<typeof businessDayAuditLogSchema>>;
   reservations: Array<z.infer<typeof reservationSchema>>;
   privateBlockAuditLogs: Array<z.infer<typeof privateBlockAuditLogSchema>>;
   reservationStatusAuditLogs: Array<z.infer<typeof reservationStatusAuditLogSchema>>;
+  reservationCorrectionAuditLogs: Array<z.infer<typeof reservationCorrectionAuditLogSchema>>;
   reservationEmailOutbox: Array<z.infer<typeof reservationEmailOutboxSchema>>;
   reservationLineLinkTokens: Array<z.infer<typeof reservationLineLinkTokenSchema>>;
   notificationEvents: Array<z.infer<typeof notificationEventSchema>>;
   counts: {
     businessDays: number;
+    businessDayAuditLogs: number;
     reservations: number;
     privateBlockAuditLogs: number;
     reservationStatusAuditLogs: number;
+    reservationCorrectionAuditLogs: number;
     reservationEmailOutbox: number;
     reservationLineLinkTokens: number;
     notificationEvents: number;
@@ -413,7 +468,9 @@ async function main() {
   let totalReservations = 0;
   let totalBusinessDays = 0;
   let totalPrivateBlockAuditLogs = 0;
+  let totalBusinessDayAuditLogs = 0;
   let totalReservationStatusAuditLogs = 0;
+  let totalReservationCorrectionAuditLogs = 0;
   let totalReservationEmailOutbox = 0;
   let totalReservationLineLinkTokens = 0;
   let totalNotificationEvents = 0;
@@ -424,11 +481,16 @@ async function main() {
     const exported = await fetchChunk(exportUrl, secret);
 
     const businessDayByDate = new Map(exported.businessDays.map((row) => [row.date, row]));
+    const businessDayAuditByDate = groupByDate(exported.businessDayAuditLogs);
     const reservationsByDate = groupByDate(exported.reservations);
     const auditByDate = groupByDate(exported.privateBlockAuditLogs);
     const reservationDateById = new Map(exported.reservations.map((row) => [row.id, row.date]));
     const statusAuditByDate = groupByReservationDate(
       exported.reservationStatusAuditLogs,
+      reservationDateById
+    );
+    const correctionAuditByDate = groupByReservationDate(
+      exported.reservationCorrectionAuditLogs,
       reservationDateById
     );
     const emailOutboxByDate = groupByReservationDate(
@@ -447,7 +509,7 @@ async function main() {
     const datesInChunk = enumerateDateStrings(exported.range.from, exported.range.to);
     for (const date of datesInChunk) {
       const dayPayload: DayBackupFile = {
-        schemaVersion: exported.schemaVersion,
+        schemaVersion: BACKUP_SCHEMA_VERSION,
         pulledAt,
         date,
         source: {
@@ -461,17 +523,21 @@ async function main() {
           requestId: exported.requestId,
         },
         businessDay: businessDayByDate.get(date) ?? null,
+        businessDayAuditLogs: businessDayAuditByDate[date] ?? [],
         reservations: reservationsByDate[date] ?? [],
         privateBlockAuditLogs: auditByDate[date] ?? [],
         reservationStatusAuditLogs: statusAuditByDate[date] ?? [],
+        reservationCorrectionAuditLogs: correctionAuditByDate[date] ?? [],
         reservationEmailOutbox: emailOutboxByDate[date] ?? [],
         reservationLineLinkTokens: lineLinkTokensByDate[date] ?? [],
         notificationEvents: notificationEventsByDate[date] ?? [],
         counts: {
           businessDays: businessDayByDate.has(date) ? 1 : 0,
+          businessDayAuditLogs: (businessDayAuditByDate[date] ?? []).length,
           reservations: (reservationsByDate[date] ?? []).length,
           privateBlockAuditLogs: (auditByDate[date] ?? []).length,
           reservationStatusAuditLogs: (statusAuditByDate[date] ?? []).length,
+          reservationCorrectionAuditLogs: (correctionAuditByDate[date] ?? []).length,
           reservationEmailOutbox: (emailOutboxByDate[date] ?? []).length,
           reservationLineLinkTokens: (lineLinkTokensByDate[date] ?? []).length,
           notificationEvents: (notificationEventsByDate[date] ?? []).length,
@@ -493,7 +559,9 @@ async function main() {
     totalBusinessDays += exported.counts.businessDays;
     totalReservations += exported.counts.reservations;
     totalPrivateBlockAuditLogs += exported.counts.privateBlockAuditLogs;
+    totalBusinessDayAuditLogs += exported.counts.businessDayAuditLogs;
     totalReservationStatusAuditLogs += exported.counts.reservationStatusAuditLogs;
+    totalReservationCorrectionAuditLogs += exported.counts.reservationCorrectionAuditLogs;
     totalReservationEmailOutbox += exported.counts.reservationEmailOutbox;
     totalReservationLineLinkTokens += exported.counts.reservationLineLinkTokens;
     totalNotificationEvents += exported.counts.notificationEvents;
@@ -534,7 +602,9 @@ async function main() {
       businessDays: totalBusinessDays,
       reservations: totalReservations,
       privateBlockAuditLogs: totalPrivateBlockAuditLogs,
+      businessDayAuditLogs: totalBusinessDayAuditLogs,
       reservationStatusAuditLogs: totalReservationStatusAuditLogs,
+      reservationCorrectionAuditLogs: totalReservationCorrectionAuditLogs,
       reservationEmailOutbox: totalReservationEmailOutbox,
       reservationLineLinkTokens: totalReservationLineLinkTokens,
       notificationEvents: totalNotificationEvents,

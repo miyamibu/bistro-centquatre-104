@@ -15,6 +15,7 @@ const txClient = {
   },
   reservationEmailOutbox: {
     updateMany: vi.fn(),
+    upsert: vi.fn().mockResolvedValue({ id: "status-email-1", status: "PENDING" }),
   },
 };
 
@@ -145,7 +146,7 @@ describe("admin reservation status transitions", () => {
     findReservationByIdCompatMock.mockResolvedValue(reservation(ReservationStatus.CONFIRMED));
     updateReservationStatusCompatMock.mockResolvedValue(reservation(ReservationStatus.DONE));
 
-    const response = await patch(ReservationStatus.DONE);
+    const response = await patch(ReservationStatus.DONE, { reason: "来店確認" });
 
     expect(response.status).toBe(200);
     expect(updateReservationStatusCompatMock).toHaveBeenCalledWith(
@@ -160,7 +161,7 @@ describe("admin reservation status transitions", () => {
         reservationId: "res-1",
         previousStatus: ReservationStatus.CONFIRMED,
         nextStatus: ReservationStatus.DONE,
-        reason: null,
+        reason: "来店確認",
       }),
     });
   });
@@ -228,13 +229,24 @@ describe("admin reservation status transitions", () => {
     expect(response.status).toBe(200);
     expect(auditLogCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
-        actorName: "担当者A",
+        actorName: "staff@example.com",
+        actorUserId: "staff-user-1",
+        actorEmail: "staff@example.com",
+        actorRole: "ADMIN",
+        operatorLabel: "担当者A",
         reason: "貸切解除の依頼",
       }),
     });
     expect(privateBlockAuditLogMock).toHaveBeenCalledWith(
       txClient,
-      expect.objectContaining({ actorName: "担当者A", note: "貸切解除の依頼" })
+      expect.objectContaining({
+        actorName: "staff@example.com",
+        actorUserId: "staff-user-1",
+        actorEmail: "staff@example.com",
+        actorRole: "ADMIN",
+        operatorLabel: "担当者A",
+        note: "貸切解除の依頼",
+      })
     );
   });
 
@@ -242,7 +254,7 @@ describe("admin reservation status transitions", () => {
     findReservationByIdCompatMock.mockResolvedValue(reservation(ReservationStatus.CONFIRMED));
     updateReservationStatusCompatMock.mockResolvedValue(null);
 
-    const response = await patch(ReservationStatus.DONE);
+    const response = await patch(ReservationStatus.DONE, { reason: "来店確認" });
 
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toMatchObject({

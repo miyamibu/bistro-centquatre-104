@@ -1,4 +1,4 @@
-import { ReservationStatus, ReservationType, type BusinessDay } from "@prisma/client";
+import { ReservationType, type BusinessDay } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   ensureReservationSchemaReady,
@@ -13,10 +13,6 @@ export type AdminDayReservationRow = Pick<
   "id" | "date" | "servicePeriod" | "reservationType" | "status" | "partySize" | "name" | "note"
 >;
 type BusinessDayRow = Pick<BusinessDay, "date" | "isClosed" | "note">;
-
-const ACTIVE_STATUS_FILTER = {
-  not: ReservationStatus.CANCELLED,
-} as const;
 
 export type AdminDayPeriodStatus = {
   privateBlock: {
@@ -316,7 +312,6 @@ async function fetchMonthQueryData(month: string): Promise<AdminMonthQueryData> 
     findReservationsCompat(prisma, {
       where: {
         date: { in: dateKeys },
-        status: ACTIVE_STATUS_FILTER,
       },
       orderBy: [{ date: "asc" }, { createdAt: "asc" }],
       select: {
@@ -355,7 +350,6 @@ export async function getAdminDayStatus(date: string): Promise<AdminDayStatus> {
     findReservationsCompat(prisma, {
       where: {
         date,
-        status: ACTIVE_STATUS_FILTER,
       },
       orderBy: [{ createdAt: "asc" }],
       select: {

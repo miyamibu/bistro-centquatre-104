@@ -104,7 +104,7 @@ async function cleanupRunFiles(
     try {
       const summary = JSON.parse(await fs.readFile(path.join(runsDir, entry.name), "utf8"));
       if (
-        summary?.schemaVersion !== 2 ||
+        ![2, 3].includes(summary?.schemaVersion) ||
         summary?.encryption?.format !== "bistro-reservation-backup-aead"
       ) {
         continue;

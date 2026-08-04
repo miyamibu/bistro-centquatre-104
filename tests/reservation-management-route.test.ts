@@ -13,6 +13,9 @@ const mocks = vi.hoisted(() => ({
   auditCreate: vi.fn(),
   emailOutboxUpdateMany: vi.fn(),
   emailOutboxUpsert: vi.fn(),
+  emailOutboxFindUnique: vi.fn(),
+  emailOutboxFindUniqueOrThrow: vi.fn(),
+  emailOutboxCreate: vi.fn(),
   rateLimitCount: vi.fn(),
   rateLimitCreate: vi.fn(),
   logInfo: vi.fn(),
@@ -38,6 +41,9 @@ const txClient = {
   reservationEmailOutbox: {
     updateMany: mocks.emailOutboxUpdateMany,
     upsert: mocks.emailOutboxUpsert,
+    findUnique: mocks.emailOutboxFindUnique,
+    findUniqueOrThrow: mocks.emailOutboxFindUniqueOrThrow,
+    create: mocks.emailOutboxCreate,
   },
 };
 
@@ -124,6 +130,15 @@ beforeEach(() => {
   mocks.auditCreate.mockResolvedValue({ id: "audit-1" });
   mocks.emailOutboxUpdateMany.mockResolvedValue({ count: 1 });
   mocks.emailOutboxUpsert.mockResolvedValue({ id: "customer-email-1", status: "PENDING" });
+  mocks.emailOutboxFindUnique.mockResolvedValue({
+    id: "customer-email-1",
+    status: "SENT",
+  });
+  mocks.emailOutboxFindUniqueOrThrow.mockResolvedValue({
+    id: "customer-email-1",
+    status: "PENDING",
+  });
+  mocks.emailOutboxCreate.mockResolvedValue({ id: "customer-email-1", status: "PENDING" });
 });
 
 afterEach(() => {
@@ -245,15 +260,13 @@ describe("public reservation management API", () => {
     expect(response.status).toBe(200);
     expect(body.customerEmailQueued).toBe(true);
     expect(body.reservation).not.toHaveProperty("customerEmail");
-    expect(mocks.emailOutboxUpsert).toHaveBeenCalledWith(
+    expect(mocks.emailOutboxUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
-          reservationId_notificationType: {
-            reservationId: "reservation-1",
-            notificationType: "CUSTOMER_CONFIRMATION",
-          },
+          id: "customer-email-1",
+          status: { not: "PROCESSING" },
         },
-        update: expect.objectContaining({ status: "PENDING", attempts: 0 }),
+        data: expect.objectContaining({ status: "PENDING", attempts: 0 }),
       }),
     );
   });

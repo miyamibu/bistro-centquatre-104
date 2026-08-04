@@ -22,6 +22,8 @@ alter table if exists public."LineWebhookInbox" enable row level security;
 alter table if exists public."ReservationRateLimitEvent" enable row level security;
 alter table if exists public."ReservationIdempotency" enable row level security;
 alter table if exists public."BusinessDay" enable row level security;
+alter table if exists public."BusinessDayAuditLog" enable row level security;
+alter table if exists public."ReservationCorrectionAuditLog" enable row level security;
 alter table if exists public."MenuItem" enable row level security;
 alter table if exists public."Photo" enable row level security;
 alter table if exists public."LineFriend" enable row level security;
@@ -111,6 +113,14 @@ drop policy if exists "reservation_idempotency_service_role_all" on public."Rese
 drop policy if exists "business_day_deny_anon_all" on public."BusinessDay";
 drop policy if exists "business_day_deny_authenticated_all" on public."BusinessDay";
 drop policy if exists "business_day_service_role_all" on public."BusinessDay";
+
+drop policy if exists "business_day_audit_deny_anon_all" on public."BusinessDayAuditLog";
+drop policy if exists "business_day_audit_deny_authenticated_all" on public."BusinessDayAuditLog";
+drop policy if exists "business_day_audit_service_role_all" on public."BusinessDayAuditLog";
+
+drop policy if exists "reservation_correction_audit_deny_anon_all" on public."ReservationCorrectionAuditLog";
+drop policy if exists "reservation_correction_audit_deny_authenticated_all" on public."ReservationCorrectionAuditLog";
+drop policy if exists "reservation_correction_audit_service_role_all" on public."ReservationCorrectionAuditLog";
 
 drop policy if exists "menu_item_deny_anon_all" on public."MenuItem";
 drop policy if exists "menu_item_deny_authenticated_all" on public."MenuItem";
@@ -385,6 +395,14 @@ create policy "reservation_idempotency_service_role_all" on public."ReservationI
 create policy "business_day_deny_anon_all" on public."BusinessDay" for all to anon using (false) with check (false);
 create policy "business_day_deny_authenticated_all" on public."BusinessDay" for all to authenticated using (false) with check (false);
 create policy "business_day_service_role_all" on public."BusinessDay" for all to service_role using (true) with check (true);
+
+create policy "business_day_audit_deny_anon_all" on public."BusinessDayAuditLog" for all to anon using (false) with check (false);
+create policy "business_day_audit_deny_authenticated_all" on public."BusinessDayAuditLog" for all to authenticated using (false) with check (false);
+create policy "business_day_audit_service_role_all" on public."BusinessDayAuditLog" for all to service_role using (true) with check (true);
+
+create policy "reservation_correction_audit_deny_anon_all" on public."ReservationCorrectionAuditLog" for all to anon using (false) with check (false);
+create policy "reservation_correction_audit_deny_authenticated_all" on public."ReservationCorrectionAuditLog" for all to authenticated using (false) with check (false);
+create policy "reservation_correction_audit_service_role_all" on public."ReservationCorrectionAuditLog" for all to service_role using (true) with check (true);
 
 create policy "menu_item_deny_anon_all" on public."MenuItem" for all to anon using (false) with check (false);
 create policy "menu_item_deny_authenticated_all" on public."MenuItem" for all to authenticated using (false) with check (false);

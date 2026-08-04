@@ -15,6 +15,7 @@ import {
 import { evaluateSelfServiceCancellation } from "@/lib/cancellation-policy";
 import {
   enqueueReservationCustomerEmail,
+  ReservationEmailOutboxBusyError,
   suppressReservationConfirmationEmail,
 } from "@/lib/reservation-email-outbox";
 import { getClientIp, getUserAgent, hashClientIp } from "@/lib/request-meta";
@@ -191,7 +192,19 @@ async function executeManagementAction(
       };
     }
 
-    await enqueueReservationCustomerEmail(tx, reservation.id, { reset: true });
+    try {
+      await enqueueReservationCustomerEmail(tx, reservation.id, { reset: true });
+    } catch (error) {
+      if (error instanceof ReservationEmailOutboxBusyError) {
+        return {
+          ok: false,
+          status: 409,
+          code: error.code,
+          error: "確認メールを送信中です。しばらく待ってから状態を確認してください。",
+        };
+      }
+      throw error;
+    }
     return {
       ok: true,
       reservation,

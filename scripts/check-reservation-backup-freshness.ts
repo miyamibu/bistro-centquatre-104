@@ -30,7 +30,9 @@ type BackupRunSummary = {
     businessDays?: number;
     reservations?: number;
     privateBlockAuditLogs?: number;
+    businessDayAuditLogs?: number;
     reservationStatusAuditLogs?: number;
+    reservationCorrectionAuditLogs?: number;
     reservationEmailOutbox?: number;
     reservationLineLinkTokens?: number;
     notificationEvents?: number;
@@ -131,7 +133,9 @@ async function main() {
       reservations: latestRun.totals?.reservations ?? 0,
       businessDays: latestRun.totals?.businessDays ?? 0,
       privateBlockAuditLogs: latestRun.totals?.privateBlockAuditLogs ?? 0,
+      businessDayAuditLogs: latestRun.totals?.businessDayAuditLogs ?? 0,
       reservationStatusAuditLogs: latestRun.totals?.reservationStatusAuditLogs ?? 0,
+      reservationCorrectionAuditLogs: latestRun.totals?.reservationCorrectionAuditLogs ?? 0,
       reservationEmailOutbox: latestRun.totals?.reservationEmailOutbox ?? 0,
       reservationLineLinkTokens: latestRun.totals?.reservationLineLinkTokens ?? 0,
       notificationEvents: latestRun.totals?.notificationEvents ?? 0,

@@ -44,6 +44,7 @@ npm run dev
 ```
 
 リリース運用手順は `docs/production-launch.md` を参照してください。
+実行対象と旧実装の区別は `docs/recovery/EXECUTION_TARGET.md` を参照してください。
 
 Codex 作業ガイド:
 - [CODEX_INSTRUCTIONS.md](/Users/mimac/Desktop/レストラン予約サイト_本体とバックアップ/bistro-reservation/CODEX_INSTRUCTIONS.md)

@@ -44,8 +44,8 @@ function validatePayload(payload) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new Error("復旧対象payloadがオブジェクトではありません");
   }
-  if (payload.schemaVersion !== 2) {
-    throw new Error("復旧対象payloadのschemaVersion=2を確認できません");
+  if (payload.schemaVersion !== 2 && payload.schemaVersion !== 3) {
+    throw new Error("復旧対象payloadのschemaVersion=2または3を確認できません");
   }
   for (const key of [
     "businessDays",
@@ -57,6 +57,11 @@ function validatePayload(payload) {
     "notificationEvents",
   ]) {
     assertCount(payload, key);
+  }
+  if (payload.schemaVersion >= 3) {
+    for (const key of ["businessDayAuditLogs", "reservationCorrectionAuditLogs"]) {
+      assertCount(payload, key);
+    }
   }
   return {
     schemaVersion: payload.schemaVersion,

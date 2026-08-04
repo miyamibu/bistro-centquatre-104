@@ -32,6 +32,8 @@ BEGIN
     'LineWebhookInbox',
     'ReservationRateLimitEvent',
     'BusinessDay',
+    'BusinessDayAuditLog',
+    'ReservationCorrectionAuditLog',
     'MenuItem',
     'Photo',
     'LineFriend',
@@ -74,6 +76,8 @@ BEGIN
     'LineWebhookInbox',
     'ReservationRateLimitEvent',
     'BusinessDay',
+    'BusinessDayAuditLog',
+    'ReservationCorrectionAuditLog',
     'MenuItem',
     'Photo',
     'LineFriend',
@@ -124,6 +128,8 @@ BEGIN
       ('LineWebhookInbox', 'line_webhook_inbox'),
       ('ReservationRateLimitEvent', 'reservation_rate_limit'),
       ('BusinessDay', 'business_day'),
+      ('BusinessDayAuditLog', 'business_day_audit'),
+      ('ReservationCorrectionAuditLog', 'reservation_correction_audit'),
       ('MenuItem', 'menu_item'),
       ('Photo', 'photo'),
       ('LineFriend', 'line_friend'),
@@ -258,6 +264,36 @@ BEGIN
 END
 $verify_reservation_foreign_keys$;
 
+DO $verify_operational_audit_foreign_keys$
+DECLARE
+  missing_or_invalid_foreign_keys text[];
+BEGIN
+  WITH expected_foreign_keys(table_name, constraint_name, parent_table) AS (
+    VALUES
+      ('BusinessDayAuditLog', 'BusinessDayAuditLog_businessDayId_fkey', 'BusinessDay'),
+      ('ReservationCorrectionAuditLog', 'ReservationCorrectionAuditLog_reservationId_fkey', 'Reservation')
+  )
+  SELECT array_agg(expected.constraint_name ORDER BY expected.constraint_name)
+  INTO missing_or_invalid_foreign_keys
+  FROM expected_foreign_keys expected
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint constraint_record
+    WHERE constraint_record.contype = 'f'
+      AND constraint_record.conname = expected.constraint_name
+      AND constraint_record.conrelid = to_regclass(format('%I.%I', 'public', expected.table_name))
+      AND constraint_record.confrelid = to_regclass(format('%I.%I', 'public', expected.parent_table))
+      AND constraint_record.confdeltype = 'r'
+      AND constraint_record.confupdtype = 'c'
+  );
+
+  IF coalesce(cardinality(missing_or_invalid_foreign_keys), 0) > 0 THEN
+    RAISE EXCEPTION 'FAIL operational audit FKs missing or not ON DELETE RESTRICT / ON UPDATE CASCADE: %',
+      array_to_string(missing_or_invalid_foreign_keys, ', ');
+  END IF;
+END
+$verify_operational_audit_foreign_keys$;
+
 DO $verify_runtime_role$
 DECLARE
   configured_runtime_role text := nullif(current_setting('bistro.verify_runtime_role', true), '');
@@ -288,6 +324,8 @@ BEGIN
       VALUES
         ('Reservation', ARRAY['SELECT', 'INSERT', 'UPDATE']::text[]),
         ('BusinessDay', ARRAY['SELECT', 'INSERT', 'UPDATE']::text[]),
+        ('BusinessDayAuditLog', ARRAY['SELECT', 'INSERT']::text[]),
+        ('ReservationCorrectionAuditLog', ARRAY['SELECT', 'INSERT']::text[]),
         ('PrivateBlockAuditLog', ARRAY['SELECT', 'INSERT']::text[]),
         ('ReservationStatusAuditLog', ARRAY['SELECT', 'INSERT']::text[]),
         ('ReservationEmailOutbox', ARRAY['SELECT', 'INSERT', 'UPDATE']::text[]),
@@ -328,6 +366,8 @@ BEGIN
       VALUES
         ('Reservation'),
         ('BusinessDay'),
+        ('BusinessDayAuditLog'),
+        ('ReservationCorrectionAuditLog'),
         ('PrivateBlockAuditLog'),
         ('ReservationStatusAuditLog'),
         ('ReservationEmailOutbox'),
@@ -394,6 +434,8 @@ WHERE table_schema = 'public'
     'LineWebhookInbox',
     'ReservationRateLimitEvent',
     'BusinessDay',
+    'BusinessDayAuditLog',
+    'ReservationCorrectionAuditLog',
     'MenuItem',
     'Photo',
     'LineFriend',
@@ -430,6 +472,8 @@ WHERE table_namespace.nspname = 'public'
     'LineWebhookInbox',
     'ReservationRateLimitEvent',
     'BusinessDay',
+    'BusinessDayAuditLog',
+    'ReservationCorrectionAuditLog',
     'MenuItem',
     'Photo',
     'LineFriend',
@@ -463,6 +507,8 @@ WHERE schemaname = 'public'
     'LineWebhookInbox',
     'ReservationRateLimitEvent',
     'BusinessDay',
+    'BusinessDayAuditLog',
+    'ReservationCorrectionAuditLog',
     'MenuItem',
     'Photo',
     'LineFriend',
@@ -484,6 +530,8 @@ WHERE table_constraint.constraint_schema = 'public'
   AND table_constraint.constraint_type = 'FOREIGN KEY'
   AND table_constraint.table_name IN (
     'ReservationStatusAuditLog',
+    'BusinessDayAuditLog',
+    'ReservationCorrectionAuditLog',
     'ReservationLineLinkToken',
     'ReservationManagementToken',
     'NotificationEvent',
