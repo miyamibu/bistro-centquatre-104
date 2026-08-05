@@ -21,6 +21,13 @@ function verifyLineSignature(rawBody: string, signature: string, secret: string)
 
 export async function POST(request: NextRequest) {
   const requestId = getRequestId(request);
+  if (process.env.ALLOW_NONCANONICAL_GO_EXECUTION !== "1") {
+    return apiError(503, {
+      error: "non-canonical checkout is not an executable LINE endpoint",
+      code: "NONCANONICAL_EXECUTION_BLOCKED",
+      requestId,
+    });
+  }
 
   if (!hasLineWebhookEnv()) {
     logWarn("line.webhook.skipped.not_configured", {

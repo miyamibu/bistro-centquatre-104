@@ -10,8 +10,11 @@ function isAuthorized(request: NextRequest) {
   return !!env.CRON_SECRET && authHeader === `Bearer ${env.CRON_SECRET}`;
 }
 
-export async function POST(request: NextRequest) {
+async function run(request: NextRequest) {
   const requestId = getRequestId(request);
+  if (process.env.ALLOW_NONCANONICAL_GO_EXECUTION !== "1") {
+    return NextResponse.json({ ok: false, code: "NONCANONICAL_EXECUTION_BLOCKED", requestId }, { status: 503 });
+  }
   if (!isAuthorized(request)) {
     return NextResponse.json({ ok: false, code: "UNAUTHORIZED", requestId }, { status: 401 });
   }
@@ -31,4 +34,12 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+export async function GET(request: NextRequest) {
+  return run(request);
+}
+
+export async function POST(request: NextRequest) {
+  return run(request);
 }

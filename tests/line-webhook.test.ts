@@ -15,6 +15,7 @@ async function loadWebhook() {
   process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
   process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role";
   process.env.LINE_CHANNEL_SECRET = SECRET;
+  process.env.ALLOW_NONCANONICAL_GO_EXECUTION = "1";
   return import("@/app/api/line/webhook/route");
 }
 

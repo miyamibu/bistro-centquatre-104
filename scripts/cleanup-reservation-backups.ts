@@ -95,7 +95,8 @@ async function main() {
   const cwd = process.cwd();
   const cli = parseCliArgs(process.argv.slice(2));
   const env = loadMergedEnv(cwd);
-  const dryRun = readOption(cli, "dry-run") === "true";
+  const apply = readOption(cli, "apply") === "true" && env.BACKUP_CLEANUP_ENABLED === "true";
+  const dryRun = !apply;
 
   const outputDir = resolveOutputDir(cwd, readOption(cli, "out-dir") ?? env.BACKUP_OUTPUT_DIR);
   const retentionDays = parsePositiveInt(
