@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 import { execFile } from "node:child_process";
@@ -56,6 +57,15 @@ async function hasGitHead(cwd) {
   }
 }
 
+async function getGitHead(cwd) {
+  const { stdout } = await execFileAsync("git", ["rev-parse", "--verify", "HEAD"], { cwd });
+  return stdout.trim();
+}
+
+async function verifyBundle(bundlePath, cwd) {
+  await run("git", ["bundle", "verify", bundlePath], cwd);
+}
+
 async function main() {
   const cwd = process.cwd();
   const workspaceSnapshotDir = path.join(cwd, "backups", "workspace-snapshots");
@@ -97,11 +107,17 @@ async function main() {
   if (bundleError) {
     failures.push(bundleError);
   } else {
+    await verifyBundle(bundlePath, cwd);
     await fs.copyFile(bundlePath, latestBundlePath);
+    await verifyBundle(latestBundlePath, cwd);
     await fs.chmod(bundlePath, 0o600);
     await fs.chmod(latestBundlePath, 0o600);
+    const [bundleContents, head] = await Promise.all([fs.readFile(bundlePath), getGitHead(cwd)]);
+    const provenancePath = path.join(workspaceSnapshotDir, "latest.bundle.provenance.json");
+    await fs.writeFile(provenancePath, `${JSON.stringify({ schemaVersion: 1, createdAt: new Date().toISOString(), head, bundleSha256: createHash("sha256").update(bundleContents).digest("hex") }, null, 2)}\n`, { mode: 0o600 });
+    await fs.chmod(provenancePath, 0o600);
 
-    console.info(`[workspace:snapshot] bundle を更新しました: ${bundlePath}`);
+    console.info(`[workspace:snapshot] bundle を検証して更新しました: ${bundlePath}`);
   }
 
   if (failures.length > 0) {

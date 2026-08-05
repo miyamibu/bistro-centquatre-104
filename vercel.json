@@ -23,7 +23,7 @@
     },
     {
       "path": "/api/crons/process-order-notifications",
-      "schedule": "0 2 * * *"
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/crons/process-reservation-emails",

@@ -21,10 +21,10 @@ function isSafeLocalTestDatabaseUrl(value) {
 const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim();
 
 if (!testDatabaseUrl) {
-  console.warn(
-    "[test:db] TEST_DATABASE_URL が未設定のため、破壊的DBテストを実行せずスキップしました"
+  console.error(
+    "[test:db] TEST_DATABASE_URL が未設定です。破壊的DBテストは失敗として終了します"
   );
-  process.exit(0);
+  process.exit(1);
 }
 
 if (!isSafeLocalTestDatabaseUrl(testDatabaseUrl)) {
@@ -35,10 +35,17 @@ if (!isSafeLocalTestDatabaseUrl(testDatabaseUrl)) {
 }
 
 if (process.env.ALLOW_DESTRUCTIVE_TEST_DB !== "1") {
-  console.warn(
-    "[test:db] ALLOW_DESTRUCTIVE_TEST_DB=1 が未設定のため、破壊的DBテストを実行せずスキップしました"
+  console.error(
+    "[test:db] ALLOW_DESTRUCTIVE_TEST_DB=1 が未設定です。破壊的DBテストは失敗として終了します"
   );
-  process.exit(0);
+  process.exit(1);
+}
+
+if (!process.env.TEST_STAFF_AUTH_COOKIE?.trim()) {
+  console.error(
+    "[test:db] TEST_STAFF_AUTH_COOKIE が未設定です。管理者認証を必要とするDBテストは失敗として終了します"
+  );
+  process.exit(1);
 }
 
 const result = spawnSync("npm", ["run", "test:db:runner"], {

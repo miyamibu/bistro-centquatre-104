@@ -80,7 +80,7 @@ type ReservationLineNotification = {
 type ReservationResponseBody = {
   reservationId: string;
   summary: string;
-  managementUrl: string;
+  managementUrl?: string;
   deduplicated: boolean;
   lineNotification: ReservationLineNotification;
   requestId: string;
@@ -92,6 +92,9 @@ type PersistedReservationResponseBody = Omit<
 > & {
   lineNotification: Omit<ReservationLineNotification, "linkUrl">;
   lineLinkIssued: boolean;
+  // Semantic duplicates are not proof of ownership of the existing reservation.
+  // Keep this persisted flag so a later same-key replay remains safe.
+  managementTokenIssued?: boolean;
   tokenKeyId: string;
 };
 
@@ -165,10 +168,14 @@ function restoreReservationResponseBody(
   return {
     reservationId,
     summary: value.summary,
-    managementUrl: buildReservationManagementUrl(
-      getReservationManagementBaseUrl(request),
-      deriveReservationScopedToken("management", reservationId, idempotencyKey, tokenKeyId),
-    ),
+    ...(value.managementTokenIssued !== false
+      ? {
+          managementUrl: buildReservationManagementUrl(
+            getReservationManagementBaseUrl(request),
+            deriveReservationScopedToken("management", reservationId, idempotencyKey, tokenKeyId),
+          ),
+        }
+      : {}),
     deduplicated: value.deduplicated,
     lineNotification,
     requestId: value.requestId,
@@ -517,16 +524,21 @@ export async function POST(request: NextRequest) {
             throw new Error("RESERVATION_NOT_CREATED");
           }
 
-          const managementToken = await issueReservationManagementToken(
-            tx,
-            reservation.id,
-            idempotencyKey,
-            now,
-          );
+          // A semantic duplicate can be submitted by someone who knows matching
+          // reservation details, but not the customer's existing bearer token.
+          // Only mint a management token for a newly created reservation.
+          const managementToken = deduplicated
+            ? null
+            : await issueReservationManagementToken(
+                tx,
+                reservation.id,
+                idempotencyKey,
+                now,
+              );
 
           let lineNotification: Omit<ReservationLineNotification, "linkUrl">;
           let lineLinkIssued = false;
-          let lineTokenKeyId = managementToken.keyId;
+          let lineTokenKeyId = managementToken?.keyId ?? getActiveReservationTokenKeyId();
           if (lineEnabled) {
             lineNotification = { enabled: true };
             if (lineLinked !== null) lineNotification.lineLinked = lineLinked;
@@ -558,6 +570,7 @@ export async function POST(request: NextRequest) {
             deduplicated,
             lineNotification,
             lineLinkIssued,
+            managementTokenIssued: !deduplicated,
             tokenKeyId: lineTokenKeyId,
             requestId,
           };

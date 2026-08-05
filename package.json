@@ -31,6 +31,7 @@
     "staff:provision": "node scripts/provision-staff.mjs",
     "backup:project-snapshot": "bash scripts/recovery/create-project-snapshot.sh",
     "backup:workspace:snapshot": "node scripts/run-local-safety-backups.mjs",
+    "backup:workspace:status": "node scripts/check-workspace-bundle-provenance.mjs",
     "security:env": "node scripts/security/check-env-permissions.mjs",
     "security:destructive": "node scripts/security/check-destructive-reservation-queries.mjs",
     "security:destructive-reservations": "node scripts/security/check-destructive-reservation-queries.mjs",

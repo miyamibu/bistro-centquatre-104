@@ -1,9 +1,10 @@
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { supabaseServer } from "@/lib/supabase-server";
 import type { NormalizedOrderPaymentMethod } from "@/lib/validation";
 
 const BANK_TRANSFER_TTL_HOURS = 24;
 const HUMAN_CONFIRM_TTL_MINUTES = 15;
+const IDEMPOTENCY_CLAIM_LEASE_MS = 5 * 60 * 1000;
 
 type ActorType = "user" | "admin" | "agent" | "cron" | "system";
 
@@ -21,6 +22,8 @@ interface IdempotencyRecord {
   request_hash: string;
   response_status: number | null;
   response_body: unknown;
+  claim_expires_at: string | null;
+  claim_token: string | null;
 }
 
 export class OrderActionError extends Error {
@@ -89,7 +92,7 @@ async function getExistingIdempotencyRecord(
 ) {
   const response = await supabaseServer
     .from("api_idempotency")
-    .select("id, request_hash, response_status, response_body")
+    .select("id, request_hash, response_status, response_body, claim_expires_at, claim_token")
     .eq("scope", scope)
     .eq("actor_key", actorKey)
     .eq("idempotency_key", idempotencyKey)
@@ -111,89 +114,98 @@ async function claimIdempotencyRecord(input: {
   idempotencyKey: string;
   requestHash: string;
 }) {
-  const existing = await getExistingIdempotencyRecord(
-    input.scope,
-    input.actorKey,
-    input.idempotencyKey
-  );
-
-  if (existing) {
-    if (existing.request_hash !== input.requestHash) {
-      throw createActionError(409, "IDEMPOTENCY_CONFLICT", "同じキーで別の内容は送信できません");
-    }
-
-    if (existing.response_body != null && existing.response_status != null) {
-      return { kind: "replay" as const, record: existing };
-    }
-
-    throw createActionError(409, "IDEMPOTENCY_IN_PROGRESS", "同じキーの処理が進行中です");
-  }
-
-  const response = await supabaseServer
-    .from("api_idempotency")
-    .insert([
-      {
-        scope: input.scope,
-        actor_key: input.actorKey,
-        idempotency_key: input.idempotencyKey,
-        request_hash: input.requestHash,
-      },
-    ])
-    .select("id, request_hash, response_status, response_body")
-    .single();
-
-  const { error } = response;
-  const data = (response.data ?? null) as IdempotencyRecord | null;
-
-  if (!error && data) {
-    return { kind: "created" as const, record: data };
-  }
-
-  if (!error) {
-    throw createActionError(500, "IDEMPOTENCY_CLAIM_FAILED", "Idempotency record was not returned");
-  }
-
-  if (error.code === "23505") {
-    const raced = await getExistingIdempotencyRecord(
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const now = new Date();
+    const claimToken = randomUUID();
+    const claimExpiresAt = new Date(now.getTime() + IDEMPOTENCY_CLAIM_LEASE_MS).toISOString();
+    const existing = await getExistingIdempotencyRecord(
       input.scope,
       input.actorKey,
       input.idempotencyKey
     );
 
-    if (!raced) {
-      throw createActionError(500, "IDEMPOTENCY_RACE_FAILED");
+    if (!existing) {
+      const response = await supabaseServer
+        .from("api_idempotency")
+        .insert([{
+          scope: input.scope,
+          actor_key: input.actorKey,
+          idempotency_key: input.idempotencyKey,
+          request_hash: input.requestHash,
+          claim_expires_at: claimExpiresAt,
+          claim_token: claimToken,
+        }])
+        .select("id, request_hash, response_status, response_body, claim_expires_at, claim_token")
+        .single();
+      const data = (response.data ?? null) as IdempotencyRecord | null;
+
+      // A successful insert is unique to this request, so its locally generated
+      // token is already fenced even if a PostgREST projection omits the column.
+      if (!response.error && data) {
+        return { kind: "claimed" as const, record: data, claimToken };
+      }
+      if (!response.error) {
+        throw createActionError(500, "IDEMPOTENCY_CLAIM_FAILED", "Idempotency record was not returned");
+      }
+      if (response.error.code !== "23505") {
+        throw createActionError(500, "IDEMPOTENCY_CLAIM_FAILED", "Idempotency claim failed");
+      }
+      continue;
     }
 
-    if (raced.request_hash !== input.requestHash) {
+    if (existing.request_hash !== input.requestHash) {
       throw createActionError(409, "IDEMPOTENCY_CONFLICT", "同じキーで別の内容は送信できません");
     }
-
-    if (raced.response_body != null && raced.response_status != null) {
-      return { kind: "replay" as const, record: raced };
+    if (existing.response_body != null && existing.response_status != null) {
+      return { kind: "replay" as const, record: existing };
+    }
+    if (existing.claim_expires_at && new Date(existing.claim_expires_at) > now) {
+      throw createActionError(409, "IDEMPOTENCY_IN_PROGRESS", "同じキーの処理が進行中です");
     }
 
-    throw createActionError(409, "IDEMPOTENCY_IN_PROGRESS", "同じキーの処理が進行中です");
+    const { data, error } = await supabaseServer
+      .from("api_idempotency")
+      .update({ claim_expires_at: claimExpiresAt, claim_token: claimToken })
+      .eq("id", existing.id)
+      .or(
+        `and(response_status.is.null,response_body.is.null,claim_expires_at.is.null),` +
+          `and(response_status.is.null,response_body.is.null,claim_expires_at.lte.${now.toISOString()})`
+      )
+      .select("id, request_hash, response_status, response_body, claim_expires_at, claim_token")
+      .maybeSingle();
+    if (error) {
+      throw createActionError(500, "IDEMPOTENCY_CLAIM_FAILED", "Idempotency claim failed");
+    }
+    if ((data as IdempotencyRecord | null)?.claim_token === claimToken) {
+      return { kind: "claimed" as const, record: data as IdempotencyRecord, claimToken };
+    }
   }
 
-  throw createActionError(500, "IDEMPOTENCY_CLAIM_FAILED", "Idempotency claim failed");
+  throw createActionError(409, "IDEMPOTENCY_IN_PROGRESS", "同じキーの処理が進行中です");
 }
 
 async function finalizeIdempotencyRecord(
   id: string,
+  claimToken: string,
   status: number,
   body: unknown,
   resourceId?: string | null
 ) {
-  const { error } = await supabaseServer
+  const { data, error } = await supabaseServer
     .from("api_idempotency")
     .update({
       response_status: status,
       response_body: body,
       resource_id: resourceId ?? null,
+      claim_expires_at: null,
+      claim_token: null,
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("claim_token", claimToken)
+    .select("id")
+    .maybeSingle();
 
-  if (error) {
+  if (error || !data) {
     throw createActionError(500, "IDEMPOTENCY_FINALIZE_FAILED", "Idempotency finalize failed");
   }
 }
@@ -371,6 +383,7 @@ export async function runIdempotentMutation<TBody>(input: {
     }
     await finalizeIdempotencyRecord(
       claim.record.id,
+      claim.claimToken,
       input.successStatus ?? 200,
       body,
       resourceId
@@ -387,7 +400,13 @@ export async function runIdempotentMutation<TBody>(input: {
         error: error.message,
         code: error.code,
       };
-      await finalizeIdempotencyRecord(claim.record.id, error.status, body, input.resourceId ?? null);
+      await finalizeIdempotencyRecord(
+        claim.record.id,
+        claim.claimToken,
+        error.status,
+        body,
+        input.resourceId ?? null
+      );
       return {
         status: error.status,
         body: body as TBody,

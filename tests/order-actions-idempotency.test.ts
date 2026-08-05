@@ -1,7 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fromMock = vi.hoisted(() => vi.fn());
 const rpcMock = vi.hoisted(() => vi.fn());
+const randomUUIDMock = vi.hoisted(() => vi.fn(() => "claim-token-1"));
+
+vi.mock("crypto", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("crypto")>();
+  return { ...actual, randomUUID: randomUUIDMock };
+});
 
 vi.mock("@/lib/supabase-server", () => ({
   supabaseServer: {
@@ -13,6 +19,7 @@ vi.mock("@/lib/supabase-server", () => ({
 type QueryChain = PromiseLike<unknown> & {
   select: ReturnType<typeof vi.fn>;
   eq: ReturnType<typeof vi.fn>;
+  or: ReturnType<typeof vi.fn>;
   maybeSingle: ReturnType<typeof vi.fn>;
   insert: ReturnType<typeof vi.fn>;
   single: ReturnType<typeof vi.fn>;
@@ -25,6 +32,7 @@ function query(result: unknown): QueryChain {
   Object.assign(chain, {
     select: vi.fn(() => chain),
     eq: vi.fn(() => chain),
+    or: vi.fn(() => chain),
     maybeSingle: vi.fn(() => chain),
     insert: vi.fn(() => chain),
     single: vi.fn(() => chain),
@@ -41,6 +49,12 @@ function query(result: unknown): QueryChain {
 beforeEach(() => {
   fromMock.mockReset();
   rpcMock.mockReset();
+  randomUUIDMock.mockReset();
+  randomUUIDMock.mockReturnValue("claim-token-1");
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("runIdempotentMutation unknown outcomes", () => {
@@ -52,6 +66,8 @@ describe("runIdempotentMutation unknown outcomes", () => {
         request_hash: "hash-1",
         response_status: null,
         response_body: null,
+        claim_expires_at: "2026-07-28T08:05:00.000Z",
+        claim_token: "claim-token-1",
       },
       error: null,
     });
@@ -81,6 +97,8 @@ describe("runIdempotentMutation unknown outcomes", () => {
         request_hash: "hash-1",
         response_status: null,
         response_body: null,
+        claim_expires_at: "2099-01-01T00:00:00.000Z",
+        claim_token: "another-worker",
       },
       error: null,
     });
@@ -102,6 +120,54 @@ describe("runIdempotentMutation unknown outcomes", () => {
       replayed: false,
     });
     expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("reclaims an expired lease once and fences finalization to that new claim", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-28T08:00:00.000Z"));
+    const lookup = query({
+      data: {
+        id: "claim-1",
+        request_hash: "hash-1",
+        response_status: null,
+        response_body: null,
+        claim_expires_at: "2026-07-28T07:59:59.999Z",
+        claim_token: "expired-worker",
+      },
+      error: null,
+    });
+    const reclaim = query({
+      data: {
+        id: "claim-1",
+        request_hash: "hash-1",
+        response_status: null,
+        response_body: null,
+        claim_expires_at: "2026-07-28T08:05:00.000Z",
+        claim_token: "claim-token-1",
+      },
+      error: null,
+    });
+    const finalize = query({ data: { id: "claim-1" }, error: null });
+    fromMock.mockReturnValueOnce(lookup).mockReturnValueOnce(reclaim).mockReturnValueOnce(finalize);
+
+    const { runIdempotentMutation } = await import("@/lib/order-actions");
+    const result = await runIdempotentMutation({
+      scope: "POST:/api/orders",
+      actorKey: "actor-1",
+      idempotencyKey: "key-1",
+      requestHash: "hash-1",
+      execute: async () => ({ ok: true }),
+    });
+
+    expect(result).toMatchObject({ status: 200, replayed: false });
+    expect(reclaim.or).toHaveBeenCalledWith(
+      "and(response_status.is.null,response_body.is.null,claim_expires_at.is.null)," +
+        "and(response_status.is.null,response_body.is.null,claim_expires_at.lte.2026-07-28T08:00:00.000Z)"
+    );
+    expect(finalize.eq.mock.calls).toEqual([
+      ["id", "claim-1"],
+      ["claim_token", "claim-token-1"],
+    ]);
   });
 });
 

@@ -682,7 +682,7 @@ export function ReserveForm({
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (submittingRef.current) return;
+    if (submittingRef.current || submittedReservation) return;
 
     submittingRef.current = true;
     setSubmitting(true);
@@ -876,9 +876,10 @@ export function ReserveForm({
       return { value, dateObj };
     }),
   ];
-  const submitDisabled = submitting || availability.reason !== "OK";
-  const submitButtonLabel = "予約";
-  const submitAriaLabel = "予約する";
+  const reservationCompleted = Boolean(submittedReservation);
+  const submitDisabled = submitting || reservationCompleted || availability.reason !== "OK";
+  const submitButtonLabel = reservationCompleted ? "受付済み" : "予約";
+  const submitAriaLabel = reservationCompleted ? "予約受付済み" : "予約する";
   const isCheckingAvailability = availability.reason === "CHECKING";
   const availabilityStatusMessage = isCheckingAvailability
     ? "空席状況を確認しています。少々お待ちください。"

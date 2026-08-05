@@ -16,8 +16,7 @@ const mocks = vi.hoisted(() => ({
   emailOutboxFindUnique: vi.fn(),
   emailOutboxFindUniqueOrThrow: vi.fn(),
   emailOutboxCreate: vi.fn(),
-  rateLimitCount: vi.fn(),
-  rateLimitCreate: vi.fn(),
+  enforceScopedRateLimit: vi.fn(),
   logInfo: vi.fn(),
   logError: vi.fn(),
   logWarn: vi.fn(),
@@ -50,11 +49,11 @@ const txClient = {
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     $transaction: mocks.transaction,
-    reservationRateLimitEvent: {
-      count: mocks.rateLimitCount,
-      create: mocks.rateLimitCreate,
-    },
   },
+}));
+
+vi.mock("@/lib/reservation-rate-limit", () => ({
+  enforceScopedRateLimit: mocks.enforceScopedRateLimit,
 }));
 
 vi.mock("@/lib/reservation-compat", () => ({
@@ -120,8 +119,7 @@ beforeEach(() => {
     RATE_LIMIT_HASH_SECRET: "test-rate-limit-hash-secret-32chars",
   };
   mocks.schemaReady.mockResolvedValue(undefined);
-  mocks.rateLimitCount.mockResolvedValue(0);
-  mocks.rateLimitCreate.mockResolvedValue({ id: "rate-limit-1" });
+  mocks.enforceScopedRateLimit.mockResolvedValue(true);
   mocks.transaction.mockImplementation((callback: (tx: unknown) => unknown) => callback(txClient));
   mocks.tokenFindUnique.mockResolvedValue(tokenRow(reservation(ReservationStatus.CONFIRMED)));
   mocks.tokenUpdateMany.mockResolvedValue({ count: 1 });
@@ -148,6 +146,28 @@ afterEach(() => {
 });
 
 describe("public reservation management API", () => {
+  it("returns 429 when the atomic rate-limit check rejects the request", async () => {
+    mocks.enforceScopedRateLimit.mockResolvedValue(false);
+    const { POST } = await loadRoute();
+
+    const response = await POST(buildRequest({ token: rawToken, action: "lookup" }));
+
+    expect(response.status).toBe(429);
+    await expect(response.json()).resolves.toMatchObject({ code: "RATE_LIMITED" });
+    expect(mocks.tokenFindUnique).not.toHaveBeenCalled();
+  });
+
+  it("returns 503 when the atomic rate-limit check fails", async () => {
+    mocks.enforceScopedRateLimit.mockRejectedValue(new Error("DB connection lost"));
+    const { POST } = await loadRoute();
+
+    const response = await POST(buildRequest({ token: rawToken, action: "lookup" }));
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({ code: "RATE_LIMIT_CHECK_FAILED" });
+    expect(mocks.tokenFindUnique).not.toHaveBeenCalled();
+  });
+
   it("looks up only the reservation bound to the token and never returns the raw token", async () => {
     const { POST } = await loadRoute();
     const response = await POST(buildRequest({ token: rawToken, action: "lookup" }));
@@ -228,6 +248,21 @@ describe("public reservation management API", () => {
         status: "DEAD_LETTER",
         lastError: "RESERVATION_CANCELLED",
       }),
+    });
+    expect(mocks.emailOutboxUpsert).toHaveBeenCalledWith({
+      where: {
+        reservationId_notificationType: {
+          reservationId: "reservation-1",
+          notificationType: "RESERVATION_CANCELLED_CUSTOMER",
+        },
+      },
+      create: expect.objectContaining({
+        reservationId: "reservation-1",
+        notificationType: "RESERVATION_CANCELLED_CUSTOMER",
+        status: "PENDING",
+      }),
+      update: {},
+      select: { id: true, status: true },
     });
     expect(mocks.tokenUpdateMany).toHaveBeenCalledWith({
       where: { reservationId: "reservation-1", revokedAt: null },

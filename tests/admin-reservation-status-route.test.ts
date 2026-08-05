@@ -166,6 +166,38 @@ describe("admin reservation status transitions", () => {
     });
   });
 
+  it("queues the same cancellation customer-notification contract as self-service", async () => {
+    findReservationByIdCompatMock.mockResolvedValue(reservation(ReservationStatus.CONFIRMED));
+    updateReservationStatusCompatMock.mockResolvedValue(reservation(ReservationStatus.CANCELLED));
+
+    const response = await patch(ReservationStatus.CANCELLED, { reason: "お客様都合" });
+
+    expect(response.status).toBe(200);
+    expect(txClient.reservationEmailOutbox.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          reservationId: "res-1",
+          status: "PENDING",
+        }),
+      })
+    );
+    expect(txClient.reservationEmailOutbox.upsert).toHaveBeenCalledWith({
+      where: {
+        reservationId_notificationType: {
+          reservationId: "res-1",
+          notificationType: "RESERVATION_CANCELLED_CUSTOMER",
+        },
+      },
+      create: expect.objectContaining({
+        reservationId: "res-1",
+        notificationType: "RESERVATION_CANCELLED_CUSTOMER",
+        status: "PENDING",
+      }),
+      update: {},
+      select: { id: true, status: true },
+    });
+  });
+
   it.each([ReservationStatus.DONE, ReservationStatus.NOSHOW])(
     "rejects %s for PRIVATE_BLOCK",
     async (nextStatus) => {

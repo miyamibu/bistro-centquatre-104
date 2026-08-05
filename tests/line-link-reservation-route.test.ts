@@ -19,6 +19,7 @@ const VALID_UID = "U" + "0".repeat(32);
 const DIFFERENT_UID = "U" + "1".repeat(32);
 const TOMORROW_JST = "2026-06-16";
 const FUTURE_EXPIRY = new Date(Date.now() + 48 * 60 * 60 * 1000);
+const rateLimitMocks = vi.hoisted(() => ({ enforceScopedRateLimit: vi.fn() }));
 
 // ── Mocks ───────────────────────────────────────────────────────────────────────
 
@@ -46,6 +47,10 @@ vi.mock("@/lib/prisma", () => ({
       update: vi.fn().mockResolvedValue({}),
     },
   },
+}));
+
+vi.mock("@/lib/reservation-rate-limit", () => ({
+  enforceScopedRateLimit: rateLimitMocks.enforceScopedRateLimit,
 }));
 
 vi.mock("@/lib/line", async (importOriginal) => {
@@ -94,6 +99,7 @@ beforeEach(async () => {
 
   // resetAllMocks clears call counts AND implementations, so we re-apply defaults below.
   vi.resetAllMocks();
+  rateLimitMocks.enforceScopedRateLimit.mockResolvedValue(true);
 
   const { prisma } = await import("@/lib/prisma");
   type TestMock = ReturnType<typeof vi.fn<(...args: unknown[]) => unknown>>;
@@ -321,9 +327,7 @@ describe("token flow", () => {
   });
 
   it("returns 429 when rate limit is exceeded", async () => {
-    const { prisma } = await import("@/lib/prisma");
-    const p = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
-    p.reservationRateLimitEvent.count.mockResolvedValue(10);
+    rateLimitMocks.enforceScopedRateLimit.mockResolvedValue(false);
 
     const { POST } = await loadRoute();
     expect((await POST(post(validBody))).status).toBe(429);
@@ -406,9 +410,7 @@ describe("rate limit fail-closed (P9)", () => {
   const tokenBody = { token: "valid-token", phoneLast4: "5678", lineIdToken: "id.tok" };
 
   it("returns 503 when rate limit DB check throws (fail-closed, not fail-open)", async () => {
-    const { prisma } = await import("@/lib/prisma");
-    const p = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
-    p.reservationRateLimitEvent.count.mockRejectedValue(new Error("DB connection lost"));
+    rateLimitMocks.enforceScopedRateLimit.mockRejectedValue(new Error("DB connection lost"));
 
     const { POST } = await loadRoute();
     const res = await POST(post(tokenBody));

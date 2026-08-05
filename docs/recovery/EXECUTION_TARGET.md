@@ -8,11 +8,11 @@ The canonical application in this workspace is:
 
 Run development, validation, migration generation, and release checks from that directory.
 
-## Non-canonical sibling
+## Non-canonical linked worktree
 
 `/Users/mimac/Desktop/レストラン予約サイト_本体とバックアップ/bistro-reservation-go-implementation`
 
-is an older, separate Git repository. It is not a drop-in backup of the canonical application. Its schema and operational protections differ, so it must not be started or restored as a replacement without an explicit schema and feature compatibility review.
+is an older linked worktree of the same Git repository. It is not a drop-in backup of the canonical application: its checked-out revision, schema, and operational protections may differ. Do not start or restore it as a replacement without an explicit revision, schema, and feature compatibility review.
 
 ## Recovery gate
 

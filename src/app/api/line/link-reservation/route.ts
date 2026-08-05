@@ -35,6 +35,7 @@ import {
   RESERVATION_SCHEMA_NOT_READY_CODE,
 } from "@/lib/reservation-compat";
 import { formatJst, todayJst } from "@/lib/dates";
+import { enforceScopedRateLimit } from "@/lib/reservation-rate-limit";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -66,19 +67,12 @@ function detectFlow(body: unknown): LinkFlow | null {
 
 async function enforceRateLimit(ipHash: string, flow: LinkFlow): Promise<boolean> {
   const scope = `line-link-${flow}`;
-  const windowMs = 15 * 60 * 1000;
-  const limit = 10;
-  const windowStart = new Date(Date.now() - windowMs);
-
-  const count = await prisma.reservationRateLimitEvent.count({
-    where: { keyHash: ipHash, scope, createdAt: { gte: windowStart } },
+  return enforceScopedRateLimit(prisma, {
+    keyHash: ipHash,
+    scope,
+    windowMs: 15 * 60 * 1000,
+    limit: 10,
   });
-  if (count >= limit) return false;
-
-  await prisma.reservationRateLimitEvent.create({
-    data: { keyHash: ipHash, scope },
-  });
-  return true;
 }
 
 async function maybeSendImmediateReminder(

@@ -15,12 +15,14 @@ import {
 import { evaluateSelfServiceCancellation } from "@/lib/cancellation-policy";
 import {
   enqueueReservationCustomerEmail,
+  enqueueReservationStatusEmail,
   ReservationEmailOutboxBusyError,
   suppressReservationConfirmationEmail,
 } from "@/lib/reservation-email-outbox";
 import { getClientIp, getUserAgent, hashClientIp } from "@/lib/request-meta";
 import { getRequestId, logError, logInfo } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
+import { enforceScopedRateLimit } from "@/lib/reservation-rate-limit";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -84,24 +86,12 @@ type ManagementResult =
     };
 
 async function enforceManagementRateLimit(ipHash: string) {
-  const since = new Date(Date.now() - MANAGEMENT_RATE_LIMIT_WINDOW_MS);
-  const count = await prisma.reservationRateLimitEvent.count({
-    where: {
-      keyHash: ipHash,
-      scope: MANAGEMENT_RATE_LIMIT_SCOPE,
-      createdAt: { gte: since },
-    },
+  return enforceScopedRateLimit(prisma, {
+    keyHash: ipHash,
+    scope: MANAGEMENT_RATE_LIMIT_SCOPE,
+    windowMs: MANAGEMENT_RATE_LIMIT_WINDOW_MS,
+    limit: MANAGEMENT_RATE_LIMIT_MAX,
   });
-
-  if (count >= MANAGEMENT_RATE_LIMIT_MAX) return false;
-
-  await prisma.reservationRateLimitEvent.create({
-    data: {
-      keyHash: ipHash,
-      scope: MANAGEMENT_RATE_LIMIT_SCOPE,
-    },
-  });
-  return true;
 }
 
 function invalidTokenResult(): ManagementResult {
@@ -316,6 +306,7 @@ async function executeManagementAction(
   });
 
   await suppressReservationConfirmationEmail(tx, next.id);
+  await enqueueReservationStatusEmail(tx, next.id, "CANCELLED");
 
   await tx.reservationManagementToken.updateMany({
     where: { reservationId: next.id, revokedAt: null },

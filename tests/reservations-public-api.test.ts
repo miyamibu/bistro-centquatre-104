@@ -17,6 +17,7 @@ const routeMocks = vi.hoisted(() => ({
   reservationIdempotencyFindUnique: vi.fn(),
   reservationIdempotencyCreateMany: vi.fn(),
   reservationIdempotencyUpdate: vi.fn(),
+  reservationManagementTokenCreate: vi.fn(),
   idempotencyRows: new Map<string, Record<string, unknown>>(),
 }));
 
@@ -48,6 +49,11 @@ function resetRouteMocks() {
   routeMocks.reservationEmailOutboxUpsert.mockResolvedValue({
     id: "outbox-1",
     status: "PENDING",
+  });
+  routeMocks.reservationManagementTokenCreate.mockResolvedValue({
+    id: "management-token-1",
+    tokenHash: "hashed-management-token",
+    expiresAt: new Date(),
   });
   routeMocks.sendReservationEmail.mockResolvedValue({
     sent: true,
@@ -164,11 +170,7 @@ vi.mock("@/lib/prisma", () => ({
           update: routeMocks.reservationIdempotencyUpdate,
         },
         reservationManagementToken: {
-          create: vi.fn().mockResolvedValue({
-            id: "management-token-1",
-            tokenHash: "hashed-management-token",
-            expiresAt: new Date(),
-          }),
+          create: routeMocks.reservationManagementTokenCreate,
         },
         reservationLineLinkToken: {
           create: routeMocks.lineLinkTokenCreate,
@@ -231,7 +233,7 @@ describe("public reservations API — adminLink (P12)", () => {
   it("does not include adminLink in the response body", async () => {
     const { POST } = await loadRoute();
     const res = await POST(post({ ...MIN_BODY, name: "山田" }));
-    if (res.status !== 200) return; // skip if schema not ready in test env
+    expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).not.toHaveProperty("adminLink");
     expect(body.managementUrl).toMatch(
@@ -331,14 +333,14 @@ describe("public reservations API — linkUrl uses liff.line.me (P4)", () => {
 
     const { POST } = await loadRoute();
     const res = await POST(post({ ...MIN_BODY, name: "山田" }));
-    if (res.status !== 200) return;
+    expect(res.status).toBe(200);
     const body = await res.json();
     const linkUrl: string | undefined = body.lineNotification?.linkUrl;
-    if (!linkUrl) return; // token creation may fail in test env — acceptable
+    expect(linkUrl).toBeTruthy();
     expect(linkUrl).toMatch(/^https:\/\/liff\.line\.me\/999-liff-link-id\?t=/);
   });
 
-  it("does not mint a fresh LINE link token for a deduplicated reservation replay", async () => {
+  it("does not mint management or LINE tokens for a semantic duplicate reservation", async () => {
     const createdAt = new Date();
     routeMocks.txReservationFindMany.mockResolvedValue([
       {
@@ -370,9 +372,16 @@ describe("public reservations API — linkUrl uses liff.line.me (P4)", () => {
 
     expect(res.status).toBe(200);
     expect(body.deduplicated).toBe(true);
+    expect(body).not.toHaveProperty("managementUrl");
     expect(body.lineNotification).toEqual({ enabled: false, deduplicated: true });
     expect(routeMocks.lineLinkTokenCreate).not.toHaveBeenCalled();
+    expect(routeMocks.reservationManagementTokenCreate).not.toHaveBeenCalled();
     expect(routeMocks.reservationEmailOutboxUpsert).not.toHaveBeenCalled();
+
+    const replay = await POST(post({ ...MIN_BODY, name: "山田" }));
+    expect(replay.status).toBe(200);
+    await expect(replay.json()).resolves.toEqual(body);
+    expect(routeMocks.reservationManagementTokenCreate).not.toHaveBeenCalled();
   });
 });
 

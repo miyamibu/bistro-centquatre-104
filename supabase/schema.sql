@@ -156,6 +156,7 @@ create table if not exists public.api_idempotency (
   response_body jsonb,
   resource_id text,
   claim_expires_at timestamptz,
+  claim_token uuid,
   created_at timestamptz not null default now(),
   unique (scope, actor_key, idempotency_key)
 );

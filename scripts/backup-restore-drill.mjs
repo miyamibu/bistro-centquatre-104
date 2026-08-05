@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import fs from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 import {
@@ -88,11 +89,15 @@ function normalizePayloadShape(payload) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  for (const prohibited of ["apply", "restore", "database-url", "direct-url", "target-db"]) {
+    if (args.has(prohibited)) throw new Error(`--${prohibited} は復旧ドリルでは使用できません。DB書き戻しはこのスクリプトの対象外です`);
+  }
   const file = args.get("file");
   if (!file) {
     throw new Error("使い方: npm run backup:restore-drill -- --file=backups/reservation-daily-backups/days/2026-08-03.json.enc");
   }
   const filePath = path.resolve(process.cwd(), file);
+  if (!filePath.endsWith(".enc")) throw new Error("復旧ドリルは暗号化済み .enc ファイルだけを検証します");
   const serialized = await fs.readFile(filePath, "utf8");
   const config = await resolveBackupEncryptionConfig({
     readFromStdin: args.get("encryption-key-stdin") === "true",
@@ -106,7 +111,9 @@ async function main() {
       {
         ok: true,
         mode: "DRY_RUN_RESTORE_VALIDATION",
+        databaseWrite: "NOT_SUPPORTED",
         file: filePath,
+        encryptedFileSha256: createHash("sha256").update(serialized).digest("hex"),
         encryption: envelope,
         payload: summary,
         action: "DBへの書き戻しは実行していません",

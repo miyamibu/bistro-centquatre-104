@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 import { z } from "zod";
@@ -464,6 +465,7 @@ async function main() {
     checksumSha256: string;
     counts: BackupExportResponse["counts"];
   }> = [];
+  const encryptedDayFiles: Array<{ date: string; path: string; sha256: string }> = [];
   let dayFilesWritten = 0;
   let totalReservations = 0;
   let totalBusinessDays = 0;
@@ -551,6 +553,11 @@ async function main() {
         });
         await fs.writeFile(dayPath, `${encrypted}\n`, "utf8");
         await fs.chmod(dayPath, 0o600);
+        encryptedDayFiles.push({
+          date,
+          path: path.relative(outputDir, dayPath),
+          sha256: createHash("sha256").update(`${encrypted}\n`).digest("hex"),
+        });
       }
 
       dayFilesWritten += 1;
@@ -610,6 +617,7 @@ async function main() {
       notificationEvents: totalNotificationEvents,
     },
     chunks: chunkSummaries,
+    encryptedDayFiles,
   };
 
   if (!dryRun) {

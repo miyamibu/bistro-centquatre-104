@@ -68,10 +68,10 @@ npm run backup:reservations -- --encryption-key-stdin < /secure/path/backup-encr
 
 1. 本番とは別の一時ディレクトリへ暗号化ファイルをコピーする。
 2. `npm run backup:restore-drill -- --file=<コピーした.enc>` を実行する。
-3. `ok: true`、鍵ID、件数、schemaVersionを確認する（DBへの書き戻しは行わない）。
+3. `ok: true`、`databaseWrite: "NOT_SUPPORTED"`、鍵ID、暗号化ファイルSHA-256、件数、schemaVersionを確認する（DBへの書き戻しは行わない）。
 4. 成功日時・対象ファイル・操作者2名を運用台帳へ記録する。
 
-目標値は RPO 24時間以内、RTO 60分以内です。復旧ドリルは常に `DRY_RUN_RESTORE_VALIDATION`
+目標値は RPO 24時間以内、RTO 60分以内です。復旧ドリルは常に `DRY_RUN_RESTORE_VALIDATION`（DB接続・書き戻し機能は未実装）
 で行い、実DBへの反映は別承認とバックアップ取得後にだけ実施します。
 
 ## Canonical storage layout
@@ -142,5 +142,6 @@ npm run backup:project-snapshot -- --dry-run
 - 暗号化バックアップは保存時と同じ鍵で復号し、checksumと件数を検証する
 - 鍵IDが解決できない場合は、旧鍵を保管庫から復元してから再試行する。鍵本文をログに出さない
 - バックアップpayloadと本番DBを突き合わせ、二重登録/欠損を確認してから反映する
-- `latest-run.json` の時刻と件数を見て、欠損期間がないか確認する
+- `latest-run.json` だけで判断せず、`runs/*.json` を含む最新実行の時刻、暗号化ファイルSHA-256、暗号化メタデータを `npm run backup:reservations:status` で照合する
+- workspace bundle は、承認済みrelease commitの40文字SHAを指定した `npm run backup:workspace:status -- --expected-head=<承認済み40文字SHA>` に成功してからrelease証跡として扱う。この検査は `git bundle verify`、`latest.bundle.provenance.json` のHEAD SHA、指定した承認SHA、bundle SHA-256を照合し、古いbundleを拒否する
 - DBへの直接書き戻しは必ず別承認フローで実施する

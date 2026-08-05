@@ -79,7 +79,7 @@ async function appendRateLimitEvent(
   tx: Prisma.TransactionClient,
   input: {
     keyHash: string;
-    scope: RateLimitScope;
+    scope: string;
     date?: string;
     servicePeriod?: ReservationServicePeriodKey;
   }
@@ -110,13 +110,44 @@ async function appendRateLimitEvent(
 
 async function acquireRateLimitAdvisoryLock(
   tx: Prisma.TransactionClient,
-  scope: RateLimitScope,
+  scope: string,
   keyHash: string
 ) {
   await tx.$executeRawUnsafe(
     "SELECT pg_advisory_xact_lock(hashtext($1))",
     `reservation-rate-limit:${scope}:${keyHash}`
   );
+}
+
+export async function enforceScopedRateLimit(
+  prisma: PrismaClient,
+  input: {
+    keyHash: string;
+    scope: string;
+    windowMs: number;
+    limit: number;
+    now?: Date;
+  }
+): Promise<boolean> {
+  const now = input.now ?? new Date();
+  const since = new Date(now.getTime() - input.windowMs);
+
+  return prisma.$transaction(async (tx) => {
+    await acquireRateLimitAdvisoryLock(tx, input.scope, input.keyHash);
+    const rows = await tx.$queryRaw<Array<{ count: bigint | number | string }>>(
+      Prisma.sql`
+        SELECT COUNT(*)::bigint AS count
+        FROM "ReservationRateLimitEvent"
+        WHERE "keyHash" = ${input.keyHash}
+          AND "scope" = ${input.scope}
+          AND "createdAt" >= ${since}
+      `
+    );
+    if (Number(rows[0]?.count ?? 0) >= input.limit) return false;
+
+    await appendRateLimitEvent(tx, { keyHash: input.keyHash, scope: input.scope });
+    return true;
+  });
 }
 
 export async function enforceReservationWriteRateLimitInTransaction(

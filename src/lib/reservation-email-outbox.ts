@@ -238,6 +238,9 @@ export async function enqueueReservationStatusEmail(
   reservationId: string,
   status: "CANCELLED" | "NOSHOW",
 ) {
+  // Called only after a normal reservation's status CAS succeeds. The unique
+  // (reservationId, notificationType) key makes customer and admin paths share
+  // one durable notification intent without duplicate delivery on a retry.
   const notificationType =
     status === "CANCELLED"
       ? ReservationEmailNotificationType.RESERVATION_CANCELLED_CUSTOMER
