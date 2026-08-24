@@ -38,6 +38,7 @@ function buildPayload(overrides: Partial<Record<string, unknown>> = {}) {
     arrivalTime: "18:00",
     name: "山田　花子",
     phone: "090-1234-5678",
+    customerEmail: "reservation-db-test@example.com",
     note: "テスト予約",
     course: "ディナー: 席のみ",
     ...overrides,
@@ -99,12 +100,17 @@ describeIfDatabase("reservations route duplicate guard (db)", () => {
     const emailOutbox = await getPrismaOrThrow().reservationEmailOutbox.findMany({
       where: { reservationId: firstBody.reservationId },
     });
-    expect(emailOutbox).toHaveLength(1);
-    expect(emailOutbox[0]).toMatchObject({
-      notificationType: "RESERVATION_CONFIRMATION",
-      status: "PENDING",
-      attempts: 0,
-    });
+    expect(emailOutbox).toHaveLength(2);
+    expect(emailOutbox.map((row) => row.notificationType).sort()).toEqual([
+      "CUSTOMER_CONFIRMATION",
+      "RESERVATION_CONFIRMATION",
+    ]);
+    expect(emailOutbox).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ status: "PENDING", attempts: 0 }),
+        expect.objectContaining({ status: "PENDING", attempts: 0 }),
+      ])
+    );
   }, 30000);
 
   it("creates a new reservation when the party size is different", async () => {
@@ -135,7 +141,7 @@ describeIfDatabase("reservations route duplicate guard (db)", () => {
     expect(reservations.map((reservation) => reservation.partySize)).toEqual([2, 3]);
     await expect(
       getPrismaOrThrow().reservationEmailOutbox.count()
-    ).resolves.toBe(2);
+    ).resolves.toBe(4);
   }, 30000);
 
   it("creates a new reservation when the prior one is older than 1 minute", async () => {
@@ -168,7 +174,7 @@ describeIfDatabase("reservations route duplicate guard (db)", () => {
     expect(reservations).toHaveLength(2);
     await expect(
       getPrismaOrThrow().reservationEmailOutbox.count()
-    ).resolves.toBe(2);
+    ).resolves.toBe(4);
   }, 30000);
 
   it("replays the saved response after the original response was lost for minutes", async () => {
@@ -191,7 +197,7 @@ describeIfDatabase("reservations route duplicate guard (db)", () => {
     expect(replayResponse.status).toBe(200);
     expect(replayBody).toEqual(firstBody);
     await expect(getPrismaOrThrow().reservation.count()).resolves.toBe(1);
-    await expect(getPrismaOrThrow().reservationEmailOutbox.count()).resolves.toBe(1);
+    await expect(getPrismaOrThrow().reservationEmailOutbox.count()).resolves.toBe(2);
   }, 30000);
 
   it("returns the same saved response for concurrent requests with the same key", async () => {
@@ -210,7 +216,7 @@ describeIfDatabase("reservations route duplicate guard (db)", () => {
     expect(secondResponse.status).toBe(200);
     expect(secondBody).toEqual(firstBody);
     await expect(getPrismaOrThrow().reservation.count()).resolves.toBe(1);
-    await expect(getPrismaOrThrow().reservationEmailOutbox.count()).resolves.toBe(1);
+    await expect(getPrismaOrThrow().reservationEmailOutbox.count()).resolves.toBe(2);
   }, 30000);
 
   it("returns 409 when the same key is reused with a different body", async () => {

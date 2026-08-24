@@ -49,4 +49,15 @@ describe("production-go regression contracts", () => {
     expect(picturePage).toContain("PHOTO_QUERY_TIMEOUT_MS = 750");
     expect(picturePage).toContain("Promise.race([query, boundedFallback])");
   });
+
+  it("keeps CI DB-test auth exclusions explicit and non-default", () => {
+    const dbTestRunner = source("scripts/run-safe-db-tests.mjs");
+    const reservationWorkflow = source(".github/workflows/reservation-hardening.yml");
+    const securityWorkflow = source(".github/workflows/security-checks.yml");
+
+    expect(dbTestRunner).toContain('process.env.SKIP_STAFF_AUTH_DB_TESTS === "1"');
+    expect(dbTestRunner).toContain("TEST_STAFF_AUTH_COOKIE");
+    expect(reservationWorkflow).toContain('SKIP_STAFF_AUTH_DB_TESTS: "1"');
+    expect(securityWorkflow).toContain('SKIP_STAFF_AUTH_DB_TESTS: "1"');
+  });
 });

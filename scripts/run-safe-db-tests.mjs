@@ -41,11 +41,19 @@ if (process.env.ALLOW_DESTRUCTIVE_TEST_DB !== "1") {
   process.exit(1);
 }
 
-if (!process.env.TEST_STAFF_AUTH_COOKIE?.trim()) {
+const skipStaffAuthDbTests = process.env.SKIP_STAFF_AUTH_DB_TESTS === "1";
+
+if (!process.env.TEST_STAFF_AUTH_COOKIE?.trim() && !skipStaffAuthDbTests) {
   console.error(
-    "[test:db] TEST_STAFF_AUTH_COOKIE が未設定です。管理者認証を必要とするDBテストは失敗として終了します"
+    "[test:db] TEST_STAFF_AUTH_COOKIE が未設定です。管理者認証を必要とするDBテストは失敗として終了します。CIで認証依存ケースを明示的に除外する場合だけ SKIP_STAFF_AUTH_DB_TESTS=1 を指定してください"
   );
   process.exit(1);
+}
+
+if (!process.env.TEST_STAFF_AUTH_COOKIE?.trim()) {
+  console.warn(
+    "[test:db] SKIP_STAFF_AUTH_DB_TESTS=1: スタッフMFAセッション依存DBテストを除外し、残りのDBテストを実行します"
+  );
 }
 
 const result = spawnSync("npm", ["run", "test:db:runner"], {

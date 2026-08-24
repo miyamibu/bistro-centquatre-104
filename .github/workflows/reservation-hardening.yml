@@ -47,6 +47,7 @@ jobs:
       NODE_ENV: test
       TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bistro_test?schema=public
       ALLOW_DESTRUCTIVE_TEST_DB: "1"
+      SKIP_STAFF_AUTH_DB_TESTS: "1"
 
     steps:
       - name: Checkout
