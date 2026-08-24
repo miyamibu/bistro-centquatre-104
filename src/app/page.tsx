@@ -435,6 +435,7 @@ export default function HomePage() {
   };
   const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
   const lightboxCloseButtonRef = useRef<HTMLButtonElement | null>(null);
+  const lightboxDialogRef = useRef<HTMLDivElement | null>(null);
   const [menuKind, setMenuKind] = useState<MenuKind>("dinner");
   const activeMenu = MENU[menuKind];
 
@@ -442,7 +443,36 @@ useEffect(() => {
   if (!lightbox) return;
 
   const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Escape") setLightbox(null);
+    if (e.key === "Escape") {
+      e.preventDefault();
+      setLightbox(null);
+      return;
+    }
+    if (e.key !== "Tab") return;
+
+    const dialog = lightboxDialogRef.current;
+    if (!dialog) return;
+    const focusable = Array.from(
+      dialog.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+      )
+    );
+    if (focusable.length === 0) {
+      e.preventDefault();
+      return;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (!dialog.contains(document.activeElement)) {
+      e.preventDefault();
+      first.focus();
+    } else if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
   };
 
   document.addEventListener("keydown", onKeyDown);
@@ -558,9 +588,11 @@ const readMoreButtonStyle = {
      </a>
       {lightbox && (
   <div
+    ref={lightboxDialogRef}
     className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 p-4 cursor-default"
     role="dialog"
     aria-modal="true"
+    aria-label={`写真拡大: ${lightbox.alt}`}
     onMouseDown={(e) => {
       if (e.target === e.currentTarget) setLightbox(null);
     }}

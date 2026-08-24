@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
 
 const originalEnv = { ...process.env };
 const rawToken = "a".repeat(43);
+const TEST_NOW = new Date("2026-08-01T03:00:00.000Z");
 
 const txClient = {
   reservationManagementToken: {
@@ -113,6 +114,8 @@ async function loadRoute() {
 }
 
 beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(TEST_NOW);
   process.env = {
     ...originalEnv,
     NODE_ENV: "test",
@@ -140,6 +143,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   process.env = { ...originalEnv };
   vi.clearAllMocks();
   vi.resetModules();

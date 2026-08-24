@@ -246,9 +246,9 @@ Cron notes:
 4. `cancel-expired-orders` is bounded to 200 orders per run and can be safely rerun
 5. `delete-old-histories` deletes up to 1000 rows per run in 200-row batches
 6. `process-reservation-emails` claims at most 10 due rows per run and retries failed delivery up to 5 attempts.
-7. `process-order-notifications` runs daily at `0 2 * * *`.
-8. `process-reservation-emails` runs at `*/5 * * * *`; this requires a Vercel Pro plan (Hobby is incompatible).
-9. Run `VERCEL_PLAN=pro npm run check:release:production` before enabling the 5-minute schedule.
+7. `process-order-notifications` runs at `*/5 * * * *`.
+8. `process-reservation-emails` runs at `*/5 * * * *`; both five-minute schedules require a Vercel Pro plan (Hobby is incompatible).
+9. Run `VERCEL_PLAN=pro npm run check:release:production` before enabling either five-minute schedule.
    If `VERCEL_PLAN` is unknown, the production release check fails rather than assuming plan support.
 
 ## Post-deploy smoke checks

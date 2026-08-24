@@ -60,6 +60,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Reject high-severity production dependency vulnerabilities
+        run: npm run audit:production
+
       - name: Apply Prisma migrations
         run: npx prisma migrate deploy
 
@@ -77,3 +80,14 @@ jobs:
 
       - name: Run destructive reservation security check
         run: npm run security:destructive-reservations
+
+      - name: Generate commit-bound QA evidence
+        run: npm run qa:user-stories:evidence -- --output="$RUNNER_TEMP/canonical-user-story-validation-evidence.json"
+
+      - name: Upload commit-bound QA evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: canonical-user-story-evidence-${{ github.sha }}
+          path: ${{ runner.temp }}/canonical-user-story-validation-evidence.json
+          if-no-files-found: error
+          retention-days: 30

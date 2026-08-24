@@ -3,11 +3,12 @@
  * P4:  linkUrl in lineNotification uses https://liff.line.me/<LIFF_LINK_ID>?t=...
  *      when NEXT_PUBLIC_LIFF_LINK_ID is set.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const originalEnv = { ...process.env };
 const PUBLIC_BASE_URL = "https://bistro-centquatre-104.vercel.app";
+const TEST_NOW = new Date("2026-08-01T03:00:00.000Z");
 
 const routeMocks = vi.hoisted(() => ({
   lineLinkTokenCreate: vi.fn(),
@@ -94,7 +95,13 @@ function resetRouteMocks() {
 
 resetRouteMocks();
 
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(TEST_NOW);
+});
+
 afterEach(() => {
+  vi.useRealTimers();
   vi.resetModules();
   process.env = { ...originalEnv };
   vi.clearAllMocks();

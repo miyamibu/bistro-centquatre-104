@@ -18,6 +18,7 @@ type GallerySection = {
 export function GalleryViewer({ sections }: { sections: GallerySection[] }) {
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
   const flatPhotos = useMemo(
     () =>
       sections.flatMap((section) =>
@@ -77,6 +78,32 @@ export function GalleryViewer({ sections }: { sections: GallerySection[] }) {
         if (flatPhotos.length < 2 || selectedPhotoIndex < 0) return;
         const nextIndex = (selectedPhotoIndex - 1 + flatPhotos.length) % flatPhotos.length;
         setSelectedPhotoId(flatPhotos[nextIndex].id);
+        return;
+      }
+
+      if (event.key !== "Tab") return;
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+        )
+      );
+      if (focusable.length === 0) {
+        event.preventDefault();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!dialog.contains(document.activeElement)) {
+        event.preventDefault();
+        first.focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
       }
     };
 
@@ -130,6 +157,7 @@ export function GalleryViewer({ sections }: { sections: GallerySection[] }) {
         <div
           className="fixed inset-0 z-[240] bg-black/75 px-3 py-4 md:px-8 md:py-6"
           role="dialog"
+          ref={dialogRef}
           aria-modal="true"
           aria-label={`写真拡大: ${selectedPhoto.caption}`}
           onClick={closeModal}

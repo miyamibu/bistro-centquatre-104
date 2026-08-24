@@ -26,13 +26,19 @@ function verifyLineSignature(rawBody: string, signature: string, secret: string)
   return timingSafeEqual(expected, provided);
 }
 
-type LineEventSource = { userId?: unknown };
+type LineEventSource = { type?: unknown; userId?: unknown };
 type LineEvent = {
   webhookEventId: string;
   type: string;
   source?: LineEventSource;
   replyToken?: unknown;
   [key: string]: unknown;
+};
+
+type MinimizedInboxPayload = {
+  schemaVersion: 1;
+  minimized: true;
+  sourceType?: string;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -70,13 +76,27 @@ function isUniqueConstraintError(error: unknown): boolean {
   );
 }
 
+function buildMinimizedInboxPayload(event: LineEvent): MinimizedInboxPayload {
+  const sourceType = isRecord(event.source) && typeof event.source.type === "string"
+    ? event.source.type.slice(0, 32)
+    : undefined;
+
+  return {
+    schemaVersion: 1,
+    minimized: true,
+    ...(sourceType ? { sourceType } : {}),
+  };
+}
+
 async function persistInboxEvent(event: LineEvent, requestId: string) {
   try {
     return await prisma.lineWebhookInbox.create({
       data: {
         eventId: event.webhookEventId,
         eventType: event.type,
-        payload: event as Prisma.InputJsonValue,
+        // Idempotency and processing only require the columns above. Do not retain
+        // LINE user IDs, reply tokens, message text, locations, or the raw event.
+        payload: buildMinimizedInboxPayload(event) as Prisma.InputJsonValue,
         requestId,
       },
     });

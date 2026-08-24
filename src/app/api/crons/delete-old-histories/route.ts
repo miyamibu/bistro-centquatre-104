@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { supabaseServer } from "@/lib/supabase-server";
 import { prisma } from "@/lib/prisma";
 import { env } from "@/lib/env";
 import { apiError } from "@/lib/api-security";
-import { getRequestId, logError, logInfo } from "@/lib/logger";
+import { getRequestId, logError, logInfo, logWarn } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 const ORDER_HISTORY_RETENTION_DAYS = 365;
+const LINE_WEBHOOK_INBOX_RETENTION_DAYS = 30;
+const LINE_WEBHOOK_INBOX_DELETE_BATCH_SIZE = 200;
 const DELETE_BATCH_SIZE = 200;
 const MAX_DELETE_PER_RUN = 1000;
 const ORDER_PII_ANONYMIZE_BATCH_SIZE = 200;
@@ -200,10 +203,44 @@ async function executeDeleteOldHistories(req: NextRequest) {
       });
     }
 
+    // Only completed, minimized webhook receipts are eligible. Pending, failed,
+    // and processing rows remain available for retry and incident recovery.
+    let deletedLineWebhookInboxCount = 0;
+    try {
+      const lineInboxThreshold = new Date(
+        Date.now() - LINE_WEBHOOK_INBOX_RETENTION_DAYS * 24 * 60 * 60 * 1000
+      );
+      const rows = await prisma.$queryRaw<Array<{ deleted_count: bigint | number }>>(
+        Prisma.sql`SELECT public.cleanup_processed_line_webhook_inbox(
+          ${lineInboxThreshold},
+          ${LINE_WEBHOOK_INBOX_DELETE_BATCH_SIZE}
+        ) AS deleted_count`
+      );
+      deletedLineWebhookInboxCount = Number(rows[0]?.deleted_count ?? 0);
+    } catch (lineInboxCleanupError) {
+      // Non-fatal during phased rollout where the inbox migration may not exist yet.
+      logWarn("crons.delete_old_histories.line_webhook_cleanup_skipped", {
+        requestId,
+        route,
+        context: {
+          message:
+            lineInboxCleanupError instanceof Error
+              ? lineInboxCleanupError.message
+              : String(lineInboxCleanupError),
+        },
+      });
+    }
+
     logInfo("crons.delete_old_histories.success", {
       requestId,
       route,
-      context: { deletedCount, hasMore, anonymizedOrderCount, deletedExpiredTokens },
+      context: {
+        deletedCount,
+        hasMore,
+        anonymizedOrderCount,
+        deletedExpiredTokens,
+        deletedLineWebhookInboxCount,
+      },
     });
 
     return NextResponse.json({
@@ -216,6 +253,8 @@ async function executeDeleteOldHistories(req: NextRequest) {
       anonymizedOrderCount,
       anonymizeBatchSize: ORDER_PII_ANONYMIZE_BATCH_SIZE,
       deletedExpiredTokens,
+      deletedLineWebhookInboxCount,
+      lineWebhookInboxRetentionDays: LINE_WEBHOOK_INBOX_RETENTION_DAYS,
       requestId,
     });
   } catch (error) {

@@ -5,7 +5,10 @@ import { spawnSync } from "node:child_process";
 
 const repoRoot = process.cwd();
 const trackerPath = resolve(repoRoot, "docs/qa/canonical-user-story-status.csv");
-const outputPath = resolve(repoRoot, "docs/qa/canonical-user-story-validation-evidence.json");
+const outputArg = process.argv.find((arg) => arg.startsWith("--output="));
+const outputPath = outputArg
+  ? resolve(repoRoot, outputArg.slice("--output=".length))
+  : resolve(repoRoot, "docs/qa/canonical-user-story-validation-evidence.json");
 
 function run(command, args, options = {}) {
   const startedAt = new Date().toISOString();
@@ -58,12 +61,12 @@ const releaseChecks = {
 
 const buildIdPath = resolve(repoRoot, ".next/BUILD_ID");
 const evidence = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   generatedAt: new Date().toISOString(),
-  purpose:
-    "Canonical user-story tracker validation evidence for local release-readiness review.",
-  scope:
-    "Local dirty-snapshot evidence only. This file is not production deployment or external provider proof.",
+  purpose: "Canonical user-story tracker validation evidence bound to the checked-out commit.",
+  scope: process.env.CI
+    ? "CI commit evidence. This artifact is not production deployment or external provider proof."
+    : "Local snapshot evidence. This file is not production deployment or external provider proof.",
   repository: {
     root: repoRoot,
     branch: gitBranch.stdout.trim() || null,
@@ -116,6 +119,8 @@ const evidence = {
 };
 
 evidence.summary = {
+  commitBoundCleanSnapshot:
+    Boolean(evidence.repository.headSha) && evidence.repository.dirtyStatus.length === 0,
   allValidationExitCodesZero: evidence.validations.every((entry) => entry.exitCode === 0),
   validationCommands: evidence.validations.map((entry) => entry.command),
   productionReleaseCheckExitCode: evidence.releaseChecks.production.exitCode,

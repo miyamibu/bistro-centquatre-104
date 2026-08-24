@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "packageManager": "npm@11.11.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
@@ -35,6 +38,7 @@
     "security:env": "node scripts/security/check-env-permissions.mjs",
     "security:destructive": "node scripts/security/check-destructive-reservation-queries.mjs",
     "security:destructive-reservations": "node scripts/security/check-destructive-reservation-queries.mjs",
+    "audit:production": "npm audit --omit=dev --audit-level=high",
     "add": "liftkit add",
     "convert:pdf": "tsx batch-convert-pdf.mts"
   },
@@ -55,7 +59,7 @@
     "lucide-react": "^0.446.0",
     "next": "^15.5.20",
     "pdf-parse": "^2.4.5",
-    "puppeteer": "^24.43.1",
+    "puppeteer": "^25.8.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.52.0",
@@ -86,7 +90,9 @@
     "flatted": "^3.4.2",
     "follow-redirects": "^1.16.0",
     "form-data": "^4.0.6",
-    "js-yaml": "^4.2.0",
+    "brace-expansion": "^5.0.9",
+    "ip-address": "^10.5.0",
+    "js-yaml": "^4.3.1",
     "minimatch": "10.2.6",
     "@typescript-eslint/typescript-estree": {
       "minimatch": "10.2.6"
@@ -96,6 +102,7 @@
     "tinyglobby": {
       "picomatch": "^4.0.4"
     },
+    "nanoid": "^3.3.18",
     "postcss": "$postcss",
     "sharp": "$sharp"
   }

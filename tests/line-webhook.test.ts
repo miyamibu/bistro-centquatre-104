@@ -124,7 +124,11 @@ describe("/api/line/webhook", () => {
     expect(response.status).toBe(200);
     expect(webhookMocks.inboxCreate).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ eventId: "evt-follow", eventType: "follow" }),
+        data: expect.objectContaining({
+          eventId: "evt-follow",
+          eventType: "follow",
+          payload: { schemaVersion: 1, minimized: true, sourceType: "user" },
+        }),
       })
     );
     expect(webhookMocks.lineFriendUpsert).toHaveBeenCalledOnce();
@@ -137,6 +141,27 @@ describe("/api/line/webhook", () => {
         data: expect.objectContaining({ status: "PROCESSED" }),
       })
     );
+  });
+
+  it("does not persist LINE identifiers, reply tokens, or message content in the inbox", async () => {
+    const { POST } = await loadWebhook();
+    const body = JSON.stringify({
+      destination: "U0",
+      events: [
+        {
+          ...event("message", "evt-private"),
+          replyToken: "reply-token-that-must-not-be-retained",
+          message: { type: "text", text: "private message" },
+        },
+      ],
+    });
+
+    expect((await POST(signedRequest(body, sign(body, SECRET)))).status).toBe(200);
+    const persisted = webhookMocks.inboxCreate.mock.calls[0][0].data;
+    const serialized = JSON.stringify(persisted.payload);
+    expect(serialized).not.toContain(VALID_UID);
+    expect(serialized).not.toContain("reply-token-that-must-not-be-retained");
+    expect(serialized).not.toContain("private message");
   });
 
   it("handles unfollow as BLOCKED", async () => {

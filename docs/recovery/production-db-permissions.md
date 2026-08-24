@@ -49,7 +49,7 @@
 | `ReservationLineLinkToken` | `SELECT`, `INSERT`, `UPDATE` | LINE token発行と使用済み更新 |
 | `ReservationManagementToken` | `SELECT`, `INSERT`, `UPDATE` | 顧客予約管理token発行と失効 |
 | `NotificationEvent` | `SELECT`, `INSERT`, `UPDATE` | 通知claimと結果更新 |
-| `LineWebhookInbox` | `SELECT`, `INSERT`, `UPDATE` | Webhook eventの保存、claim、再試行結果更新 |
+| `LineWebhookInbox` | `SELECT`, `INSERT`, `UPDATE` | Webhook eventの保存、claim、再試行結果更新。処理済み行の期限削除は直接DELETE権限ではなく、制約付き関数だけを使う |
 | `ReservationRateLimitEvent` | `SELECT`, `INSERT` | rate-limit試行の追記と集計 |
 | `LineFriend` | `SELECT`, `INSERT`, `UPDATE` | LINE友だち状態の更新 |
 | `LineCustomerLink` | `SELECT`, `INSERT`, `UPDATE` | 同意済みLINE顧客リンクの更新 |
@@ -91,6 +91,9 @@ ON TABLE
   "LineFriend",
   "LineCustomerLink",
   "DailyJournalEntry"
+TO bistro_app_runtime;
+
+GRANT EXECUTE ON FUNCTION public.cleanup_processed_line_webhook_inbox(timestamptz, integer)
 TO bistro_app_runtime;
 
 REVOKE UPDATE

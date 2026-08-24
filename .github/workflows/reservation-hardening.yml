@@ -63,6 +63,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Reject high-severity production dependency vulnerabilities
+        run: npm run audit:production
+
       - name: Apply Prisma migrations
         run: npx prisma migrate deploy
 

@@ -101,7 +101,9 @@ async function main() {
   const bundleError = await runRequiredStep(
     "workspace bundle",
     "git",
-    ["bundle", "create", bundlePath, "--all"],
+    // Preserve committed local branches/tags and HEAD, but exclude remote-tracking,
+    // agent/checkpoint, and other incidental refs that made snapshots grow unbounded.
+    ["bundle", "create", bundlePath, "HEAD", "--branches", "--tags"],
     cwd
   );
   if (bundleError) {

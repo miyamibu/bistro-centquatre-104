@@ -132,11 +132,11 @@ cron API は `Authorization: Bearer $CRON_SECRET` で保護されます。
 | --- | --- | --- |
 | `/api/crons/cancel-expired-orders` | `0 0 * * *` | 期限切れ注文を処理 |
 | `/api/crons/delete-old-histories` | `0 1 * * *` | 古い注文履歴をバッチ処理 |
-| `/api/crons/process-order-notifications` | `0 2 * * *` | 注文通知outboxを処理 |
+| `/api/crons/process-order-notifications` | `*/5 * * * *` | 5分ごとに注文通知outboxを処理。Vercel Pro相当のcron実行条件が必要 |
 | `/api/crons/process-reservation-emails` | `*/5 * * * *` | 5分ごと。Vercel Pro相当のcron実行条件が必要 |
 | `/api/crons/remind` | `0 3 * * *` | 予約リマインド |
 
-5分cronを有効にする場合は、release check実行時に `VERCEL_PLAN=pro` を指定してください。
+2本の5分cronを有効にする場合は、release check実行時に `VERCEL_PLAN=pro` を指定してください。
 `hobby` は失敗扱い、未指定はlocal/previewでは警告、productionでは失敗扱いです。
 Vercel側の実プランとProduction環境変数は、デプロイ前に管理画面で確認してください。
 
@@ -281,6 +281,7 @@ localhost/127.0.0.1 の `*_test` DB以外は拒否します。DBテスト本体�
 - 月1回 `npm run backup:restore-drill -- --file=<.enc>` を別ディレクトリで実行し、復号・件数・鍵IDを検証します。DBへは書き戻しません。
 - 既存の平文バックアップ `*.json` は変更・削除せず、Gitにも含めない運用を継続します。
 - `npm run backup:workspace:snapshot` を使うと、予約バックアップ実行後に Git bundle を外部ディレクトリへ保存します。
+- 新規bundleのref範囲と世代保持方針は `docs/recovery/workspace-bundle-retention.md` を参照してください。既存bundleは自動削除しません。
 
 まとめて流す場合は以下でも構いません。
 

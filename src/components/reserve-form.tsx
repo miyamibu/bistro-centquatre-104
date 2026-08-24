@@ -32,11 +32,13 @@ import {
   todayJst,
 } from "@/lib/dates";
 import {
+  findFirstWebBookableDate,
   sanitizeArrivalTime,
   sanitizeCourse,
   sanitizeDate,
   sanitizePartySize,
   sanitizeServicePeriod,
+  shouldSearchFutureAvailability,
 } from "@/lib/reservation-form-defaults";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -52,6 +54,7 @@ interface Props {
   initialArrivalTime?: string;
   initialAvailability?: AvailabilityResponse | null;
   initialMonthlyAvailabilityByPeriod?: Record<ReservationServicePeriodKey, MonthlyAvailabilityMap>;
+  autoSelectFirstBookableDate?: boolean;
 }
 
 interface SubmittedReservationSummary {
@@ -233,6 +236,7 @@ export function ReserveForm({
   initialArrivalTime,
   initialAvailability,
   initialMonthlyAvailabilityByPeriod,
+  autoSelectFirstBookableDate = false,
 }: Props) {
   const initialResolvedDate = sanitizeDate(initialDate, defaultDate);
   const selectedInitialServicePeriod = sanitizeServicePeriod(
@@ -310,6 +314,7 @@ export function ReserveForm({
   const [monthlyAvailabilityError, setMonthlyAvailabilityError] = useState(false);
   const [monthlyAvailabilityLoading, setMonthlyAvailabilityLoading] = useState(false);
   const [availabilityRetryNonce, setAvailabilityRetryNonce] = useState(0);
+  const initialFutureDateSearchStartedRef = useRef(false);
   const currentMonthlyRequestKey = `${getJstMonthKey(startOfJstMonth(calendarMonth))}:${form.partySize}`;
   const monthlyAvailabilityReady =
     !monthlyAvailabilityLoading &&
@@ -607,6 +612,68 @@ export function ReserveForm({
   }, [
     currentServicePeriod,
     form.date,
+    monthlyAvailabilityByPeriod,
+    monthlyAvailabilityReady,
+  ]);
+
+  useEffect(() => {
+    if (
+      !autoSelectFirstBookableDate ||
+      initialFutureDateSearchStartedRef.current ||
+      !monthlyAvailabilityReady ||
+      !shouldSearchFutureAvailability(form.partySize)
+    ) {
+      return;
+    }
+
+    initialFutureDateSearchStartedRef.current = true;
+    const currentPeriodDays = monthlyAvailabilityByPeriod[currentServicePeriod];
+    if (currentPeriodDays[form.date]?.webBookable === true) {
+      return;
+    }
+
+    let active = true;
+    const controller = new AbortController();
+
+    async function selectFirstFutureDate() {
+      let nextDate = findFirstWebBookableDate(currentPeriodDays, form.date);
+
+      for (
+        let monthOffset = 1;
+        nextDate == null && monthOffset <= RESERVATION_CONFIG.bookingWindowMonths;
+        monthOffset += 1
+      ) {
+        const candidateMonth = addJstMonths(calendarMonth, monthOffset);
+        const candidateDays = await loadMonthlyAvailability(
+          candidateMonth,
+          currentServicePeriod,
+          form.partySize,
+          controller.signal
+        );
+        nextDate = findFirstWebBookableDate(candidateDays, form.date);
+      }
+
+      if (!active || !nextDate || nextDate === form.date) return;
+      setForm((previous) => ({ ...previous, date: nextDate as string }));
+      setAutoAdjustmentMessage(`最初に予約可能な日付（${nextDate}）を表示しています。`);
+    }
+
+    selectFirstFutureDate().catch((error) => {
+      if (!isAbortError(error)) {
+        // Keep the original date and the already loaded calendar available.
+      }
+    });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [
+    autoSelectFirstBookableDate,
+    calendarMonth,
+    currentServicePeriod,
+    form.date,
+    form.partySize,
     monthlyAvailabilityByPeriod,
     monthlyAvailabilityReady,
   ]);

@@ -230,6 +230,20 @@ describe("database release safety contracts", () => {
       'ALTER TABLE "LineWebhookInbox" ENABLE ROW LEVEL SECURITY;',
     );
 
+    const webhookRetentionMigration = readFileSync(
+      resolve(
+        repoRoot,
+        "prisma/migrations/20260824140000_minimize_line_webhook_inbox_retention/migration.sql",
+      ),
+      "utf8",
+    );
+    expect(webhookRetentionMigration).toContain("SECURITY DEFINER");
+    expect(webhookRetentionMigration).toContain(
+      `WHERE inbox."status" = 'PROCESSED'::public."LineWebhookInboxStatus"`,
+    );
+    expect(webhookRetentionMigration).toContain("max_rows > 200");
+    expect(webhookRetentionMigration).toContain("REVOKE ALL ON FUNCTION");
+
     const relatedMigration = readFileSync(
       resolve(
         repoRoot,
