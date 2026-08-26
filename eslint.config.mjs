@@ -5,7 +5,14 @@ const config = [
   ...nextCoreWebVitals,
   ...nextTypeScript,
   {
-    ignores: [".next/**", "coverage/**", "next-env.d.ts", "node_modules/**", "out/**"],
+    ignores: [
+      ".netlify/**",
+      ".next/**",
+      "coverage/**",
+      "next-env.d.ts",
+      "node_modules/**",
+      "out/**",
+    ],
   },
   {
     rules: {

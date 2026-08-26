@@ -125,6 +125,20 @@ describe("production-go regression contracts", () => {
     expect(failsafe).not.toMatch(/console\.(?:log|info|warn|error)\([^\n]*secret/i);
   });
 
+  it("keeps the production-disabled PDF converter out of the Netlify SSR trace", () => {
+    const route = source("src/app/api/pdf-to-image/route.ts");
+    const nextConfig = source("next.config.mjs");
+    const productionGuard = route.indexOf('process.env.NODE_ENV === "production"');
+    const dynamicImport = route.indexOf('await import("puppeteer")');
+
+    expect(route).not.toContain('import puppeteer from "puppeteer"');
+    expect(productionGuard).toBeGreaterThan(-1);
+    expect(dynamicImport).toBeGreaterThan(productionGuard);
+    expect(nextConfig).toContain('"/api/pdf-to-image"');
+    expect(nextConfig).toContain('"public/**"');
+    expect(nextConfig).toContain('"node_modules/puppeteer-core/**"');
+  });
+
   it("keeps cancellation at the fixed 24-hour policy boundary", () => {
     const policy = source("src/lib/cancellation-policy.ts");
     const env = source("src/lib/env.ts");

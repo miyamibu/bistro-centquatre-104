@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import puppeteer from "puppeteer";
+import type { Browser } from "puppeteer";
 import * as path from "path";
 import * as fs from "fs";
 import { getStaffAuth } from "@/lib/staff-auth";
@@ -91,7 +91,7 @@ function releaseConversionSlot() {
 export async function POST(request: NextRequest) {
   const requestId = getRequestId(request);
   const route = "/api/pdf-to-image";
-  let browser;
+  let browser: Browser | undefined;
   let slotAcquired = false;
   try {
     const securityError = enforceWriteRequestSecurity(request, { requestId });
@@ -243,6 +243,11 @@ export async function POST(request: NextRequest) {
     // Generate unique filename
     const baseFileName = path.basename(resolvedFilePath, ".pdf");
     const fileName = `${Date.now()}-${baseFileName}`;
+
+    // Production returns above before loading this development-only dependency.
+    // Keeping Puppeteer out of the module's eager imports also prevents the
+    // production server trace from packaging Chromium and local source PDFs.
+    const { default: puppeteer } = await import("puppeteer");
 
     // Launch browser
     browser = await puppeteer.launch({
