@@ -73,4 +73,21 @@ The auditor formally withdrew P0-1, P0-3, P1-6, P1-7/P2-5, P2-1, P2-2, P2-3, and
 | P1-2 | Accepted as defense in depth. The authenticated status GET now rejects cross-site requests and requires the XMLHttpRequest marker; the UI sends the marker. Unauthorized clients still receive 401 before operational data is loaded. |
 | P1-3 | Accepted as scheduler resilience, not cursor mutation. The reminder workflow now runs at 03:17, 04:17, and 05:17 JST on the same date, so transient configuration/provider failure has two bounded recovery windows. Durable claim/retry keys keep successful repeats idempotent. The auditor's claim that a run five minutes later targets another date was factually incorrect. |
 
-The final convergence commit must receive one more read-only pass from the same named model/session. Preview, physical-device UI, live scheduler, deployment, rollback, merge, and public production remain separate gates.
+## Final correction audit
+
+- Model/session: `opencode/nemotron-3-ultra-free` / `ses_fc3d15ca8ffeqy86wTmvPhpYrz`
+- Target: `2f2881a87fbcac6186ac6045f52563747720e8d9`
+- Detached worktree: `/tmp/bistro-nemotron-final.Oaa5Ia`
+- Started/completed: `2026-08-26T17:36:03+0900` / `2026-08-26T17:37:13+0900`
+- Raw final text SHA-256: `915f7c10795c5b445d66e9bc1280f97d7df34000a28cfa1de7c83e420f2960e2`
+- Raw verdict: `REVIEW_STATUS: INCOMPLETE`, `VERDICT: NO_GO`, with 1 P0 and 2 P1 retained
+
+The auditor resolved P1-2 and found no regression in the added authenticated GET checks. It retained P0-2, P1-1, and P1-3. Parent final disposition:
+
+| Retained ID | Final disposition |
+| --- | --- |
+| P0-2 | REJECTED. The proposed refreshed-`iat` fallback violates the fixed absolute-session requirement. Missing authentication history results in reauthentication rather than silently extending the session. This is an intentional fail-closed security boundary, not a code defect. |
+| P1-1 | RISK-REDUCED / REJECT INCOMPLETE SEND. Missing management origin now falls back to `NEXT_PUBLIC_APP_URL` and remaining failures retry with backoff instead of permanent skip. The idempotency row is committed atomically with the reservation and Outbox intent. Preview/Production checks require both origins. Sending a confirmation that omits the promised cancellation path is intentionally prohibited; terminal failures remain visible as dead letters rather than being reported as delivered. |
+| P1-3 | RESOLVED IN CODE / AUDITOR MISREAD. The workflow source at the audited commit contains `17 18,19,20 * * *`, which is three invocations on the same JST date at 03:17, 04:17, and 05:17. The raw report cited that line but then described only one 03:17 run. `nextCursor: null` is correct because provider configuration failure changed no durable candidate state; the later same-date invocations reselect the same unsent rows. |
+
+The named independent auditor therefore remains `NO_GO`; the parent does not rewrite that verdict. Parent convergence is complete for code findings, with the disagreement above explicit. Preview, physical-device UI, live scheduler, deployment, rollback, merge, and public production remain separate gates and are not upgraded by this audit.

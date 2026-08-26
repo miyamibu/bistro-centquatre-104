@@ -22,6 +22,15 @@ Implementation/local evidence, provider evidence, Preview evidence, Production e
 - Bundle SHA-256: `409d3907909ba46f797d5f172e162b972aee1a39acf63f98cc9acb6539fcaad4`
 - Bundle verification: PASS; complete history and four intended refs
 
+### Final audited code candidate
+
+- Final code commit: `2f2881a87fbcac6186ac6045f52563747720e8d9`
+- Nemotron final detached-worktree audit: completed with raw `NO_GO`; exact residual disagreements and parent dispositions are recorded in `docs/release/evidence/nemotron-post-fix-audit-2026-08-26.md`
+- Full unit/static suite: 72 files pass, 3 skip; 533 tests pass, 11 safe skips
+- Dedicated DB suite: 7 pass; 4 staff-MFA-cookie cases explicitly excluded
+- Build/lint/typecheck/actionlint/security/audit: PASS
+- Workspace bundle: must be regenerated after this evidence-only commit so provenance binds the final branch head
+
 ## Independent baseline audit
 
 - Model: `opencode/x-preview-f-free` (Ox Alpha Free)
@@ -90,7 +99,7 @@ The local production build intentionally omitted public Supabase build variables
 | Manual/scheduled scheduler run | NOT_RUN | workflows are not on default branch and no live URL exists |
 | Account plan/usage screens | UNVERIFIED | Netlify/Supabase/Resend/LINE authenticated UI required |
 | Vercel traffic stop/alias | NOT_RUN | final target URL/provider controls required |
-| Nemotron post-fix audit | NO_GO_FINAL_CONVERGENCE_IN_PROGRESS | exact model/session completed the detached audit and first convergence counter-review; withdrawn items are recorded, three retained P1 items received additional hardening, and missing-AMR remains intentionally fail-closed; final convergence commit requires one last pass |
+| Nemotron post-fix audit | COMPLETE_NO_GO_PARENT_CONVERGED | exact model/session completed the baseline, convergence, and final correction audits; raw NO_GO is preserved, resolved/withdrawn items are recorded, and three residual disagreements have explicit parent security/state-machine dispositions |
 | PR merge/SHA alignment | NOT_RUN | preceding gates must pass |
 
 No production GO claim is permitted while any row above is not PASS.
