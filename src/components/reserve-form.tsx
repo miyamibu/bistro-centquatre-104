@@ -1397,32 +1397,36 @@ export function ReserveForm({
               <div className="grid" style={{ rowGap: `${fieldLabelGap}px` }}>
                 <Label htmlFor="last-name">氏名 <span className="text-[#b32626]">（必須）</span></Label>
                 <div className="grid grid-cols-2" style={{ columnGap: `${rightPanelPairGap}px` }}>
-                  <Input
-                    id="last-name"
-                    value={form.lastName}
-                    onChange={(e) => updateField("lastName", e.target.value)}
-                    className="border-black focus:ring-black/20 focus:border-black"
-                    style={{ borderRadius: `${formFieldRadius}px` }}
-                    placeholder="姓"
-                    autoComplete="family-name"
-                    aria-label="姓"
-                    aria-invalid={nameFieldError ? true : undefined}
-                    aria-describedby={nameFieldError ? "reservation-error-name" : undefined}
-                    required
-                  />
-                  <Input
-                    id="first-name"
-                    value={form.firstName}
-                    onChange={(e) => updateField("firstName", e.target.value)}
-                    className="border-black focus:ring-black/20 focus:border-black"
-                    style={{ borderRadius: `${formFieldRadius}px` }}
-                    placeholder="名"
-                    autoComplete="given-name"
-                    aria-label="名"
-                    aria-invalid={nameFieldError ? true : undefined}
-                    aria-describedby={nameFieldError ? "reservation-error-name" : undefined}
-                    required
-                  />
+                  <div className="grid gap-1">
+                    <Label htmlFor="last-name" className="text-xs text-[#6b5644]">姓</Label>
+                    <Input
+                      id="last-name"
+                      value={form.lastName}
+                      onChange={(e) => updateField("lastName", e.target.value)}
+                      className="border-black focus:ring-black/20 focus:border-black"
+                      style={{ borderRadius: `${formFieldRadius}px` }}
+                      placeholder="姓"
+                      autoComplete="family-name"
+                      aria-invalid={nameFieldError ? true : undefined}
+                      aria-describedby={nameFieldError ? "reservation-error-name" : undefined}
+                      required
+                    />
+                  </div>
+                  <div className="grid gap-1">
+                    <Label htmlFor="first-name" className="text-xs text-[#6b5644]">名</Label>
+                    <Input
+                      id="first-name"
+                      value={form.firstName}
+                      onChange={(e) => updateField("firstName", e.target.value)}
+                      className="border-black focus:ring-black/20 focus:border-black"
+                      style={{ borderRadius: `${formFieldRadius}px` }}
+                      placeholder="名"
+                      autoComplete="given-name"
+                      aria-invalid={nameFieldError ? true : undefined}
+                      aria-describedby={nameFieldError ? "reservation-error-name" : undefined}
+                      required
+                    />
+                  </div>
                 </div>
                 <InlineFieldError id="reservation-error-name" message={nameFieldError} />
               </div>
