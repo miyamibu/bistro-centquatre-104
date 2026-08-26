@@ -22,6 +22,7 @@ const baseReleaseEnv: Record<string, string> = {
   BACKUP_EXPORT_SECRET: "safe-backup-export-secret",
   RATE_LIMIT_HASH_SECRET: "rate-limit-secret-value-32-characters",
   RESERVATION_TOKEN_SECRET: "reservation-token-secret-value-32-characters",
+  LINE_LINK_TOKEN_PEPPER: "line-link-token-pepper-value-32-characters",
   BACKUP_ENCRYPTION_KEY: "backup-encryption-key-value-32-characters",
   BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY: "bank-history-encryption-key",
 };
@@ -81,6 +82,16 @@ describe("release safety environment contract", () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("RESERVATION_TOKEN_SECRET");
+  });
+
+  it("requires the LINE link-token derivation secret", () => {
+    const result = runReleaseCheck("production", {
+      set: completeMailEnv,
+      unset: ["LINE_LINK_TOKEN_PEPPER"],
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("LINE_LINK_TOKEN_PEPPER");
   });
 
   it.each(["preview", "production"] as const)(

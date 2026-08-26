@@ -1,6 +1,7 @@
-const LANES = [
-  "/api/crons/process-reservation-emails",
-  "/api/crons/process-order-notifications",
+const ENDPOINTS = [
+  { lane: "RESERVATION_EMAIL", path: "/api/crons/process-reservation-emails" },
+  { lane: "ORDER_NOTIFICATION", path: "/api/crons/process-order-notifications" },
+  { lane: "LINE_REMINDER", path: "/api/crons/remind?batchSize=100&deadlineMs=8000" },
 ];
 
 function resolveBaseUrl() {
@@ -12,11 +13,11 @@ function resolveBaseUrl() {
   return url.origin;
 }
 
-async function invokeLane(baseUrl, path, runId) {
+async function invokeLane(baseUrl, endpoint, runId) {
   const secret = process.env.CRON_SECRET?.trim();
   if (!secret) throw new Error("CRON_SECRET_MISSING");
 
-  const response = await fetch(`${baseUrl}${path}`, {
+  const response = await fetch(`${baseUrl}${endpoint.path}`, {
     headers: {
       Authorization: `Bearer ${secret}`,
       "X-Scheduler-Kind": "provider-failsafe",
@@ -26,11 +27,11 @@ async function invokeLane(baseUrl, path, runId) {
   });
   const body = await response.json().catch(() => null);
   if (!response.ok || !body || body.ok !== true) {
-    throw new Error(`OUTBOX_FAILSAFE_${response.status}`);
+    throw new Error(`PROVIDER_FAILSAFE_${endpoint.lane}_${response.status}`);
   }
   return {
-    lane: path.endsWith("reservation-emails") ? "RESERVATION_EMAIL" : "ORDER_NOTIFICATION",
-    processed: Number(body.processed ?? 0),
+    lane: endpoint.lane,
+    processed: Number(body.processed ?? body.sent ?? 0),
     failed: Number(body.failed ?? 0),
     deadLetter: Number(body.deadLetter ?? 0),
     backlog: Number(body.backlog ?? 0),
@@ -41,7 +42,7 @@ async function outboxFailsafe() {
   const baseUrl = resolveBaseUrl();
   const runId = `netlify-${Date.now()}`;
   const settled = await Promise.allSettled(
-    LANES.map((path) => invokeLane(baseUrl, path, runId)),
+    ENDPOINTS.map((endpoint) => invokeLane(baseUrl, endpoint, runId)),
   );
   const failures = settled.filter((result) => result.status === "rejected");
   const summaries = settled.flatMap((result) =>

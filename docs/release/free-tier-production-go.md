@@ -24,7 +24,8 @@ Operate Bistro Cent Quatre 104 as a commercial production service without a paid
 1. Reservation/order state and its Outbox record commit atomically.
 2. `after()` schedules a bounded post-response delivery attempt.
 3. A public GitHub standard runner calls both Outbox endpoints every five minutes with a Bearer secret. It uses no checkout, cache, or artifact action.
-4. Netlify invokes a bounded daily provider-side failsafe.
+4. Netlify invokes a bounded daily provider-side failsafe for reservation email,
+   order notification, and LINE reminder lanes.
 5. ADMIN+AAL2 users can inspect backlog/heartbeat data and perform a confirmed manual drain of at most 20 rows.
 6. Claim fencing, provider idempotency keys, retry backoff, dead-letter state, and request deadlines remain the duplicate-delivery and runaway-cost boundaries.
 
@@ -36,6 +37,12 @@ Operate Bistro Cent Quatre 104 as a commercial production service without a paid
 - Heartbeat warning: no successful GitHub heartbeat for either lane in more than 15 minutes
 - Manual operations: `/admin/outbox`
 - Manual API: `/api/admin/outbox/status` and `/api/admin/outbox/drain`
+
+LINE’s configured monthly reminder limit is a hard application guard. At the
+current release, every LINE push path is a `DAY_BEFORE_REMINDER`, so this ledger
+also covers total application push consumption. If another LINE push type is
+added, it must join the same global quota transaction before release; the
+provider-reported total remains the independent observability check.
 
 GitHub scheduled workflows only run from the default branch and may be delayed or dropped. After the workflow reaches `main`, run `workflow_dispatch` once and capture at least one real scheduled run before declaring GO.
 

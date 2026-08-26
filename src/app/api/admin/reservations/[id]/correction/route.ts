@@ -3,7 +3,7 @@ import { Prisma, ReservationStatus, ReservationType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getStaffAuth } from "@/lib/staff-auth";
 import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
-import { getClientIp, getUserAgent } from "@/lib/request-meta";
+import { getClientIp, getUserAgent, hashAuditIp } from "@/lib/request-meta";
 import { getRequestId, logError } from "@/lib/logger";
 import { acquireReservationAdvisoryLock } from "@/lib/reservation-advisory-lock";
 import { evaluateReservationAvailability } from "@/lib/reservation-capacity";
@@ -47,7 +47,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     });
   }
 
-  const ipAddress = getClientIp(request);
+  const ipAddress = hashAuditIp(getClientIp(request));
   const userAgent = getUserAgent(request);
 
   try {

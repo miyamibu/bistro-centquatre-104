@@ -376,7 +376,7 @@ async function processOutboxItem(
           },
           {
             status: ReservationEmailOutboxStatus.PROCESSING,
-            lockedUntil: { lte: claimedAt },
+            lockedUntil: { not: null, lte: claimedAt },
           },
         ],
       },

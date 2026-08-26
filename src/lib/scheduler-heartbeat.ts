@@ -3,7 +3,11 @@ import { prisma } from "@/lib/prisma";
 
 export const OUTBOX_LANES = ["RESERVATION_EMAIL", "ORDER_NOTIFICATION"] as const;
 export type OutboxLane = (typeof OUTBOX_LANES)[number];
-export type SchedulerLane = OutboxLane | "LINE_REMINDER";
+export type SchedulerLane =
+  | OutboxLane
+  | "LINE_REMINDER"
+  | "ORDER_EXPIRY"
+  | "DATA_RETENTION";
 
 export type SchedulerContext = {
   schedulerKind: "GITHUB_ACTIONS" | "PROVIDER_FAILSAFE" | "API_CRON";

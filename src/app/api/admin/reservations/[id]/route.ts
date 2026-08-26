@@ -10,7 +10,7 @@ import {
   enqueueReservationStatusEmail,
   suppressReservationConfirmationEmail,
 } from "@/lib/reservation-email-outbox";
-import { getClientIp, getUserAgent, hashClientIp } from "@/lib/request-meta";
+import { getClientIp, getUserAgent, hashAuditIp, hashClientIp } from "@/lib/request-meta";
 import {
   RESERVATION_SCHEMA_NOT_READY_CODE,
   ensureReservationSchemaReady,
@@ -118,6 +118,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
   if (securityError) return securityError;
 
   const ipAddress = getClientIp(request);
+  const auditIpAddress = hashAuditIp(ipAddress);
   const userAgent = getUserAgent(request);
 
   try {
@@ -220,7 +221,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
           actorRole: staffAuth.role,
           operatorLabel,
           requestId,
-          ipAddress,
+          ipAddress: auditIpAddress,
           userAgent,
           previousStatus: current.status,
           nextStatus: next.status,
@@ -252,7 +253,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
           actorRole: staffAuth.role,
           operatorLabel,
           requestId,
-          ipAddress,
+          ipAddress: auditIpAddress,
           userAgent,
           note: reason ?? "PRIVATE_BLOCK_RELEASE",
         });

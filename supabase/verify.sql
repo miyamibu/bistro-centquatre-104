@@ -509,6 +509,58 @@ BEGIN
 END
 $verify_expired_line_link_cleanup$;
 
+DO $verify_ephemeral_security_cleanup$
+DECLARE
+  configured_runtime_role text := nullif(current_setting('bistro.verify_runtime_role', true), '');
+  runtime_role text;
+  cleanup_function regprocedure := to_regprocedure(
+    'public.cleanup_ephemeral_reservation_security_state(timestamp with time zone,timestamp with time zone,integer)'
+  );
+  exposed_roles text[];
+  public_execute boolean;
+BEGIN
+  IF cleanup_function IS NULL THEN
+    RAISE EXCEPTION 'FAIL ephemeral reservation security cleanup function is missing';
+  END IF;
+
+  IF configured_runtime_role IS NOT NULL THEN
+    SELECT rolname::text INTO runtime_role FROM pg_roles WHERE rolname = configured_runtime_role;
+  ELSE
+    SELECT rolname::text INTO runtime_role FROM pg_roles WHERE rolname = 'bistro_app_runtime';
+  END IF;
+
+  IF runtime_role IS NOT NULL
+     AND NOT has_function_privilege(runtime_role, cleanup_function, 'EXECUTE') THEN
+    RAISE EXCEPTION 'FAIL runtime role % cannot execute ephemeral security cleanup', runtime_role;
+  END IF;
+
+  SELECT array_agg(role_record.rolname::text ORDER BY role_record.rolname)
+  INTO exposed_roles
+  FROM pg_roles role_record
+  WHERE role_record.rolname IN ('anon', 'authenticated', 'service_role')
+    AND has_function_privilege(role_record.rolname, cleanup_function, 'EXECUTE');
+
+  SELECT EXISTS (
+    SELECT 1
+    FROM pg_proc procedure
+    CROSS JOIN LATERAL aclexplode(
+      coalesce(procedure.proacl, acldefault('f', procedure.proowner))
+    ) acl
+    WHERE procedure.oid = cleanup_function
+      AND acl.grantee = 0
+      AND acl.privilege_type = 'EXECUTE'
+  )
+  INTO public_execute;
+
+  IF coalesce(cardinality(exposed_roles), 0) > 0 OR public_execute THEN
+    RAISE EXCEPTION 'FAIL ephemeral security cleanup exposed to non-runtime roles: %',
+      coalesce(array_to_string(exposed_roles, ', '), 'PUBLIC');
+  END IF;
+
+  RAISE NOTICE 'PASS ephemeral reservation security cleanup privilege boundary';
+END
+$verify_ephemeral_security_cleanup$;
+
 -- Human-readable evidence follows only after all required assertions pass.
 SELECT table_name
 FROM information_schema.tables

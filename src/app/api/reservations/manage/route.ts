@@ -19,7 +19,7 @@ import {
   ReservationEmailOutboxBusyError,
   suppressReservationConfirmationEmail,
 } from "@/lib/reservation-email-outbox";
-import { getClientIp, getUserAgent, hashClientIp } from "@/lib/request-meta";
+import { getClientIp, getUserAgent, hashAuditIp, hashClientIp } from "@/lib/request-meta";
 import { getRequestId, logError, logInfo } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { enforceScopedRateLimit } from "@/lib/reservation-rate-limit";
@@ -383,7 +383,7 @@ export async function POST(request: NextRequest) {
 
   const tokenHash = hashReservationManagementToken(parsed.data.token);
   const ipUserAgent = {
-    ipAddress,
+    ipAddress: hashAuditIp(ipAddress),
     userAgent: getUserAgent(request),
   };
 

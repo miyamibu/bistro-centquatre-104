@@ -8,7 +8,9 @@ import {
 import type { ReservationServicePeriodKey } from "@/lib/reservation-config";
 
 type ReservationClient = PrismaClient | Prisma.TransactionClient;
-const RESERVATION_SCHEMA_READY_CACHE_TTL_MS = 5 * 60 * 1000;
+// Keep rollout recovery bounded: a newly applied migration is observed within
+// 30 seconds even if an instance cached an earlier schema-not-ready result.
+const RESERVATION_SCHEMA_READY_CACHE_TTL_MS = 30 * 1000;
 let reservationSchemaReadyCheckedAt = 0;
 let reservationSchemaReadyCheckPromise: Promise<void> | null = null;
 

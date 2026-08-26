@@ -1049,7 +1049,7 @@ export function ReserveForm({
           >
             <div className="flex items-center gap-3">
               <p id="reservation-calendar-label" className="text-sm font-semibold text-[#2f1b0f]">
-                来店日
+                来店日 <span className="text-[#b32626]">（必須）</span>
               </p>
             </div>
 
@@ -1317,7 +1317,7 @@ export function ReserveForm({
               }}
             >
               <div className="grid min-w-0" style={{ rowGap: `${fieldLabelGap}px` }}>
-                <Label htmlFor="time-top">来店時間</Label>
+                <Label htmlFor="time-top">来店時間 <span className="text-[#b32626]">（必須）</span></Label>
                 <select
                   id="time-top"
                   value={form.arrivalTime}
@@ -1348,7 +1348,7 @@ export function ReserveForm({
               </div>
 
               <div className="grid min-w-0" style={{ rowGap: `${fieldLabelGap}px` }}>
-                <Label htmlFor="party-size">人数</Label>
+                <Label htmlFor="party-size">人数 <span className="text-[#b32626]">（必須）</span></Label>
                 <select
                   id="party-size"
                   value={form.partySize}
@@ -1369,7 +1369,7 @@ export function ReserveForm({
               </div>
 
               <div className="grid min-w-0" style={{ rowGap: `${fieldLabelGap}px` }}>
-                <Label htmlFor="course">コース</Label>
+                <Label htmlFor="course">コース <span className="text-[#b32626]">（必須）</span></Label>
                 <select
                   id="course"
                   value={form.course}
@@ -1395,7 +1395,7 @@ export function ReserveForm({
               style={{ columnGap: `${rightPanelPairGap}px`, rowGap: `${rightPanelPairGap}px` }}
             >
               <div className="grid" style={{ rowGap: `${fieldLabelGap}px` }}>
-                <Label htmlFor="last-name">氏名</Label>
+                <Label htmlFor="last-name">氏名 <span className="text-[#b32626]">（必須）</span></Label>
                 <div className="grid grid-cols-2" style={{ columnGap: `${rightPanelPairGap}px` }}>
                   <Input
                     id="last-name"
@@ -1427,7 +1427,7 @@ export function ReserveForm({
                 <InlineFieldError id="reservation-error-name" message={nameFieldError} />
               </div>
               <div className="grid" style={{ rowGap: `${fieldLabelGap}px` }}>
-                <Label htmlFor="phone">電話番号</Label>
+                <Label htmlFor="phone">電話番号 <span className="text-[#b32626]">（必須）</span></Label>
                 <Input
                   id="phone"
                   value={form.phone}
@@ -1445,7 +1445,10 @@ export function ReserveForm({
             </div>
 
             <div className="grid" style={{ rowGap: `${fieldLabelGap}px` }}>
-              <Label htmlFor="customer-email">メールアドレス（予約管理リンク送信用）</Label>
+              <Label htmlFor="customer-email">
+                メールアドレス（予約管理リンク送信用）
+                {lineLinkStatus !== "linked" ? <span className="text-[#b32626]">（必須）</span> : null}
+              </Label>
               <Input
                 id="customer-email"
                 value={form.customerEmail}

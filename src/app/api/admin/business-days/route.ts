@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getStaffAuth } from "@/lib/staff-auth";
 import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
 import { dateStringSchema, upsertBusinessDaySchema, zodFields } from "@/lib/validation";
-import { getClientIp, getUserAgent } from "@/lib/request-meta";
+import { getClientIp, getUserAgent, hashAuditIp } from "@/lib/request-meta";
 import { getRequestId, logError, logInfo } from "@/lib/logger";
 import {
   ensureReservationSchemaReady,
@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
 
     const { date, isClosed, note } = parsed.data;
     const reason = parsed.data.reason?.trim() || note?.trim() || null;
-    const ipAddress = getClientIp(request);
+    const ipAddress = hashAuditIp(getClientIp(request));
     const userAgent = getUserAgent(request);
     const saved = await prisma.$transaction(
       async (tx) => {

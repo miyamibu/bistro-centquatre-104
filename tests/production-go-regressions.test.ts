@@ -81,6 +81,7 @@ describe("production-go regression contracts", () => {
     expect(outboxWorkflow).not.toMatch(/actions\/checkout|actions\/cache|upload-artifact/i);
     expect(outboxWorkflow).toContain("--max-time 30");
     expect(maintenanceWorkflow).toContain("while (( reminder_pages < 4 ))");
+    expect(maintenanceWorkflow).toContain("maintenance_deadline_epoch");
     expect(maintenanceWorkflow).toContain("nextCursor");
   });
 
@@ -143,6 +144,24 @@ describe("production-go regression contracts", () => {
     expect(previewGrant).toContain("TO bistro_preview_runtime");
   });
 
+  it("bounds ephemeral security retention and minimizes historical audit IP data", () => {
+    const route = source("src/app/api/crons/delete-old-histories/route.ts");
+    const migration = source(
+      "prisma/migrations/20260826140000_ephemeral_security_cleanup_and_audit_ip_minimization/migration.sql",
+    );
+    const verify = source("supabase/verify.sql");
+
+    expect(route).toContain("cleanup_ephemeral_reservation_security_state");
+    expect(route).toContain("RATE_LIMIT_EVENT_RETENTION_HOURS = 48");
+    expect(route).toContain("IDEMPOTENCY_RETENTION_DAYS = 200");
+    expect(migration).toContain("FOR UPDATE SKIP LOCKED");
+    expect(migration).toContain("max_rows_per_table > 500");
+    expect(migration).toContain('SET "ipAddress" = NULL');
+    expect(migration).toContain("TO bistro_app_runtime");
+    expect(migration).toContain("TO bistro_preview_runtime");
+    expect(verify).toContain("PASS ephemeral reservation security cleanup privilege boundary");
+  });
+
   it("records LINE reminder scheduler outcomes and rate-limits availability reads", () => {
     const reminder = source("src/app/api/crons/remind/route.ts");
     const availability = source("src/app/api/availability/route.ts");
@@ -151,6 +170,12 @@ describe("production-go regression contracts", () => {
     expect(reminder).toContain('markSchedulerStarted("LINE_REMINDER"');
     expect(reminder).toContain('markSchedulerSucceeded("LINE_REMINDER"');
     expect(reminder).toContain('markSchedulerFailed("LINE_REMINDER"');
+    expect(source("src/app/api/crons/cancel-expired-orders/route.ts")).toContain(
+      'markSchedulerSucceeded("ORDER_EXPIRY"',
+    );
+    expect(source("src/app/api/crons/delete-old-histories/route.ts")).toContain(
+      'markSchedulerSucceeded("DATA_RETENTION"',
+    );
     expect(availability).toContain("enforceAvailabilityRateLimit(request)");
     expect(monthly).toContain("enforceAvailabilityRateLimit(request)");
     expect(availability).toContain("RATE_LIMIT_CHECK_FAILED");
@@ -165,6 +190,8 @@ describe("production-go regression contracts", () => {
     expect(config).toContain('schedule = "23 18 * * *"');
     expect(failsafe).toContain('AbortSignal.timeout(10_000)');
     expect(failsafe).toContain('"X-Scheduler-Kind": "provider-failsafe"');
+    expect(failsafe).toContain('lane: "LINE_REMINDER"');
+    expect(failsafe).toContain('/api/crons/remind?batchSize=100&deadlineMs=8000');
     expect(failsafe).toContain("Promise.allSettled");
     expect(failsafe).not.toMatch(/console\.(?:log|info|warn|error)\([^\n]*secret/i);
   });

@@ -47,6 +47,13 @@ vi.mock("@/lib/logger", () => ({
   logInfo: vi.fn(),
 }));
 
+vi.mock("@/lib/scheduler-heartbeat", () => ({
+  readSchedulerContext: vi.fn(() => ({ schedulerKind: "API_CRON", runId: null })),
+  markSchedulerStarted: vi.fn().mockResolvedValue(undefined),
+  markSchedulerSucceeded: vi.fn().mockResolvedValue(undefined),
+  markSchedulerFailed: vi.fn().mockResolvedValue(undefined),
+}));
+
 type QueryChain = {
   select: ReturnType<typeof vi.fn>;
   is: ReturnType<typeof vi.fn>;
@@ -99,7 +106,7 @@ describe("cancel-expired-orders atomic action path", () => {
       .mockReturnValueOnce(query({ data: [], error: null }))
       .mockReturnValueOnce(query({ data: [], error: null }))
       .mockReturnValueOnce(query({ data: [], error: null }));
-  atomicActionMock.mockResolvedValue({
+    atomicActionMock.mockResolvedValue({
       status: 200,
       body: { ok: true },
       replayed: false,

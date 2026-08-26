@@ -1,311 +1,72 @@
-# Deployment & Infrastructure Setup Guide
+# Deployment & infrastructure setup
 
-## Project Information
+This repository’s commercial production target is **Netlify Free**. Vercel remains on Hobby only as historical evidence and must not carry Bistro commercial production traffic. `vercel.json` intentionally contains no cron configuration.
 
-**Project Name**: Bistro Reservation System
-**Repository**: french-restaurant-site
-**Monorepo Structure**: bistro-reservation (main app)
+## Runtime topology
 
-## Deployment Platforms
+- Web/API: Netlify Free, Next.js App Router through the Netlify Next.js/OpenNext integration.
+- Database/Auth: Supabase PostgreSQL and Supabase Auth.
+- Primary scheduler: public-repository GitHub Actions.
+  - Notification Outbox: every five minutes.
+  - Daily maintenance and LINE reminders: three bounded daily windows.
+- Provider failsafe: Netlify scheduled function, once daily, for reservation email, order notification, and LINE reminder lanes.
+- Email: Resend in Preview and Production. SendGrid compatibility is local-only because it does not provide the selected native idempotency boundary.
 
-### 1. Frontend/API: Vercel
+## Required production configuration
 
-**Current Configuration**: `vercel.json`
+Set values in the Netlify **Production** context and keep Preview isolated. Never commit or print secret values.
 
-```json
-{
-  "crons": [
-    {
-      "path": "/api/crons/cancel-expired-orders",
-      "schedule": "0 0 * * *"
-    },
-    {
-      "path": "/api/crons/delete-old-histories",
-      "schedule": "0 1 * * *"
-    }
-  ]
-}
-```
+1. `DATABASE_URL`: transaction pooler URL for the dedicated runtime login.
+2. `DIRECT_URL`: session pooler URL for the same dedicated runtime login.
+3. `BASE_URL` and `NEXT_PUBLIC_APP_URL`: identical Netlify HTTPS production origin.
+4. `PRODUCTION_HOST_PROVIDER=netlify`.
+5. Supabase public URL/anon key and server-only service-role key.
+6. `STAFF_SESSION_MAX_AGE_SECONDS`.
+7. `CRON_SECRET` and `BACKUP_EXPORT_SECRET`.
+8. `RATE_LIMIT_HASH_SECRET` and `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY`.
+9. Reservation-token and backup-encryption keyrings with active key IDs.
+10. `LINE_LINK_TOKEN_PEPPER` even when LINE provider delivery is intentionally disabled.
+11. Resend provider key, authorized `EMAIL_FROM`, and `STORE_NOTIFY_EMAIL`.
+12. LINE channel/LIFF values only when the integration is enabled and verified.
 
-**Deployment URI**: Should be set in Vercel Project Settings
-**Environment Variables Needed**: See below
-
-### 2. Database: Supabase (PostgreSQL)
-
-**RLS Policy File**: `supabase/rls-policies.sql`
-**Migration Files**: `prisma/migrations/`
-
-## Environment Variables Setup
-
-### Development (`.env.local`)
+Production and Preview checks:
 
 ```bash
-# Database
-DATABASE_URL=postgresql://user:password@localhost:5432/bistro
-
-# Base URL
-BASE_URL=http://localhost:3000
-
-# Admin authentication (Supabase Auth; create one user per staff member)
-STAFF_SESSION_MAX_AGE_SECONDS=28800
-
-# Email Configuration
-EMAIL_PROVIDER=resend
-EMAIL_API_KEY=your-email-api-key
-EMAIL_FROM=no-reply@example.com
-STORE_NOTIFY_EMAIL=your-email@example.com
-
-# Supabase Configuration
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
-
-# LINE Integration (optional)
-LINE_CHANNEL_ACCESS_TOKEN=
-LINE_CHANNEL_SECRET=
-LINE_LOGIN_CHANNEL_ID=
-# Booking LIFF → /booking
-NEXT_PUBLIC_LIFF_BOOKING_ID=
-# Link LIFF → /line/link
-NEXT_PUBLIC_LIFF_LINK_ID=
-# 32 chars minimum in production
-LINE_LINK_TOKEN_PEPPER=
-# LIFF_ID= は廃止 (deprecated, use NEXT_PUBLIC_LIFF_BOOKING_ID / NEXT_PUBLIC_LIFF_LINK_ID)
-
-# Cron Security
-CRON_SECRET=your-cron-secret-token-here
+npm run check:release:preview
+npm run check:release:production
 ```
 
-### Production (Vercel Project Settings → Environment Variables)
+The production runtime PostgreSQL login must inherit `bistro_app_runtime`; it must not be the database owner. `supabase/verify.sql` is the authority for RLS, destructive privilege, FK, policy, and cleanup-function boundaries.
 
-Add these from **Vercel Dashboard**:
+## Release sequence
 
-1. `DATABASE_URL` - Production PostgreSQL connection string
-2. `NEXT_PUBLIC_SUPABASE_URL` - Supabase project URL
-3. `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Supabase anon key
-4. `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key (**NEVER expose to client**)
-5. `STAFF_SESSION_MAX_AGE_SECONDS` - Maximum staff session age (default 8 hours)
-6. `EMAIL_PROVIDER` - Email service provider
-7. `EMAIL_API_KEY` - Email service API key
-8. `EMAIL_FROM` - Sender email address
-9. `STORE_NOTIFY_EMAIL` - Notification email
-10. `CRON_SECRET` - Strong random token for cron jobs
-11. `BACKUP_EXPORT_SECRET` - Backup export bearer token
-12. `BACKUP_ENCRYPTION_KEYS_JSON` / `BACKUP_ENCRYPTION_ACTIVE_KEY_ID` - Encrypted backup keyring
-13. `RESERVATION_TOKEN_KEYS_JSON` / `RESERVATION_TOKEN_ACTIVE_KEY_ID` - Reservation token keyring
-14. `LINE_CHANNEL_*` - LINE Bot credentials (if used)
+1. Confirm branch, exact 40-character HEAD, clean status, and PR checks.
+2. Run the full local preflight and create all three recovery artifacts: encrypted reservation export/drill; encrypted PostgreSQL dump/disposable PG17 restore; verified Git bundle bound to HEAD.
+3. Apply additive Prisma migrations as the owner. Re-run `supabase/verify.sql` as the dedicated runtime role.
+4. Deploy the exact candidate to an isolated Netlify Deploy Preview.
+5. Run public, admin-boundary, reservation/idempotency/manage/cancel, cron-auth, mobile, desktop, CSP, and accessibility canaries.
+6. Exercise rollback on an isolated deploy or restore a prior Netlify deployment and then re-promote the candidate.
+7. Require an identified Supabase Auth staff account with `app_metadata.role=ADMIN` or `STAFF` and TOTP AAL2 before authenticated admin canaries.
+8. Deploy Production only after Preview, restore, independent audit, and authentication gates pass.
+9. Set GitHub repository secrets `PRODUCTION_BASE_URL` and matching `CRON_SECRET`, then run both workflows manually once.
+10. Capture at least one real scheduled heartbeat before declaring GO.
+11. Align PR head/merge SHA, `origin/main`, CI SHA, deployed SHA, and workspace-bundle provenance.
+12. Stop Vercel Hobby commercial traffic only after the Netlify production origin is healthy.
 
-### Security Best Practices for Environment Variables
+## Scheduler contracts
 
-✅ **DO:**
-- Use Vercel's encrypted environment variable storage
-- Rotate secrets every 90 days
-- Use different values for dev/staging/production
-- Keep `SUPABASE_SERVICE_ROLE_KEY` as server-side only
-- Create individual Supabase Auth users, assign `app_metadata.role` (`ADMIN` or `STAFF`), and enroll TOTP MFA
-- Retain the previous reservation-token key for the token TTL and the previous backup key until old files are migrated
+- Every cron endpoint requires constant-time Bearer authentication and returns `ok: true` only for an accepted run, including an explicitly disabled optional LINE lane.
+- Workflows have endpoint deadlines, a global maintenance deadline, bounded pagination, and non-zero failure on partial delivery.
+- Netlify’s daily scheduled function invokes all three notification lanes with a ten-second request timeout.
+- Durable Outbox rows, claim fencing, provider idempotency, heartbeat records, and ADMIN+AAL2 manual drain are the recovery boundary.
 
-❌ **DON'T:**
-- Commit `.env` files to Git (already in `.gitignore`)
-- Share environment variables in Slack/email
-- Use same passwords for all environments
-- Expose `SUPABASE_SERVICE_ROLE_KEY` to frontend
+## Rollback
 
-## Initial Setup Checklist
+- Application: restore the prior Netlify deploy, verify its commit/fingerprint, then run public and cron-auth smoke tests.
+- Database: migrations are expand-only. Do not drop new columns/tables during an incident. Use `docs/recovery/RECOVERY_RUNBOOK.md` before any production write-back decision.
+- Scheduler: disable GitHub workflows or remove scheduler secrets only when outbound execution must stop. Do not delete pending Outbox rows.
+- Secrets: rotate exposed values, update every consumer, and invalidate the old value. Never place replacement values in Git, logs, screenshots, or chat.
 
-### 1. Supabase Project Creation
+## GO boundary
 
-```bash
-# Steps:
-1. Create project on supabase.com
-2. Get NEXT_PUBLIC_SUPABASE_URL and keys
-3. Copy DATABASE_URL from connection pooler
-```
-
-### 2. Database Schema & RLS
-
-```bash
-# Run migrations:
-npx prisma migrate deploy
-
-# Apply RLS policies:
-# In Supabase SQL Editor, copy and run: supabase/rls-policies.sql
-
-# Verify RLS is enabled:
-SELECT table_name, rowsecurity
-FROM information_schema.tables
-WHERE table_schema = 'public';
-```
-
-### 3. Local Development
-
-```bash
-# Install dependencies
-npm install
-
-# Set up local environment
-cp .env.example .env.local
-# Edit .env.local with your values
-
-# Run Prisma Studio to check database
-npx prisma studio
-
-# Start development server
-npm run dev
-```
-
-### 4. Vercel Deployment
-
-```bash
-# Connect Git repository to Vercel Project
-# Settings → Git Integration → Connect GitHub
-
-# Set environment variables in Vercel Dashboard
-# Settings → Environment Variables → Add all from list above
-
-# Deploy
-git push origin main
-# Vercel automatically deploys on push
-
-# Verify cron jobs
-# Settings → Crons → Check both jobs are scheduled
-```
-
-### 5. Production Database Backup
-
-```bash
-# Create backup in Supabase Dashboard
-# Database → Backups → Create manual backup
-
-# Or use pg_dump:
-pg_dump DATABASE_URL > backup-$(date +%Y%m%d).sql
-```
-
-## Monitoring & Logs
-
-### Vercel Logs
-
-```bash
-# View deployment logs
-vercel logs
-
-# Real-time function logs
-vercel logs --follow
-```
-
-### Supabase Logs
-
-Dashboard → Logs → Check for errors, slow queries, RLS violations
-
-### Cron Job Status
-
-Vercel Dashboard → Crons → Check last run and status
-
-## Troubleshooting Deployment
-
-### Issue: 500 error on API endpoints
-
-**Check:**
-1. Environment variables are set in Vercel
-2. Database connection string is correct
-3. Service role key is valid
-
-### Issue: RLS policies blocking requests
-
-**Check:**
-1. RLS policies are applied in Supabase
-2. API is using correct authentication
-3. Database URL points to correct project
-
-### Issue: Cron jobs not running
-
-**Check:**
-1. Crons are defined in `vercel.json`
-2. `CRON_SECRET` is set in Vercel env vars
-3. Check Vercel Crons dashboard for failed runs
-
-## Backup & Disaster Recovery
-
-### Daily Automated Backups
-
-- Supabase performs daily backups (configurable in Dashboard)
-- Access backups: Database → Backups
-
-### Manual Backup Procedure
-
-```bash
-# Create backup
-pg_dump $DATABASE_URL > backup.sql
-
-# Restore from backup
-psql $DATABASE_URL < backup.sql
-```
-
-### Code Backups
-
-- Git repository is the source of truth
-- GitHub Actions should have automated backups
-- Keep backup branches for major releases
-
-## Security Considerations for Deployment
-
-1. **Database Credentials** - Use Vercel's encrypted storage, never in code
-2. **API Keys** - Rotate every 90 days
-3. **Admin Credentials** - Use strong password + change initial password
-4. **RLS Policies** - Verify all tables have RLS enabled
-5. **Rate Limiting** - Consider adding at Vercel edge layer
-6. **HTTPS** - Vercel provides for free
-7. **CORS** - Configure if frontend/backend on different domains
-
-## Documentation Files (IaC Reference)
-
-| File | Purpose |
-|------|---------|
-| `.env.example` | Environment variable template |
-| `vercel.json` | Vercel cron jobs & build config |
-| `supabase/rls-policies.sql` | Row-Level Security policies |
-| `prisma/schema.prisma` | Database schema |
-| `prisma/migrations/` | Database migration history |
-| `SECURITY_ARCHITECTURE.md` | Authentication & key separation |
-| `ORDER_VALIDATION_SECURITY.md` | Server-side validation |
-| `PDF_TO_IMAGE_SECURITY.md` | File handling security |
-
-## Version Control Strategy
-
-### Semantic Versioning
-```bash
-# Tag releases
-git tag -a v1.0.0 -m "Initial production release"
-git push origin v1.0.0
-```
-
-### Branch Strategy
-- `main` → Production (protected, auto-deploy to Vercel)
-- `develop` → Staging
-- `feature/*` → Feature branches
-
-## Infrastructure Costs
-
-### Monthly Estimate (as of 2026)
-
-| Service | Tier | Estimate |
-|---------|------|----------|
-| Vercel | Pro | $20-30 |
-| Supabase | Pro | $25 (database) |
-| Email (Resend) | Pro | $20-30 |
-| Total | | $65-80 |
-
-## Support & Documentation
-
-- Vercel Docs: https://vercel.com/docs
-- Supabase Docs: https://supabase.com/docs/guides/database/overview
-- Next.js Docs: https://nextjs.org/docs
-- Prisma Docs: https://www.prisma.io/docs/
-
-## Contact - Infrastructure Team
-
-For issues with deployment/infrastructure:
-1. Check logs (Vercel → Logs, Supabase → Logs)
-2. Verify environment variables
-3. Check database connection
-4. Review security documents above
+Local tests, a successful build, a Preview, or an applied migration do not independently prove production readiness. `PRODUCTION_GO_CONFIRMED_FREE_TIER` is permitted only when `docs/release/free-tier-release-evidence.md` has no unresolved internal or external gate.

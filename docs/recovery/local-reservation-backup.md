@@ -71,8 +71,9 @@ npm run backup:reservations -- --encryption-key-stdin < /secure/path/backup-encr
 3. `ok: true`、`databaseWrite: "NOT_SUPPORTED"`、鍵ID、暗号化ファイルSHA-256、件数、schemaVersionを確認する（DBへの書き戻しは行わない）。
 4. 成功日時・対象ファイル・操作者2名を運用台帳へ記録する。
 
-目標値は RPO 24時間以内、RTO 60分以内です。復旧ドリルは常に `DRY_RUN_RESTORE_VALIDATION`（DB接続・書き戻し機能は未実装）
-で行い、実DBへの反映は別承認とバックアップ取得後にだけ実施します。
+予約エクスポートの運用目標は RPO 24時間以内です。`DRY_RUN_RESTORE_VALIDATION`
+は復号・形式・整合性を検証しますが、DB書き戻し時間を証明しません。60分RTOは、
+隔離DBへの時限付きエンドツーエンド演習を反復して達成するまで未証明として扱います。
 
 ## Canonical storage layout
 

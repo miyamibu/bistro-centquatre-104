@@ -57,7 +57,6 @@ describe("public discovery metadata", () => {
       expect.arrayContaining([
         "/admin",
         "/api",
-        "/booking",
         "/dashboard",
         "/line",
         "/staff",
@@ -65,6 +64,7 @@ describe("public discovery metadata", () => {
         "/on-line-store/pay",
       ])
     );
+    expect(disallowed).not.toContain("/booking");
   });
 
   it("lists only canonical public pages in sitemap.xml", () => {

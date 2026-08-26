@@ -6,6 +6,12 @@ import { env } from "@/lib/env";
 import { apiError } from "@/lib/api-security";
 import { isBearerSecretAuthorized } from "@/lib/bearer-auth";
 import { getRequestId, logError, logInfo, logWarn } from "@/lib/logger";
+import {
+  markSchedulerFailed,
+  markSchedulerStarted,
+  markSchedulerSucceeded,
+  readSchedulerContext,
+} from "@/lib/scheduler-heartbeat";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -14,6 +20,9 @@ const LINE_WEBHOOK_INBOX_RETENTION_DAYS = 30;
 const LINE_WEBHOOK_INBOX_DELETE_BATCH_SIZE = 200;
 const LINE_LINK_TOKEN_RETENTION_DAYS = 7;
 const LINE_LINK_TOKEN_DELETE_BATCH_SIZE = 500;
+const RATE_LIMIT_EVENT_RETENTION_HOURS = 48;
+const IDEMPOTENCY_RETENTION_DAYS = 200;
+const EPHEMERAL_SECURITY_DELETE_BATCH_SIZE = 500;
 const DELETE_BATCH_SIZE = 200;
 const MAX_DELETE_PER_RUN = 1000;
 const ORDER_PII_ANONYMIZE_BATCH_SIZE = 200;
@@ -40,7 +49,9 @@ async function executeDeleteOldHistories(req: NextRequest) {
     return apiError(401, { error: "Unauthorized", code: "UNAUTHORIZED", requestId });
   }
 
+  const scheduler = readSchedulerContext(req);
   try {
+    await markSchedulerStarted("DATA_RETENTION", scheduler);
     const retentionThreshold = new Date();
     retentionThreshold.setDate(retentionThreshold.getDate() - ORDER_HISTORY_RETENTION_DAYS);
     const retentionThresholdString = retentionThreshold.toISOString();
@@ -65,6 +76,7 @@ async function executeDeleteOldHistories(req: NextRequest) {
           errorCode: "CRON_SELECT_FAILED",
           context: { message: selectError.message, deletedCount },
         });
+        await markSchedulerFailed("DATA_RETENTION", scheduler, "CRON_SELECT_FAILED");
         return apiError(500, {
           error: "Database error",
           code: "CRON_SELECT_FAILED",
@@ -89,6 +101,7 @@ async function executeDeleteOldHistories(req: NextRequest) {
           errorCode: "CRON_DELETE_FAILED",
           context: { message: deleteError.message, deletedCount, batchSize: oldIds.length },
         });
+        await markSchedulerFailed("DATA_RETENTION", scheduler, "CRON_DELETE_FAILED");
         return apiError(500, {
           error: "Delete error",
           code: "CRON_DELETE_FAILED",
@@ -116,6 +129,7 @@ async function executeDeleteOldHistories(req: NextRequest) {
         errorCode: "CRON_ORDER_PII_SELECT_FAILED",
         context: { message: shippedSelectError.message, status: "SHIPPED" },
       });
+      await markSchedulerFailed("DATA_RETENTION", scheduler, "CRON_ORDER_PII_SELECT_FAILED");
       return apiError(500, {
         error: "Database error",
         code: "CRON_ORDER_PII_SELECT_FAILED",
@@ -145,6 +159,7 @@ async function executeDeleteOldHistories(req: NextRequest) {
         errorCode: "CRON_ORDER_PII_SELECT_FAILED",
         context: { message: cancelledSelectError.message, status: "CANCELLED" },
       });
+      await markSchedulerFailed("DATA_RETENTION", scheduler, "CRON_ORDER_PII_SELECT_FAILED");
       return apiError(500, {
         error: "Database error",
         code: "CRON_ORDER_PII_SELECT_FAILED",
@@ -169,6 +184,11 @@ async function executeDeleteOldHistories(req: NextRequest) {
           errorCode: "CRON_ORDER_PII_ANONYMIZE_FAILED",
           context: { message: anonymizeError.message, batchSize: terminalOrderIds.length },
         });
+        await markSchedulerFailed(
+          "DATA_RETENTION",
+          scheduler,
+          "CRON_ORDER_PII_ANONYMIZE_FAILED"
+        );
         return apiError(500, {
           error: "Database error",
           code: "CRON_ORDER_PII_ANONYMIZE_FAILED",
@@ -239,6 +259,40 @@ async function executeDeleteOldHistories(req: NextRequest) {
       });
     }
 
+    let deletedRateLimitEventCount = 0;
+    let deletedIdempotencyCount = 0;
+    try {
+      const rateLimitThreshold = new Date(
+        Date.now() - RATE_LIMIT_EVENT_RETENTION_HOURS * 60 * 60 * 1000
+      );
+      const idempotencyThreshold = new Date(
+        Date.now() - IDEMPOTENCY_RETENTION_DAYS * 24 * 60 * 60 * 1000
+      );
+      const rows = await prisma.$queryRaw<
+        Array<{
+          deleted_rate_limit_count: bigint | number;
+          deleted_idempotency_count: bigint | number;
+        }>
+      >(Prisma.sql`SELECT * FROM public.cleanup_ephemeral_reservation_security_state(
+        ${rateLimitThreshold},
+        ${idempotencyThreshold},
+        ${EPHEMERAL_SECURITY_DELETE_BATCH_SIZE}
+      )`);
+      deletedRateLimitEventCount = Number(rows[0]?.deleted_rate_limit_count ?? 0);
+      deletedIdempotencyCount = Number(rows[0]?.deleted_idempotency_count ?? 0);
+    } catch (ephemeralCleanupError) {
+      logWarn("crons.delete_old_histories.ephemeral_security_cleanup_skipped", {
+        requestId,
+        route,
+        context: {
+          message:
+            ephemeralCleanupError instanceof Error
+              ? ephemeralCleanupError.message
+              : String(ephemeralCleanupError),
+        },
+      });
+    }
+
     logInfo("crons.delete_old_histories.success", {
       requestId,
       route,
@@ -248,10 +302,26 @@ async function executeDeleteOldHistories(req: NextRequest) {
         anonymizedOrderCount,
         deletedExpiredTokens,
         deletedLineWebhookInboxCount,
+        deletedRateLimitEventCount,
+        deletedIdempotencyCount,
       },
+    });
+    await markSchedulerSucceeded("DATA_RETENTION", scheduler, {
+      processed:
+        deletedCount +
+        anonymizedOrderCount +
+        deletedExpiredTokens +
+        deletedLineWebhookInboxCount +
+        deletedRateLimitEventCount +
+        deletedIdempotencyCount,
+      retry: 0,
+      deadLetter: 0,
+      backlog: hasMore ? 1 : 0,
+      oldestBacklogAt: null,
     });
 
     return NextResponse.json({
+      ok: true,
       message: deletedCount === 0 ? "No old order histories to delete" : "Processed old order history deletion batch",
       deletedCount,
       hasMore,
@@ -263,9 +333,16 @@ async function executeDeleteOldHistories(req: NextRequest) {
       deletedExpiredTokens,
       deletedLineWebhookInboxCount,
       lineWebhookInboxRetentionDays: LINE_WEBHOOK_INBOX_RETENTION_DAYS,
+      deletedRateLimitEventCount,
+      rateLimitEventRetentionHours: RATE_LIMIT_EVENT_RETENTION_HOURS,
+      deletedIdempotencyCount,
+      idempotencyRetentionDays: IDEMPOTENCY_RETENTION_DAYS,
       requestId,
     });
   } catch (error) {
+    await markSchedulerFailed("DATA_RETENTION", scheduler, "INTERNAL_SERVER_ERROR").catch(
+      () => undefined
+    );
     logError("crons.delete_old_histories.unexpected", {
       requestId,
       route,

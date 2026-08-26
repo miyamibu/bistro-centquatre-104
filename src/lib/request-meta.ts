@@ -3,19 +3,21 @@ import type { NextRequest } from "next/server";
 
 const DEV_RATE_LIMIT_HASH_SECRET = "dev-rate-limit-hash-secret";
 
-function firstForwardedAddress(value: string | null): string | null {
+function lastForwardedAddress(value: string | null): string | null {
   if (!value) {
     return null;
   }
 
-  const first = value.split(",")[0]?.trim();
-  return first || null;
+  const addresses = value.split(",").map((address) => address.trim()).filter(Boolean);
+  return addresses.at(-1) ?? null;
 }
 
 export function getClientIp(request: NextRequest): string | null {
-  const forwarded = firstForwardedAddress(request.headers.get("x-forwarded-for"));
-  if (forwarded) {
-    return forwarded;
+  // Netlify overwrites this header at the trusted edge. Prefer it over XFF,
+  // whose left-most value can be supplied by the client before proxy appends.
+  const netlifyClientIp = request.headers.get("x-nf-client-connection-ip")?.trim();
+  if (netlifyClientIp) {
+    return netlifyClientIp;
   }
 
   const realIp = request.headers.get("x-real-ip")?.trim();
@@ -23,7 +25,7 @@ export function getClientIp(request: NextRequest): string | null {
     return realIp;
   }
 
-  return null;
+  return lastForwardedAddress(request.headers.get("x-forwarded-for"));
 }
 
 export function getUserAgent(request: NextRequest): string | null {
@@ -54,4 +56,8 @@ export function hashText(value: string, purpose = "generic"): string {
 
 export function hashClientIp(ipAddress: string | null): string {
   return hashText(ipAddress ?? "unknown", "rate-limit-ip");
+}
+
+export function hashAuditIp(ipAddress: string | null): string {
+  return hashText(ipAddress ?? "unknown", "audit-ip");
 }

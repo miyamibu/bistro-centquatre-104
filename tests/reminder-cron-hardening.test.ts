@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 
 const findReservationsCompatMock = vi.hoisted(() => vi.fn());
 const claimAndSendLineReminderMock = vi.hoisted(() => vi.fn());
+const hasLineMessagingEnvMock = vi.hoisted(() => vi.fn(() => true));
 const schedulerHeartbeatMocks = vi.hoisted(() => ({
   markSchedulerStarted: vi.fn(),
   markSchedulerSucceeded: vi.fn(),
@@ -19,7 +20,7 @@ vi.mock("@/lib/env", () => ({
     LINE_MONTHLY_REMINDER_LIMIT: 1,
     LINE_MONTHLY_REMINDER_WARN_THRESHOLD: 1,
   },
-  hasLineMessagingEnv: vi.fn(() => true),
+  hasLineMessagingEnv: hasLineMessagingEnvMock,
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -79,6 +80,7 @@ beforeEach(() => {
     },
   ]);
   claimAndSendLineReminderMock.mockResolvedValue("sent");
+  hasLineMessagingEnvMock.mockReturnValue(true);
   schedulerHeartbeatMocks.markSchedulerStarted.mockResolvedValue(undefined);
   schedulerHeartbeatMocks.markSchedulerSucceeded.mockResolvedValue(undefined);
   schedulerHeartbeatMocks.markSchedulerFailed.mockResolvedValue(undefined);
@@ -134,6 +136,23 @@ describe("LINE reminder cron hardening", () => {
       sent: 0,
       skipped: 0,
       skippedQuota: 1,
+    });
+  });
+
+  it("returns the workflow success contract when LINE is intentionally disabled", async () => {
+    hasLineMessagingEnvMock.mockReturnValue(false);
+    const { GET } = await import("@/app/api/crons/remind/route");
+    const response = await GET(request());
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      status: "SKIPPED_LINE_SETUP",
+      sent: 0,
+      failed: 0,
+      skipped: 1,
+      skippedQuota: 0,
+      nextCursor: null,
     });
   });
 });

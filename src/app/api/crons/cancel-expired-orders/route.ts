@@ -9,6 +9,12 @@ import {
   OrderActionError,
 } from "@/lib/order-actions";
 import { getRequestId, logError, logInfo } from "@/lib/logger";
+import {
+  markSchedulerFailed,
+  markSchedulerStarted,
+  markSchedulerSucceeded,
+  readSchedulerContext,
+} from "@/lib/scheduler-heartbeat";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -27,7 +33,9 @@ async function executeCancelExpired(req: NextRequest) {
     return apiError(401, { error: "Unauthorized", code: "UNAUTHORIZED", requestId });
   }
 
+  const scheduler = readSchedulerContext(req);
   try {
+    await markSchedulerStarted("ORDER_EXPIRY", scheduler);
     const nowIso = new Date().toISOString();
     let cancelledCount = 0;
     let skippedCount = 0;
@@ -73,6 +81,7 @@ async function executeCancelExpired(req: NextRequest) {
             scannedCount,
           },
         });
+        await markSchedulerFailed("ORDER_EXPIRY", scheduler, "CRON_SELECT_FAILED");
         return apiError(500, {
           error: "Database error",
           code: "CRON_SELECT_FAILED",
@@ -181,6 +190,7 @@ async function executeCancelExpired(req: NextRequest) {
     const hasMore = scannedCount >= MAX_ORDERS_PER_RUN;
 
     if (failedCount > 0) {
+      await markSchedulerFailed("ORDER_EXPIRY", scheduler, "CRON_PARTIAL_FAILURE");
       return apiError(500, {
         error: "Cron partially failed",
         code: "CRON_PARTIAL_FAILURE",
@@ -198,8 +208,16 @@ async function executeCancelExpired(req: NextRequest) {
       route,
       context: { cancelledCount, skippedCount, scannedCount, hasMore },
     });
+    await markSchedulerSucceeded("ORDER_EXPIRY", scheduler, {
+      processed: cancelledCount,
+      retry: skippedCount,
+      deadLetter: 0,
+      backlog: hasMore ? 1 : 0,
+      oldestBacklogAt: null,
+    });
 
     return NextResponse.json({
+      ok: true,
       message:
         scannedCount === 0
           ? "No orders to cancel"
@@ -213,6 +231,9 @@ async function executeCancelExpired(req: NextRequest) {
       requestId,
     });
   } catch (error) {
+    await markSchedulerFailed("ORDER_EXPIRY", scheduler, "INTERNAL_SERVER_ERROR").catch(
+      () => undefined
+    );
     logError("crons.cancel_expired.unexpected", {
       requestId,
       route,

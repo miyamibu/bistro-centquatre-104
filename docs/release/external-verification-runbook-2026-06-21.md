@@ -1,4 +1,11 @@
-# External Verification Runbook - 2026-06-21
+# External Verification Runbook - 2026-06-21 (historical, superseded)
+
+> **Do not execute the Vercel deployment/cron steps in this historical record.**
+> Commercial Production moved to Netlify Free; GitHub Actions is the primary
+> scheduler and Netlify supplies the daily provider failsafe. Use
+> `DEPLOYMENT_SETUP.md`, `docs/release/free-tier-production-go.md`, and
+> `docs/recovery/RECOVERY_RUNBOOK.md` for the current release. Vercel Hobby is
+> retained only as historical evidence and must not carry commercial traffic.
 
 ## Goal
 

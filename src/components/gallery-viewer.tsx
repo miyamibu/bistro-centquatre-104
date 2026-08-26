@@ -197,7 +197,7 @@ export function GalleryViewer({ sections }: { sections: GallerySection[] }) {
                     <button
                       type="button"
                       onClick={() => moveSelection(-1)}
-                      className="absolute left-2 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-lg text-white transition hover:bg-black/70 md:h-11 md:w-11"
+                      className="absolute left-2 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-lg text-white transition hover:bg-black/70"
                       aria-label="前の写真"
                     >
                       ‹
@@ -205,7 +205,7 @@ export function GalleryViewer({ sections }: { sections: GallerySection[] }) {
                     <button
                       type="button"
                       onClick={() => moveSelection(1)}
-                      className="absolute right-2 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-lg text-white transition hover:bg-black/70 md:h-11 md:w-11"
+                      className="absolute right-2 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-lg text-white transition hover:bg-black/70"
                       aria-label="次の写真"
                     >
                       ›

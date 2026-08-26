@@ -1,17 +1,16 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { StatusForm } from "@/components/status-form";
 import { ReservationCorrectionForm } from "@/components/reservation-correction-form";
-import { formatJst } from "@/lib/dates";
-import { buildMockReservations } from "@/lib/admin-reservation-mock";
 import { parseReservationNote } from "@/lib/reservation-note";
 import { getReservationStatusLabel } from "@/lib/reservation-labels";
+import { getStaffAuth } from "@/lib/staff-auth";
 import {
   ensureReservationSchemaReady,
   findReservationByIdCompat,
   isReservationSchemaNotReadyError,
 } from "@/lib/reservation-compat";
-import { getDaysInMonth, startOfMonth } from "date-fns";
 
 export const dynamic = "force-dynamic";
 
@@ -20,20 +19,16 @@ export default async function AdminReservationDetail({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  if (!(await getStaffAuth("STAFF"))) {
+    redirect("/admin/login");
+  }
+
   const { id } = await params;
   let reservation = null;
 
   try {
-    reservation = !process.env.DATABASE_URL
-      ? (() => {
-          const monthStart = startOfMonth(new Date(`${formatJst(new Date())}T00:00:00`));
-          const monthDays = getDaysInMonth(monthStart);
-          return buildMockReservations(monthStart, monthDays).find((row) => row.id === id) ?? null;
-        })()
-      : await (async () => {
-          await ensureReservationSchemaReady(prisma);
-          return findReservationByIdCompat(prisma, id);
-        })();
+    await ensureReservationSchemaReady(prisma);
+    reservation = await findReservationByIdCompat(prisma, id);
   } catch (error) {
     if (isReservationSchemaNotReadyError(error)) {
       return (

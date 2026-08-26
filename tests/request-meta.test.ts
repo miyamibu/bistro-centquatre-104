@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
 
 const originalEnv = { ...process.env };
 
@@ -14,6 +15,24 @@ async function loadRequestMeta() {
 }
 
 describe("request metadata hashing", () => {
+  it("prefers the trusted Netlify client IP and never trusts the XFF left edge", async () => {
+    const { getClientIp } = await loadRequestMeta();
+    const request = new NextRequest("https://example.test", {
+      headers: {
+        "x-nf-client-connection-ip": "203.0.113.20",
+        "x-real-ip": "203.0.113.21",
+        "x-forwarded-for": "198.51.100.1, 198.51.100.2",
+      },
+    });
+
+    expect(getClientIp(request)).toBe("203.0.113.20");
+
+    const fallback = new NextRequest("https://example.test", {
+      headers: { "x-forwarded-for": "198.51.100.1, 198.51.100.2" },
+    });
+    expect(getClientIp(fallback)).toBe("198.51.100.2");
+  });
+
   it("uses deterministic purpose-separated HMAC hashes", async () => {
     process.env.RATE_LIMIT_HASH_SECRET = "test-rate-limit-hash-secret-32chars";
     const { hashText } = await loadRequestMeta();

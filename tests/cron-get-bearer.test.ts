@@ -36,6 +36,13 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+vi.mock("@/lib/scheduler-heartbeat", () => ({
+  readSchedulerContext: vi.fn(() => ({ schedulerKind: "API_CRON", runId: null })),
+  markSchedulerStarted: vi.fn().mockResolvedValue(undefined),
+  markSchedulerSucceeded: vi.fn().mockResolvedValue(undefined),
+  markSchedulerFailed: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("@/lib/supabase-server", () => ({
   supabaseServer: {
     from: vi.fn().mockReturnValue({

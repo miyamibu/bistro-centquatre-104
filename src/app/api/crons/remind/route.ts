@@ -142,9 +142,14 @@ async function executeReminderCron(input: {
       context: { date: target, count: candidates.length },
     });
     return NextResponse.json({
+      ok: true,
       status: "SKIPPED_LINE_SETUP",
       date: target,
       count: candidates.length,
+      sent: 0,
+      failed: 0,
+      skipped: candidates.length,
+      skippedQuota: 0,
       nextCursor: null,
       deadlineReached: false,
     });

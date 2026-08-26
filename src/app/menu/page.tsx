@@ -601,10 +601,15 @@ export default function MenuPage() {
                         onClick={() => setActiveSlideIndex(index)}
                         aria-label={`${index + 1}枚目の写真を表示`}
                         aria-current={index === activeSlideIndex ? "true" : undefined}
-                        className={`h-1.5 rounded-full transition-all duration-300 motion-reduce:transition-none ${
-                          index === activeSlideIndex ? "w-6 bg-white" : "w-1.5 bg-white/70"
-                        }`}
-                      />
+                        className="inline-flex h-11 min-w-11 items-center justify-center rounded-full transition hover:bg-black/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={`h-1.5 rounded-full transition-all duration-300 motion-reduce:transition-none ${
+                            index === activeSlideIndex ? "w-6 bg-white" : "w-1.5 bg-white/70"
+                          }`}
+                        />
+                      </button>
                     ))}
                   </div>
                   {!prefersReducedMotion ? (
