@@ -125,6 +125,18 @@ describe("production-go regression contracts", () => {
     expect(failsafe).not.toMatch(/console\.(?:log|info|warn|error)\([^\n]*secret/i);
   });
 
+  it("allows the serialized reservation transaction to survive cross-region latency", () => {
+    const reservationRoute = source("src/app/api/reservations/route.ts");
+
+    expect(reservationRoute).toContain("RESERVATION_TRANSACTION_MAX_WAIT_MS = 5_000");
+    expect(reservationRoute).toContain("RESERVATION_TRANSACTION_TIMEOUT_MS = 20_000");
+    expect(reservationRoute).toContain("maxWait: RESERVATION_TRANSACTION_MAX_WAIT_MS");
+    expect(reservationRoute).toContain("timeout: RESERVATION_TRANSACTION_TIMEOUT_MS");
+    expect(reservationRoute).toContain(
+      "isolationLevel: Prisma.TransactionIsolationLevel.Serializable",
+    );
+  });
+
   it("keeps the production-disabled PDF converter out of the Netlify SSR trace", () => {
     const route = source("src/app/api/pdf-to-image/route.ts");
     const nextConfig = source("next.config.mjs");

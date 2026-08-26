@@ -69,6 +69,8 @@ export const dynamic = "force-dynamic";
 
 const RETRIES = 3;
 const LINK_TOKEN_TTL_HOURS = 48;
+const RESERVATION_TRANSACTION_MAX_WAIT_MS = 5_000;
+const RESERVATION_TRANSACTION_TIMEOUT_MS = 20_000;
 
 function getReservationManagementBaseUrl(request: NextRequest) {
   return process.env.BASE_URL?.trim() || request.nextUrl.origin;
@@ -629,7 +631,11 @@ export async function POST(request: NextRequest) {
             immediateOutboxIds,
           };
         },
-        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          maxWait: RESERVATION_TRANSACTION_MAX_WAIT_MS,
+          timeout: RESERVATION_TRANSACTION_TIMEOUT_MS,
+        }
       );
 
       if (result.kind === "replay") {
