@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 
 export const OUTBOX_LANES = ["RESERVATION_EMAIL", "ORDER_NOTIFICATION"] as const;
 export type OutboxLane = (typeof OUTBOX_LANES)[number];
+export type SchedulerLane = OutboxLane | "LINE_REMINDER";
 
 export type SchedulerContext = {
   schedulerKind: "GITHUB_ACTIONS" | "PROVIDER_FAILSAFE" | "API_CRON";
@@ -36,7 +37,7 @@ export function readSchedulerContext(request: NextRequest): SchedulerContext {
 }
 
 export async function markSchedulerStarted(
-  lane: OutboxLane,
+  lane: SchedulerLane,
   context: SchedulerContext,
   startedAt = new Date(),
 ) {
@@ -62,7 +63,7 @@ export async function markSchedulerStarted(
 }
 
 export async function markSchedulerSucceeded(
-  lane: OutboxLane,
+  lane: SchedulerLane,
   context: SchedulerContext,
   summary: HeartbeatSummary,
   finishedAt = new Date(),
@@ -82,7 +83,7 @@ export async function markSchedulerSucceeded(
 }
 
 export async function markSchedulerFailed(
-  lane: OutboxLane,
+  lane: SchedulerLane,
   context: SchedulerContext,
   errorCode: string,
   failedAt = new Date(),

@@ -316,6 +316,8 @@ describe("database release safety contracts", () => {
       "FAIL configured runtime role does not exist",
       "FAIL runtime role % missing required privileges",
       "FAIL runtime role % has forbidden privileges",
+      "FAIL expired reservation LINE link token cleanup function is missing",
+      "FAIL expired LINE link cleanup exposed to non-runtime roles",
     ]) {
       expect(verifySql).toContain(failure);
     }

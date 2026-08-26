@@ -113,6 +113,45 @@ describe("production-go regression contracts", () => {
     expect(policyMigration).toContain('DROP POLICY IF EXISTS "bistro_rt_reservationlinelinktoken_delete"');
   });
 
+  it("serializes administrator private-block creation with reservation writes", () => {
+    const route = source("src/app/api/admin/private-block/route.ts");
+    const lock = route.indexOf("await acquireReservationAdvisoryLock(tx, date, servicePeriod)");
+    const read = route.indexOf("await findReservationsCompat(tx");
+
+    expect(lock).toBeGreaterThan(-1);
+    expect(read).toBeGreaterThan(lock);
+  });
+
+  it("removes expired LINE link tokens only through a bounded privileged function", () => {
+    const route = source("src/app/api/crons/delete-old-histories/route.ts");
+    const migration = source(
+      "prisma/migrations/20260826130000_expired_line_link_token_cleanup/migration.sql",
+    );
+
+    expect(route).toContain("cleanup_expired_reservation_line_link_tokens");
+    expect(route).not.toContain("reservationLineLinkToken.deleteMany");
+    expect(migration).toContain("SECURITY DEFINER");
+    expect(migration).toContain("SET search_path = pg_catalog, public");
+    expect(migration).toContain("max_rows > 500");
+    expect(migration).toContain("FOR UPDATE SKIP LOCKED");
+    expect(migration).toContain("REVOKE ALL ON FUNCTION");
+    expect(migration).toContain("TO bistro_app_runtime");
+  });
+
+  it("records LINE reminder scheduler outcomes and rate-limits availability reads", () => {
+    const reminder = source("src/app/api/crons/remind/route.ts");
+    const availability = source("src/app/api/availability/route.ts");
+    const monthly = source("src/app/api/availability/monthly/route.ts");
+
+    expect(reminder).toContain('markSchedulerStarted("LINE_REMINDER"');
+    expect(reminder).toContain('markSchedulerSucceeded("LINE_REMINDER"');
+    expect(reminder).toContain('markSchedulerFailed("LINE_REMINDER"');
+    expect(availability).toContain("enforceAvailabilityRateLimit(request)");
+    expect(monthly).toContain("enforceAvailabilityRateLimit(request)");
+    expect(availability).toContain("RATE_LIMIT_CHECK_FAILED");
+    expect(monthly).toContain("RATE_LIMIT_CHECK_FAILED");
+  });
+
   it("keeps the Netlify provider failsafe daily, bounded, and secret-safe", () => {
     const config = source("netlify.toml");
     const failsafe = source("netlify/functions/outbox-failsafe.mjs");

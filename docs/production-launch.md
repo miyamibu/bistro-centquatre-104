@@ -19,7 +19,7 @@ See also `docs/recovery/production-db-permissions.md` for the DB role split and 
 
 Run the following checks from the repo root for a release candidate:
 
-1. `npm run check:release:production` (use `VERCEL_PLAN=pro` while the 5-minute cron is present)
+1. `npm run check:release:production` (`PRODUCTION_HOST_PROVIDER=netlify`; Vercel remains Hobby and carries no production cron)
 2. `npm run lint`
 3. `npm run typecheck`
 4. `npm run security:env`
@@ -123,7 +123,7 @@ Supabase notes:
 
 Preview smoke and runtime verification need the same required key structure as `Production`, even when the values point at staging resources instead of live ones.
 
-Set these keys in Vercel Preview before relying on preview deploys:
+Set these keys in the isolated Netlify Deploy Preview context before relying on preview deploys:
 
 1. `DATABASE_URL`
 2. `DIRECT_URL`（Preview/staging DBへの直接接続）
@@ -208,48 +208,39 @@ For preview-specific reminders:
 npm run check:release:preview
 ```
 
-## Vercel deployment
+## Netlify Free production deployment
 
-This repo already includes `vercel.json` cron definitions.
-
-For the exact production env paste order, use `docs/vercel-production-env.md`.
-To check which local values are present without printing secrets, run `.\scripts\print-vercel-env.ps1`.
+Netlify is the selected production host. Vercel remains on Hobby for non-commercial compatibility checks only; `vercel.json` intentionally contains no cron definitions or production redirects.
 
 Use these production settings:
 
 1. Framework preset: `Next.js`
-2. Root directory: `bistro-reservation`
+2. Base directory: repository root (`bistro-reservation`)
 3. Install command: `npm install`
 4. Build command: `npm run build`
-5. Output directory: `.next`
+5. Publish directory: `.next` (managed by `@netlify/plugin-nextjs`)
 
 Deploy sequence:
 
 1. Push the release commit to the production branch
-2. Open the Vercel project
+2. Open the Netlify project
 3. Confirm all production env vars are set
 4. Confirm the production domain is the same value used in `BASE_URL`
 5. Trigger a production deployment
-6. Wait for build completion
-
-CLI note:
-
-1. `vercel deploy` on a team project can be rejected when the local Git author email is not recognized by that Vercel team
-2. Before relying on CLI preview deploys, confirm `git config user.email` is your Vercel team email, not a local machine address such as `name@host.local`
-3. If CLI preview is blocked by author enforcement, use the Git-integrated deploy flow or correct the Git author before retrying
+6. Wait for the deploy to reach `ready`
+7. Confirm the deployed commit SHA is the reviewed release SHA and Netlify's secret scan reports zero matches
 
 Cron notes:
 
-1. Vercel will call the paths declared in `vercel.json`
-2. Cron endpoints still require the correct `CRON_SECRET` logic inside the route handlers
-3. Do not remove `CRON_SECRET` after deploy
-4. `cancel-expired-orders` is bounded to 200 orders per run and can be safely rerun
-5. `delete-old-histories` deletes up to 1000 rows per run in 200-row batches
-6. `process-reservation-emails` claims at most 10 due rows per run and retries failed delivery up to 5 attempts.
-7. `process-order-notifications` runs at `*/5 * * * *`.
-8. `process-reservation-emails` runs at `*/5 * * * *`; both five-minute schedules require a Vercel Pro plan (Hobby is incompatible).
-9. Run `VERCEL_PLAN=pro npm run check:release:production` before enabling either five-minute schedule.
-   If `VERCEL_PLAN` is unknown, the production release check fails rather than assuming plan support.
+1. GitHub Actions is the primary free scheduler. `.github/workflows/production-notification-outbox-drain.yml` drains both outbox lanes every five minutes.
+2. `.github/workflows/production-daily-maintenance.yml` runs cancellation, reminder, and retention maintenance in bounded daily windows.
+3. Netlify's scheduled `outbox-failsafe` function runs once daily as provider-side recovery coverage; it is not the five-minute primary scheduler.
+4. Every cron endpoint still requires constant-time comparison of the correct `CRON_SECRET` bearer token. Do not remove the secret after deploy.
+5. `cancel-expired-orders` is bounded to 200 orders per run and can be safely rerun.
+6. `delete-old-histories` deletes up to 1000 old order-history rows in 200-row batches; protected Prisma tables are cleaned only through bounded privileged functions.
+7. `process-reservation-emails` claims at most 10 due rows per run and retries failed delivery up to 5 attempts.
+8. `process-order-notifications` and `process-reservation-emails` are invoked every five minutes by the public-repository GitHub scheduler.
+9. Run `npm run check:release:production` before promotion. The check fails closed unless the production host, canonical origins, email provider, secrets, and required keys match the Netlify production policy.
 
 ## Post-deploy smoke checks
 
@@ -304,6 +295,6 @@ Confirm these manually in a browser:
 
 If the deploy is bad:
 
-1. Re-deploy the previous successful production deployment in Vercel
+1. Publish the previous successful production deploy from Netlify's deploy history
 2. Keep the same production env vars unless the failure came from env changes
 3. If the failure came from a Prisma migration, restore from database backup instead of editing production tables by hand

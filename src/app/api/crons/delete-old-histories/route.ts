@@ -4,6 +4,7 @@ import { supabaseServer } from "@/lib/supabase-server";
 import { prisma } from "@/lib/prisma";
 import { env } from "@/lib/env";
 import { apiError } from "@/lib/api-security";
+import { isBearerSecretAuthorized } from "@/lib/bearer-auth";
 import { getRequestId, logError, logInfo, logWarn } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +12,8 @@ export const runtime = "nodejs";
 const ORDER_HISTORY_RETENTION_DAYS = 365;
 const LINE_WEBHOOK_INBOX_RETENTION_DAYS = 30;
 const LINE_WEBHOOK_INBOX_DELETE_BATCH_SIZE = 200;
+const LINE_LINK_TOKEN_RETENTION_DAYS = 7;
+const LINE_LINK_TOKEN_DELETE_BATCH_SIZE = 500;
 const DELETE_BATCH_SIZE = 200;
 const MAX_DELETE_PER_RUN = 1000;
 const ORDER_PII_ANONYMIZE_BATCH_SIZE = 200;
@@ -26,8 +29,7 @@ const REDACTED_ORDER_PII = {
 };
 
 function isAuthorizedCron(req: NextRequest) {
-  const authHeader = req.headers.get("authorization");
-  return !!env.CRON_SECRET && authHeader === `Bearer ${env.CRON_SECRET}`;
+  return isBearerSecretAuthorized(req.headers.get("authorization"), env.CRON_SECRET);
 }
 
 async function executeDeleteOldHistories(req: NextRequest) {
@@ -177,15 +179,21 @@ async function executeDeleteOldHistories(req: NextRequest) {
       anonymizedOrderCount = terminalOrderIds.length;
     }
 
-    // Clean up expired ReservationLineLinkTokens (expired > 7 days ago).
+    // The runtime role has no direct DELETE privilege. A bounded SECURITY
+    // DEFINER function is the only deletion path for expired link tokens.
     let deletedExpiredTokens = 0;
     try {
-      const tokenExpiryThreshold = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      const { count } = await prisma.reservationLineLinkToken.deleteMany({
-        where: { expiresAt: { lt: tokenExpiryThreshold } },
-      });
-      deletedExpiredTokens = count;
-      if (count > 0) {
+      const tokenExpiryThreshold = new Date(
+        Date.now() - LINE_LINK_TOKEN_RETENTION_DAYS * 24 * 60 * 60 * 1000
+      );
+      const rows = await prisma.$queryRaw<Array<{ deleted_count: bigint | number }>>(
+        Prisma.sql`SELECT public.cleanup_expired_reservation_line_link_tokens(
+          ${tokenExpiryThreshold},
+          ${LINE_LINK_TOKEN_DELETE_BATCH_SIZE}
+        ) AS deleted_count`
+      );
+      deletedExpiredTokens = Number(rows[0]?.deleted_count ?? 0);
+      if (deletedExpiredTokens > 0) {
         logInfo("crons.delete_old_histories.expired_tokens_deleted", {
           requestId,
           route,
@@ -193,8 +201,8 @@ async function executeDeleteOldHistories(req: NextRequest) {
         });
       }
     } catch (tokenCleanupError) {
-      // Non-fatal: log and continue — table may not exist if migration not yet applied.
-      logInfo("crons.delete_old_histories.token_cleanup_skipped", {
+      // Non-fatal during phased rollout where the cleanup migration may not exist yet.
+      logWarn("crons.delete_old_histories.token_cleanup_skipped", {
         requestId,
         route,
         context: {
@@ -276,8 +284,8 @@ export async function POST(req: NextRequest) {
   return executeDeleteOldHistories(req);
 }
 
-// Vercel Cron calls routes via HTTP GET. Authorization is enforced inside
-// executeDeleteOldHistories via CRON_SECRET Bearer check.
+// The free GitHub scheduler calls this route via HTTP GET. Authorization is
+// enforced inside executeDeleteOldHistories via CRON_SECRET Bearer check.
 export async function GET(req: NextRequest) {
   return executeDeleteOldHistories(req);
 }

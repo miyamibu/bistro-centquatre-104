@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { env } from "@/lib/env";
 import { apiError } from "@/lib/api-security";
+import { isBearerSecretAuthorized } from "@/lib/bearer-auth";
 import {
   buildIdempotencyHash,
   executeAtomicTerminalOrderAction,
@@ -15,8 +16,7 @@ const STATUS_FETCH_LIMIT = 50;
 const MAX_ORDERS_PER_RUN = 200;
 
 function isAuthorizedCron(req: NextRequest) {
-  const authHeader = req.headers.get("authorization");
-  return !!env.CRON_SECRET && authHeader === `Bearer ${env.CRON_SECRET}`;
+  return isBearerSecretAuthorized(req.headers.get("authorization"), env.CRON_SECRET);
 }
 
 async function executeCancelExpired(req: NextRequest) {

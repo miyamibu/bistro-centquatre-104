@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiError } from "@/lib/api-security";
+import { isBearerSecretAuthorized } from "@/lib/bearer-auth";
 import { env } from "@/lib/env";
 import { getRequestId, logError } from "@/lib/logger";
 import {
@@ -17,8 +18,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 function isAuthorizedCron(request: NextRequest) {
-  const authorization = request.headers.get("authorization");
-  return !!env.CRON_SECRET && authorization === `Bearer ${env.CRON_SECRET}`;
+  return isBearerSecretAuthorized(request.headers.get("authorization"), env.CRON_SECRET);
 }
 
 function parsePositiveInteger(value: string | null, fallback: number) {

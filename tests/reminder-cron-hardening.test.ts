@@ -3,6 +3,12 @@ import { NextRequest } from "next/server";
 
 const findReservationsCompatMock = vi.hoisted(() => vi.fn());
 const claimAndSendLineReminderMock = vi.hoisted(() => vi.fn());
+const schedulerHeartbeatMocks = vi.hoisted(() => ({
+  markSchedulerStarted: vi.fn(),
+  markSchedulerSucceeded: vi.fn(),
+  markSchedulerFailed: vi.fn(),
+  readSchedulerContext: vi.fn(() => ({ schedulerKind: "GITHUB_ACTIONS", runId: "test-run" })),
+}));
 const today = new Date("2026-08-15T03:00:00.000Z");
 const targetDate = "2026-08-16";
 const lineUserId = `U${"0".repeat(32)}`;
@@ -46,6 +52,8 @@ vi.mock("@/lib/line-notification", () => ({
   claimAndSendLineReminder: claimAndSendLineReminderMock,
 }));
 
+vi.mock("@/lib/scheduler-heartbeat", () => schedulerHeartbeatMocks);
+
 vi.mock("@/lib/logger", () => ({
   getRequestId: vi.fn(() => "request-reminder-test"),
   logError: vi.fn(),
@@ -71,6 +79,9 @@ beforeEach(() => {
     },
   ]);
   claimAndSendLineReminderMock.mockResolvedValue("sent");
+  schedulerHeartbeatMocks.markSchedulerStarted.mockResolvedValue(undefined);
+  schedulerHeartbeatMocks.markSchedulerSucceeded.mockResolvedValue(undefined);
+  schedulerHeartbeatMocks.markSchedulerFailed.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -102,6 +113,15 @@ describe("LINE reminder cron hardening", () => {
       skippedQuota: 0,
       deadlineReached: false,
     });
+    expect(schedulerHeartbeatMocks.markSchedulerStarted).toHaveBeenCalledWith(
+      "LINE_REMINDER",
+      expect.objectContaining({ schedulerKind: "GITHUB_ACTIONS" }),
+    );
+    expect(schedulerHeartbeatMocks.markSchedulerSucceeded).toHaveBeenCalledWith(
+      "LINE_REMINDER",
+      expect.anything(),
+      expect.objectContaining({ processed: 1, retry: 0 }),
+    );
   });
 
   it("counts quota outcomes separately from ordinary skips", async () => {

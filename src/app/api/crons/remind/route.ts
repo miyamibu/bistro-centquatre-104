@@ -10,6 +10,7 @@ import {
 } from "@/lib/dates";
 import { env, hasLineMessagingEnv } from "@/lib/env";
 import { apiError } from "@/lib/api-security";
+import { isBearerSecretAuthorized } from "@/lib/bearer-auth";
 import { getRequestId, logError, logInfo, logWarn } from "@/lib/logger";
 import {
   RESERVATION_SCHEMA_NOT_READY_CODE,
@@ -21,6 +22,12 @@ import {
   getLineMonthlyQuotaConsumption,
 } from "@/lib/line";
 import { claimAndSendLineReminder } from "@/lib/line-notification";
+import {
+  markSchedulerFailed,
+  markSchedulerStarted,
+  markSchedulerSucceeded,
+  readSchedulerContext,
+} from "@/lib/scheduler-heartbeat";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -67,8 +74,7 @@ function encodeCursor(cursor: ReminderCursor): string {
 }
 
 function isCronAuthorized(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  return !!env.CRON_SECRET && authHeader === `Bearer ${env.CRON_SECRET}`;
+  return isBearerSecretAuthorized(request.headers.get("authorization"), env.CRON_SECRET);
 }
 
 function parsePositiveInteger(value: string | null): number | undefined {
@@ -244,17 +250,46 @@ async function executeRemind(request: NextRequest) {
     return apiError(401, { error: "Unauthorized", code: "UNAUTHORIZED", requestId });
   }
 
+  const scheduler = readSchedulerContext(request);
   try {
+    await markSchedulerStarted("LINE_REMINDER", scheduler);
     const params = request.nextUrl.searchParams;
     const batchSize = parsePositiveInteger(params.get("batchSize"));
     const deadlineMs = parsePositiveInteger(params.get("deadlineMs"));
     const cursor = params.get("cursor")?.trim();
-    return await executeReminderCron({
+    const response = await executeReminderCron({
       ...(batchSize ? { batchSize } : {}),
       ...(deadlineMs ? { deadlineMs } : {}),
       ...(cursor && cursor.length <= 512 ? { cursor } : {}),
     });
+    const body = (await response.clone().json().catch(() => ({}))) as {
+      sent?: number;
+      failed?: number;
+      skipped?: number;
+      nextCursor?: string | null;
+    };
+    if (response.ok && !body.failed) {
+      await markSchedulerSucceeded("LINE_REMINDER", scheduler, {
+        processed: (body.sent ?? 0) + (body.skipped ?? 0),
+        retry: 0,
+        deadLetter: 0,
+        backlog: body.nextCursor ? 1 : 0,
+        oldestBacklogAt: null,
+      });
+    } else {
+      await markSchedulerFailed("LINE_REMINDER", scheduler, "CRON_REMIND_PARTIAL_FAILURE");
+      return apiError(500, {
+        ...body,
+        error: "Reminder cron partially failed",
+        code: "CRON_REMIND_PARTIAL_FAILURE",
+        requestId,
+      });
+    }
+    return response;
   } catch (error) {
+    await markSchedulerFailed("LINE_REMINDER", scheduler, "CRON_REMIND_FAILED").catch(
+      () => undefined
+    );
     if (isReservationSchemaNotReadyError(error)) {
       return apiError(503, {
         error: "Reservation schema is not ready",

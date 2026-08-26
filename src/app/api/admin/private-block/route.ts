@@ -17,6 +17,7 @@ import {
   RESERVATION_SCHEMA_NOT_READY_CODE,
 } from "@/lib/reservation-compat";
 import { createAdminPrivateBlockSchema, zodFields } from "@/lib/validation";
+import { acquireReservationAdvisoryLock } from "@/lib/reservation-advisory-lock";
 
 export const dynamic = "force-dynamic";
 
@@ -84,6 +85,8 @@ export async function POST(request: NextRequest) {
     const savePrivateBlock = () =>
       prisma.$transaction(
       async (tx) => {
+        await acquireReservationAdvisoryLock(tx, date, servicePeriod);
+
         const confirmed = await findReservationsCompat(tx, {
           where: {
             date,

@@ -12,6 +12,10 @@ import {
   monthStringSchema,
   reservationServicePeriodSchema,
 } from "@/lib/validation";
+import {
+  AVAILABILITY_RATE_LIMIT_WINDOW_SECONDS,
+  enforceAvailabilityRateLimit,
+} from "@/lib/availability-rate-limit";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
@@ -82,6 +86,30 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    let allowed: boolean;
+    try {
+      allowed = await enforceAvailabilityRateLimit(request);
+    } catch (error) {
+      logError("availability.monthly.rate_limit.failed", {
+        requestId,
+        route,
+        errorCode: "RATE_LIMIT_CHECK_FAILED",
+        context: { message: error instanceof Error ? error.message : String(error) },
+      });
+      return apiError(503, {
+        error: "Availability is temporarily unavailable",
+        code: "RATE_LIMIT_CHECK_FAILED",
+        requestId,
+      });
+    }
+    if (!allowed) {
+      return apiError(
+        429,
+        { error: "Too many availability requests", code: "RATE_LIMITED", requestId },
+        { headers: { "Retry-After": String(AVAILABILITY_RATE_LIMIT_WINDOW_SECONDS) } },
+      );
+    }
+
     await ensureReservationSchemaReady(prisma);
     const result = await getMonthlyAvailability(
       {
