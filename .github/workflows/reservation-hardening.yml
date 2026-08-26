@@ -39,6 +39,7 @@ jobs:
       CRON_SECRET: test-cron-secret
       IDEMPOTENCY_HASH_SECRET: test-idempotency-secret
       RATE_LIMIT_HASH_SECRET: test-rate-limit-secret
+      LINE_LINK_TOKEN_PEPPER: test-line-link-token-pepper-at-least-32-chars
       STAFF_SESSION_MAX_AGE_SECONDS: "3600"
       BACKUP_EXPORT_SECRET: test-backup-export-secret
       BACKUP_ENCRYPTION_KEY: test-backup-encryption-key-at-least-32-chars
