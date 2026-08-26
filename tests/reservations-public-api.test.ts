@@ -11,6 +11,7 @@ const PUBLIC_BASE_URL = "https://bistro-centquatre-104.vercel.app";
 const TEST_NOW = new Date("2026-08-01T03:00:00.000Z");
 
 const routeMocks = vi.hoisted(() => ({
+  scheduleAfterResponse: vi.fn(),
   lineLinkTokenCreate: vi.fn(),
   txReservationFindMany: vi.fn(),
   reservationEmailOutboxUpsert: vi.fn(),
@@ -20,6 +21,10 @@ const routeMocks = vi.hoisted(() => ({
   reservationIdempotencyUpdate: vi.fn(),
   reservationManagementTokenCreate: vi.fn(),
   idempotencyRows: new Map<string, Record<string, unknown>>(),
+}));
+
+vi.mock("@/lib/after-response", () => ({
+  scheduleAfterResponse: routeMocks.scheduleAfterResponse,
 }));
 
 const readySchemaRow = {
@@ -278,6 +283,8 @@ describe("public reservations API — durable email enqueue", () => {
       },
     });
     expect(routeMocks.sendReservationEmail).not.toHaveBeenCalled();
+    expect(routeMocks.scheduleAfterResponse).toHaveBeenCalledOnce();
+    expect(routeMocks.scheduleAfterResponse).toHaveBeenCalledWith(expect.any(Function));
   });
 });
 

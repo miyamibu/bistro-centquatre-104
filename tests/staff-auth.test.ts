@@ -123,6 +123,21 @@ describe("individual staff authentication", () => {
     expect(authClient.auth.signOut).toHaveBeenCalledOnce();
   });
 
+  it("fails closed when the signed token has no authentication-method history", async () => {
+    arrangeAuth({ role: "STAFF" });
+    const payload = Buffer.from(
+      JSON.stringify({ iat: Math.floor(Date.now() / 1000) }),
+      "utf8",
+    ).toString("base64url");
+    authClient.auth.getSession.mockResolvedValue({
+      data: { session: { access_token: `header.${payload}.signature` } },
+      error: null,
+    });
+
+    await expect(getStaffAuth()).resolves.toBeNull();
+    expect(authClient.auth.signOut).toHaveBeenCalledOnce();
+  });
+
   it("keeps role comparison fail-closed", () => {
     expect(hasStaffRole("ADMIN", "STAFF")).toBe(true);
     expect(hasStaffRole("STAFF", "STAFF")).toBe(true);

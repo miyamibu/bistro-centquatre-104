@@ -67,6 +67,13 @@ describe("production-go regression contracts", () => {
     const maintenanceWorkflow = source(".github/workflows/production-daily-maintenance.yml");
 
     expect(vercel).not.toHaveProperty("crons");
+    expect(vercel).not.toHaveProperty("redirects");
+    expect(source("vercel.json")).not.toContain("vercel.app");
+    expect(source("src/lib/after-response.ts")).not.toContain("process.env.VITEST");
+    expect(source("scripts/check-release-safety.mjs")).not.toContain("VERCEL_PLAN=pro");
+    expect(source("scripts/check-release-safety.mjs")).toContain(
+      "EMAIL_PROVIDER must be resend for Preview/Production provider idempotency",
+    );
     expect(outboxWorkflow).toContain('cron: "2-57/5 * * * *"');
     expect(outboxWorkflow).toContain("workflow_dispatch:");
     expect(outboxWorkflow).toContain("runs-on: ubuntu-latest");

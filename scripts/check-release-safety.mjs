@@ -127,7 +127,6 @@ function resolveEnv() {
     "BACKUP_ENCRYPTION_KEY_ID",
     "BACKUP_ENCRYPTION_KEYS_JSON",
     "BACKUP_ENCRYPTION_ACTIVE_KEY_ID",
-    "VERCEL_PLAN",
     "VERCEL_CONFIG_PATH",
     "NEXT_PUBLIC_APP_URL",
     "PRODUCTION_HOST_PROVIDER",
@@ -297,7 +296,7 @@ function readVercelCronConfig(envMap) {
   return { configPath, highFrequencyCrons };
 }
 
-function validateVercelCronPlan(mode, envMap) {
+function validateVercelCronPlan(envMap) {
   const cronConfig = readVercelCronConfig(envMap);
   if (cronConfig.error) {
     return [cronConfig.error];
@@ -307,31 +306,21 @@ function validateVercelCronPlan(mode, envMap) {
     return [];
   }
 
-  const plan = envMap.VERCEL_PLAN?.trim().toLowerCase() ?? "";
   const cronDescription = cronConfig.highFrequencyCrons
     .map((entry) => `${entry.path} (${entry.schedule})`)
     .join(", ");
+  return [
+    `High-frequency Vercel Cron is forbidden because Vercel must remain Hobby: ${cronDescription}`,
+  ];
+}
 
-  if (plan === "pro") {
-    console.log(`Vercel Cron plan check passed: VERCEL_PLAN=pro for ${cronDescription}`);
-    return [];
-  }
-
-  if (plan === "hobby") {
-    return [
-      `Vercel Cron plan is Hobby, but high-frequency cron requires Pro: ${cronDescription}`,
-    ];
-  }
-
-  const message =
-    `Vercel Cron plan is unknown for high-frequency cron: ${cronDescription}. ` +
-    "Set VERCEL_PLAN=pro, or remove the 5-minute cron before production release.";
-  if (mode === "production") {
-    return [message];
-  }
-
-  console.warn(`${message} This is a warning in ${mode} mode.`);
-  return [];
+function validateDeploymentEmailProvider(mode, envMap) {
+  if (mode === "local-build") return [];
+  return envMap.EMAIL_PROVIDER?.trim().toLowerCase() === "resend"
+    ? []
+    : [
+        "EMAIL_PROVIDER must be resend for Preview/Production provider idempotency; SendGrid remains local-only",
+      ];
 }
 
 function validateProductionHost(mode, envMap) {
@@ -454,7 +443,8 @@ if (enforceRealSecrets && envMap.STAFF_SESSION_MAX_AGE_SECONDS) {
   }
 }
 const emailConfigurationErrors = validateEmailConfiguration(envMap, enforceRealSecrets);
-const vercelCronErrors = validateVercelCronPlan(mode, envMap);
+const vercelCronErrors = validateVercelCronPlan(envMap);
+const deploymentEmailProviderErrors = validateDeploymentEmailProvider(mode, envMap);
 const productionHostErrors = validateProductionHost(mode, envMap);
 const missingRecommended = recommendedKeys.filter((key) => !envMap[key] || envMap[key].trim() === "");
 
@@ -477,6 +467,10 @@ if (invalidRequired.length > 0) {
 
 if (emailConfigurationErrors.length > 0) {
   console.error(`Invalid mail configuration: ${emailConfigurationErrors.join("; ")}`);
+}
+
+if (deploymentEmailProviderErrors.length > 0) {
+  console.error(`Invalid deployment mail provider: ${deploymentEmailProviderErrors.join("; ")}`);
 }
 
 if (vercelCronErrors.length > 0) {
@@ -517,6 +511,7 @@ if (
   placeholderRequired.length > 0 ||
   invalidRequired.length > 0 ||
   emailConfigurationErrors.length > 0 ||
+  deploymentEmailProviderErrors.length > 0 ||
   vercelCronErrors.length > 0 ||
   productionHostErrors.length > 0
 ) {

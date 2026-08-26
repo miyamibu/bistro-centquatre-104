@@ -14,6 +14,7 @@ Operate Bistro Cent Quatre 104 as a commercial production service without a paid
 - GitHub Actions on the public repository is the bounded five-minute primary Outbox scheduler. It is not a strict delivery-time guarantee; the application also performs an immediate post-response attempt and Netlify supplies one daily failsafe.
 - `BASE_URL` and `NEXT_PUBLIC_APP_URL` must use the same HTTPS production origin. `PRODUCTION_HOST_PROVIDER=netlify` is mandatory for Preview and Production release checks.
 - Production notification scheduling never uses Vercel Cron. `vercel.json` contains no cron jobs.
+- Preview and Production email delivery use Resend so the stable Outbox key reaches a provider-native idempotency boundary. SendGrid compatibility remains local-only.
 - Hard deletion of reservation, business-day, notification evidence, recovery evidence, or backup data remains prohibited.
 
 ## Implemented architecture

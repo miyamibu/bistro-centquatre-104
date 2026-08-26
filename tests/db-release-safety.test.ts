@@ -175,6 +175,22 @@ describe("release safety environment contract", () => {
     expect(result.status, result.stderr).toBe(0);
   });
 
+  it.each(["preview", "production"] as const)(
+    "rejects SendGrid for %s because provider-side idempotency is not part of the release contract",
+    (mode) => {
+      const result = runReleaseCheck(mode, {
+        set: {
+          ...completeMailEnv,
+          EMAIL_PROVIDER: "sendgrid",
+          EMAIL_API_KEY: "nonsecret-sendgrid-api-key",
+        },
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("EMAIL_PROVIDER must be resend");
+    },
+  );
+
   it("rejects Hobby when vercel.json contains a five-minute cron", () => {
     writeFileSync(
       cronConfigPath,
@@ -188,10 +204,10 @@ describe("release safety environment contract", () => {
     });
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("Vercel Cron plan is Hobby");
+    expect(result.stderr).toContain("High-frequency Vercel Cron is forbidden");
   });
 
-  it("requires an explicit Vercel plan for a production five-minute cron", () => {
+  it("rejects a production five-minute Vercel cron when no plan is declared", () => {
     writeFileSync(
       cronConfigPath,
       JSON.stringify({
@@ -204,10 +220,10 @@ describe("release safety environment contract", () => {
     });
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("Vercel Cron plan is unknown");
+    expect(result.stderr).toContain("High-frequency Vercel Cron is forbidden");
   });
 
-  it("accepts Pro for a production five-minute cron", () => {
+  it("rejects Pro for a production five-minute cron because Vercel stays Hobby", () => {
     writeFileSync(
       cronConfigPath,
       JSON.stringify({
@@ -219,8 +235,8 @@ describe("release safety environment contract", () => {
       set: { ...completeMailEnv, VERCEL_CONFIG_PATH: cronConfigPath, VERCEL_PLAN: "pro" },
     });
 
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toContain("Vercel Cron plan check passed");
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("High-frequency Vercel Cron is forbidden");
   });
 });
 

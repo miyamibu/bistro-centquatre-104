@@ -1,15 +1,1 @@
-{
-  "redirects": [
-    {
-      "source": "/(.*)",
-      "has": [
-        {
-          "type": "host",
-          "value": "french-restaurant-site.vercel.app"
-        }
-      ],
-      "destination": "https://bistro-centquatre-104.vercel.app/$1",
-      "permanent": true
-    }
-  ]
-}
+{}

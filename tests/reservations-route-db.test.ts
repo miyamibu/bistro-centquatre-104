@@ -5,6 +5,10 @@ import { getNextBookableReservationDate } from "@/lib/booking-rules";
 import { clearReservationArtifacts } from "./utils/reservation-destructive-cleanup";
 import { createTestPrismaClient, destructiveTestDbAccess } from "./test-database";
 
+vi.mock("@/lib/after-response", () => ({
+  scheduleAfterResponse: vi.fn(),
+}));
+
 const hasSafeDatabase = destructiveTestDbAccess.enabled;
 const describeIfDatabase = hasSafeDatabase ? describe : describe.skip;
 const prisma = hasSafeDatabase ? createTestPrismaClient() : null;
