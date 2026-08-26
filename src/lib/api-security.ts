@@ -29,11 +29,12 @@ export type JsonReadResult<T = unknown> =
 
 function resolveAllowedOrigins(request: NextRequest) {
   const origins = new Set<string>([request.nextUrl.origin]);
-  if (env.BASE_URL) {
+  for (const configuredUrl of [env.BASE_URL, process.env.DEPLOY_PRIME_URL]) {
+    if (!configuredUrl) continue;
     try {
-      origins.add(new URL(env.BASE_URL).origin);
+      origins.add(new URL(configuredUrl).origin);
     } catch {
-      // Ignore invalid BASE_URL because env schema can be relaxed in non-prod.
+      // Ignore invalid optional origins because env validation can be relaxed outside production.
     }
   }
   return origins;

@@ -14,6 +14,50 @@ function buildRequest(headers: Record<string, string>) {
 }
 
 describe("API Security", () => {
+  it("allows the current Netlify deploy origin when the runtime request URL is rewritten", () => {
+    const previousDeployPrimeUrl = process.env.DEPLOY_PRIME_URL;
+    process.env.DEPLOY_PRIME_URL = "https://deploy-preview-2--bistro.example";
+
+    try {
+      const request = buildRequest({
+        "content-type": "application/json",
+        origin: "https://deploy-preview-2--bistro.example",
+        "sec-fetch-site": "same-origin",
+        "x-requested-with": "XMLHttpRequest",
+      });
+      expect(enforceWriteRequestSecurity(request, { requestId: "test-id" })).toBeNull();
+    } finally {
+      if (previousDeployPrimeUrl === undefined) {
+        delete process.env.DEPLOY_PRIME_URL;
+      } else {
+        process.env.DEPLOY_PRIME_URL = previousDeployPrimeUrl;
+      }
+    }
+  });
+
+  it("does not allow an unrelated origin when a Netlify deploy origin is configured", async () => {
+    const previousDeployPrimeUrl = process.env.DEPLOY_PRIME_URL;
+    process.env.DEPLOY_PRIME_URL = "https://deploy-preview-2--bistro.example";
+
+    try {
+      const request = buildRequest({
+        "content-type": "application/json",
+        origin: "https://attacker.example",
+        "sec-fetch-site": "same-site",
+        "x-requested-with": "XMLHttpRequest",
+      });
+      const result = enforceWriteRequestSecurity(request, { requestId: "test-id" });
+      expect(result?.status).toBe(403);
+      await expect(result?.json()).resolves.toMatchObject({ code: "ORIGIN_NOT_ALLOWED" });
+    } finally {
+      if (previousDeployPrimeUrl === undefined) {
+        delete process.env.DEPLOY_PRIME_URL;
+      } else {
+        process.env.DEPLOY_PRIME_URL = previousDeployPrimeUrl;
+      }
+    }
+  });
+
   it("allows same-origin JSON request with X-Requested-With", () => {
     const request = buildRequest({
       "content-type": "application/json",

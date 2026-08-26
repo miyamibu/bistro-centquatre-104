@@ -33,6 +33,30 @@ export function buildReservationManagementUrl(baseUrl: string, rawToken: string)
   return `${baseUrl.replace(/\/+$/, "")}${RESERVATION_MANAGEMENT_PATH}#token=${encodeURIComponent(rawToken)}`;
 }
 
+/** Prefer the current Netlify deploy origin so Preview links stay in their own isolated context. */
+export function resolveReservationManagementBaseUrl(fallback?: string) {
+  const candidates = [
+    process.env.DEPLOY_PRIME_URL,
+    process.env.BASE_URL,
+    process.env.NEXT_PUBLIC_APP_URL,
+    fallback,
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate?.trim()) continue;
+    try {
+      const url = new URL(candidate.trim());
+      if (url.protocol === "https:" || url.protocol === "http:") {
+        return url.origin;
+      }
+    } catch {
+      // Continue to the next explicitly configured fallback.
+    }
+  }
+
+  return null;
+}
+
 export async function issueReservationManagementToken(
   tx: Prisma.TransactionClient,
   reservationId: string,

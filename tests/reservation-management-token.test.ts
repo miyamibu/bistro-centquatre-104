@@ -4,6 +4,7 @@ import {
   generateReservationManagementToken,
   hashReservationManagementToken,
   issueReservationManagementToken,
+  resolveReservationManagementBaseUrl,
   RESERVATION_MANAGEMENT_TOKEN_TTL_MS,
 } from "@/lib/reservation-management-token";
 
@@ -61,5 +62,16 @@ describe("reservation management token", () => {
     expect(parsed.pathname).toBe("/reservation/manage");
     expect(parsed.search).toBe("");
     expect(parsed.hash).toBe(`#token=${encodeURIComponent(token)}`);
+  });
+
+  it("prefers the current Netlify deploy origin for preview-safe management links", () => {
+    vi.stubEnv("DEPLOY_PRIME_URL", "https://deploy-preview-2--bistro.example/some-path");
+    vi.stubEnv("BASE_URL", "https://bistro.example");
+
+    expect(resolveReservationManagementBaseUrl("http://localhost:3000")).toBe(
+      "https://deploy-preview-2--bistro.example",
+    );
+
+    vi.unstubAllEnvs();
   });
 });

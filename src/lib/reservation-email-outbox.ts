@@ -14,7 +14,10 @@ import {
 import { env } from "@/lib/env";
 import { logError, logInfo, logWarn } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
-import { buildReservationManagementUrl } from "@/lib/reservation-management-token";
+import {
+  buildReservationManagementUrl,
+  resolveReservationManagementBaseUrl,
+} from "@/lib/reservation-management-token";
 import { deriveReservationScopedToken } from "@/lib/reservation-token";
 
 const CRON_ROUTE = "/api/crons/process-reservation-emails";
@@ -315,7 +318,7 @@ async function buildCustomerManagementUrl(reservationId: string) {
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     select: { idempotencyKey: true, tokenKeyId: true },
   });
-  const baseUrl = env.BASE_URL?.trim() || env.NEXT_PUBLIC_APP_URL?.trim();
+  const baseUrl = resolveReservationManagementBaseUrl();
   if (!idempotency || !baseUrl) return null;
 
   const rawToken = deriveReservationScopedToken(

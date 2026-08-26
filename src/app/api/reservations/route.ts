@@ -58,6 +58,7 @@ import { scheduleAfterResponse } from "@/lib/after-response";
 import {
   buildReservationManagementUrl,
   issueReservationManagementToken,
+  resolveReservationManagementBaseUrl,
 } from "@/lib/reservation-management-token";
 import {
   deriveReservationScopedToken,
@@ -73,7 +74,7 @@ const RESERVATION_TRANSACTION_MAX_WAIT_MS = 5_000;
 const RESERVATION_TRANSACTION_TIMEOUT_MS = 20_000;
 
 function getReservationManagementBaseUrl(request: NextRequest) {
-  return process.env.BASE_URL?.trim() || request.nextUrl.origin;
+  return resolveReservationManagementBaseUrl(request.nextUrl.origin) ?? request.nextUrl.origin;
 }
 
 type ReservationLineNotification = {
