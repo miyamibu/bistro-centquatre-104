@@ -13,6 +13,15 @@ Implementation/local evidence, provider evidence, Preview evidence, Production e
 - Starting working tree: clean
 - Vercel project: Hobby; production SHA older than candidate
 
+## Commit-bound candidate
+
+- Implementation commit: `25380a74de8fabdb81edfcc48cc21733054a896f`
+- Working tree after commit: clean
+- Fresh workspace bundle: `workspace-2026-08-26T03-42-57-482Z.bundle`
+- Bundle expected HEAD: `25380a74de8fabdb81edfcc48cc21733054a896f`
+- Bundle SHA-256: `409d3907909ba46f797d5f172e162b972aee1a39acf63f98cc9acb6539fcaad4`
+- Bundle verification: PASS; complete history and four intended refs
+
 ## Independent baseline audit
 
 - Model: `opencode/x-preview-f-free` (Ox Alpha Free)
@@ -68,7 +77,7 @@ The local production build intentionally omitted public Supabase build variables
 - Pre-change bundle: PASS; expected HEAD `3da8e140ef3b1d5abd496cdcffbd59b8a16d69ce`
 - File: `backups/workspace-snapshots/workspace-2026-08-26T02-11-56-215Z.bundle`
 - SHA-256: `e8e5096d4b93790bee69008a44dce1a6c4033ea80f9e8d3f3674dec04576420c`
-- A fresh commit-bound bundle remains required after the post-fix candidate commit.
+- Fresh commit-bound bundle: PASS; expected HEAD and SHA-256 are recorded above.
 
 ## External gates not yet satisfied
 
