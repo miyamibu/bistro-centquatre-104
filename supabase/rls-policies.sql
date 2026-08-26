@@ -29,6 +29,8 @@ alter table if exists public."Photo" enable row level security;
 alter table if exists public."LineFriend" enable row level security;
 alter table if exists public."LineCustomerLink" enable row level security;
 alter table if exists public."DailyJournalEntry" enable row level security;
+alter table if exists public."SchedulerHeartbeat" enable row level security;
+alter table if exists public."OutboxDrainAuditLog" enable row level security;
 
 drop policy if exists "orders_deny_anon_all" on public.orders;
 drop policy if exists "orders_deny_authenticated_all" on public.orders;
@@ -141,6 +143,14 @@ drop policy if exists "line_customer_link_service_role_all" on public."LineCusto
 drop policy if exists "daily_journal_entry_deny_anon_all" on public."DailyJournalEntry";
 drop policy if exists "daily_journal_entry_deny_authenticated_all" on public."DailyJournalEntry";
 drop policy if exists "daily_journal_entry_service_role_all" on public."DailyJournalEntry";
+
+drop policy if exists "scheduler_heartbeat_deny_anon_all" on public."SchedulerHeartbeat";
+drop policy if exists "scheduler_heartbeat_deny_authenticated_all" on public."SchedulerHeartbeat";
+drop policy if exists "scheduler_heartbeat_service_role_all" on public."SchedulerHeartbeat";
+
+drop policy if exists "outbox_drain_audit_deny_anon_all" on public."OutboxDrainAuditLog";
+drop policy if exists "outbox_drain_audit_deny_authenticated_all" on public."OutboxDrainAuditLog";
+drop policy if exists "outbox_drain_audit_service_role_all" on public."OutboxDrainAuditLog";
 
 create policy "orders_deny_anon_all"
 on public.orders
@@ -423,3 +433,11 @@ create policy "line_customer_link_service_role_all" on public."LineCustomerLink"
 create policy "daily_journal_entry_deny_anon_all" on public."DailyJournalEntry" for all to anon using (false) with check (false);
 create policy "daily_journal_entry_deny_authenticated_all" on public."DailyJournalEntry" for all to authenticated using (false) with check (false);
 create policy "daily_journal_entry_service_role_all" on public."DailyJournalEntry" for all to service_role using (true) with check (true);
+
+create policy "scheduler_heartbeat_deny_anon_all" on public."SchedulerHeartbeat" for all to anon using (false) with check (false);
+create policy "scheduler_heartbeat_deny_authenticated_all" on public."SchedulerHeartbeat" for all to authenticated using (false) with check (false);
+create policy "scheduler_heartbeat_service_role_all" on public."SchedulerHeartbeat" for all to service_role using (true) with check (true);
+
+create policy "outbox_drain_audit_deny_anon_all" on public."OutboxDrainAuditLog" for all to anon using (false) with check (false);
+create policy "outbox_drain_audit_deny_authenticated_all" on public."OutboxDrainAuditLog" for all to authenticated using (false) with check (false);
+create policy "outbox_drain_audit_service_role_all" on public."OutboxDrainAuditLog" for all to service_role using (true) with check (true);

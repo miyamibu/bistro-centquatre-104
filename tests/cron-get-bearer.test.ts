@@ -137,14 +137,19 @@ describe("/api/crons/delete-old-histories GET", () => {
 });
 
 describe("remind schedule", () => {
-  it("vercel.json remind schedule is 0 3 * * * (JST 12:00)", async () => {
+  it("uses the free GitHub daily scheduler and follows reminder cursors", async () => {
     const { readFileSync } = await import("node:fs");
     const { resolve } = await import("node:path");
     const vercelJson = JSON.parse(
       readFileSync(resolve(process.cwd(), "vercel.json"), "utf-8")
     ) as { crons?: Array<{ path: string; schedule: string }> };
-    const remind = vercelJson.crons?.find((c) => c.path === "/api/crons/remind");
-    expect(remind).toBeDefined();
-    expect(remind?.schedule).toBe("0 3 * * *");
+    const workflow = readFileSync(
+      resolve(process.cwd(), ".github/workflows/production-daily-maintenance.yml"),
+      "utf-8",
+    );
+    expect(vercelJson.crons).toBeUndefined();
+    expect(workflow).toContain('cron: "17 18 * * *"');
+    expect(workflow).toContain("while (( reminder_pages < 4 ))");
+    expect(workflow).toContain("nextCursor");
   });
 });

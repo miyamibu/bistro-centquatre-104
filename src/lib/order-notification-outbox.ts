@@ -4,6 +4,7 @@ import { logError, logInfo, logWarn } from "@/lib/logger";
 import { supabaseServer } from "@/lib/supabase-server";
 
 const MAX_ATTEMPTS = 5;
+const DELIVERY_TIMEOUT_MS = 7_000;
 const LOCK_MINUTES = 5;
 
 type OutboxStatus = "PENDING" | "PROCESSING" | "SENT" | "DEAD_LETTER";
@@ -34,6 +35,23 @@ class OutboxDurabilityError extends Error {
 
 function isOutboxDurabilityError(error: unknown): error is OutboxDurabilityError {
   return error instanceof OutboxDurabilityError;
+}
+
+async function withDeliveryTimeout<T>(operation: Promise<T>): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error("ORDER_NOTIFICATION_DELIVERY_TIMEOUT")),
+          DELIVERY_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 }
 
 function requireFencedUpdate(
@@ -444,7 +462,7 @@ export async function processOrderConfirmationOutboxForOrder(input: {
   }
 
   try {
-    await sendOutboxRow(row, input.requestId, claimToken);
+    await withDeliveryTimeout(sendOutboxRow(row, input.requestId, claimToken));
     await markOutboxSent(row.id, claimToken);
     return { processed: true, sent: true, reason: "SENT" as const, durableState: true };
   } catch (error) {
@@ -501,9 +519,12 @@ export async function processOrderConfirmationOutboxForOrder(input: {
 export async function processOrderNotificationOutbox(input: {
   requestId: string;
   limit?: number;
+  deadlineMs?: number;
 }) {
   const now = new Date().toISOString();
   const limit = Math.max(1, Math.min(input.limit ?? 10, 50));
+  const deadlineMs = Math.max(250, Math.min(input.deadlineMs ?? 8_000, 15_000));
+  const deadlineAt = Date.now() + deadlineMs;
   const { data, error } = await supabaseServer
     .from("order_notification_outbox")
     .select(
@@ -522,8 +543,15 @@ export async function processOrderNotificationOutbox(input: {
   let failed = 0;
   let deadLetter = 0;
   let skipped = 0;
+  let scanned = 0;
+  let deadlineReached = false;
 
   for (const row of rows) {
+    if (Date.now() >= deadlineAt) {
+      deadlineReached = true;
+      break;
+    }
+    scanned += 1;
     const result = await processOrderConfirmationOutboxForOrder({
       orderId: row.order_id,
       outboxId: row.id,
@@ -544,8 +572,28 @@ export async function processOrderNotificationOutbox(input: {
   logInfo("order_notification_outbox.processed", {
     requestId: input.requestId,
     route: "/api/crons/process-order-notifications",
-    context: { scanned: rows.length, sent, failed, deadLetter, skipped },
+    context: { scanned, sent, failed, deadLetter, skipped, deadlineReached },
   });
 
-  return { scanned: rows.length, sent, failed, deadLetter, skipped };
+  return { scanned, sent, failed, deadLetter, skipped, deadlineReached };
+}
+
+export async function getOrderNotificationOutboxBacklog() {
+  const now = new Date().toISOString();
+  const { data, count, error } = await supabaseServer
+    .from("order_notification_outbox")
+    .select("created_at", { count: "exact" })
+    .or(buildClaimableOutboxFilter(now))
+    .order("created_at", { ascending: true })
+    .limit(1);
+
+  if (error) {
+    throw new Error("ORDER_NOTIFICATION_OUTBOX_BACKLOG_FAILED:" + error.message);
+  }
+
+  const oldest = data?.[0]?.created_at;
+  return {
+    backlog: count ?? data?.length ?? 0,
+    oldestBacklogAt: typeof oldest === "string" ? new Date(oldest) : null,
+  };
 }

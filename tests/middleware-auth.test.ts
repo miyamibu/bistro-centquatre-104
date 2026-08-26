@@ -22,14 +22,24 @@ import { middleware } from "@/middleware";
 
 const originalEnv = { ...process.env };
 
-function accessToken(iat = Math.floor(Date.now() / 1000)) {
-  const payload = Buffer.from(JSON.stringify({ iat }), "utf8").toString("base64url");
+function accessToken(sessionStartedAt = Math.floor(Date.now() / 1000), iat = sessionStartedAt) {
+  const payload = Buffer.from(
+    JSON.stringify({
+      iat,
+      amr: [
+        { method: "password", timestamp: sessionStartedAt },
+        { method: "totp", timestamp: sessionStartedAt + 1 },
+      ],
+    }),
+    "utf8",
+  ).toString("base64url");
   return `header.${payload}.signature`;
 }
 
 function arrangeAuth(options: {
   role?: "STAFF" | "ADMIN";
   aal?: "aal1" | "aal2";
+  sessionStartedAt?: number;
   iat?: number;
   user?: boolean;
 } = {}) {
@@ -46,7 +56,14 @@ function arrangeAuth(options: {
     error: null,
   });
   authClient.auth.getSession.mockResolvedValue({
-    data: { session: { access_token: accessToken(options.iat) } },
+    data: {
+      session: {
+        access_token: accessToken(
+          options.sessionStartedAt ?? Math.floor(Date.now() / 1000),
+          options.iat,
+        ),
+      },
+    },
     error: null,
   });
   authClient.auth.mfa.getAuthenticatorAssuranceLevel.mockResolvedValue({
@@ -106,11 +123,24 @@ describe("middleware staff auth boundary", () => {
     expect(mfaResponse.status).toBe(403);
     await expect(mfaResponse.json()).resolves.toMatchObject({ code: "MFA_REQUIRED" });
 
-    arrangeAuth({ role: "STAFF", iat: Math.floor(Date.now() / 1000) - 28_801 });
+    arrangeAuth({
+      role: "STAFF",
+      sessionStartedAt: Math.floor(Date.now() / 1000) - 28_801,
+    });
     const expiredResponse = await middleware(request("http://localhost:3000/api/admin/reservations"));
     expect(expiredResponse.status).toBe(401);
     await expect(expiredResponse.json()).resolves.toMatchObject({ code: "SESSION_EXPIRED" });
     expect(authClient.auth.signOut).toHaveBeenCalled();
+  });
+
+  it("does not extend the absolute staff lifetime when Supabase refreshes the JWT", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    arrangeAuth({ role: "STAFF", sessionStartedAt: now - 28_801, iat: now });
+
+    const response = await middleware(request("http://localhost:3000/api/admin/reservations"));
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({ code: "SESSION_EXPIRED" });
   });
 
   it("passes an enrolled staff session and keeps backup export on bearer auth", async () => {

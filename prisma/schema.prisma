@@ -363,6 +363,50 @@ model ReservationCorrectionAuditLog {
   @@index([createdAt])
 }
 
+model SchedulerHeartbeat {
+  id                 String    @id @default(cuid())
+  schedulerKind      String
+  lane               String
+  lastStartedAt      DateTime
+  lastSuccessAt      DateTime?
+  lastFailureAt      DateTime?
+  processedCount     Int       @default(0)
+  retryCount         Int       @default(0)
+  deadLetterCount    Int       @default(0)
+  backlogCount       Int       @default(0)
+  oldestBacklogAt    DateTime?
+  lastRunId          String?
+  lastProviderCronAt DateTime?
+  immediateAttempts  Int       @default(0)
+  immediateSuccesses Int       @default(0)
+  lastErrorCode      String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@unique([schedulerKind, lane])
+  @@index([lane, updatedAt])
+}
+
+model OutboxDrainAuditLog {
+  id              String   @id @default(cuid())
+  actorUserId     String
+  actorEmail      String?
+  actorRole       String
+  requestId       String
+  lane            String
+  dryRun          Boolean
+  requestedLimit  Int
+  scannedCount    Int
+  sentCount       Int
+  failedCount     Int
+  deadLetterCount Int
+  backlogCount    Int
+  createdAt       DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorUserId, createdAt])
+}
+
 model MenuItem {
   id          String  @id @default(cuid())
   title       String

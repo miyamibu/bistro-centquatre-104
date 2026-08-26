@@ -14,8 +14,8 @@ import {
 } from "../backup-encryption.mjs";
 
 const DEFAULT_ROUTE_PATH = "/api/admin/backups/reservations/export";
-const LOCAL_BACKUP_SCHEMA_VERSION = 3;
-const SUPPORTED_API_SCHEMA_VERSIONS = new Set([2, LOCAL_BACKUP_SCHEMA_VERSION]);
+const LOCAL_BACKUP_SCHEMA_VERSION = 4;
+const SUPPORTED_API_SCHEMA_VERSIONS = new Set([2, 3, LOCAL_BACKUP_SCHEMA_VERSION]);
 
 function parseCliArgs(argv) {
   const args = new Map();
@@ -160,6 +160,12 @@ function sanitizeExportPayload(exported) {
     reservationCorrectionAuditLogs: Array.isArray(exported.reservationCorrectionAuditLogs)
       ? exported.reservationCorrectionAuditLogs
       : [],
+    reservationManagementTokens: Array.isArray(exported.reservationManagementTokens)
+      ? exported.reservationManagementTokens
+      : [],
+    reservationIdempotencyRecords: Array.isArray(exported.reservationIdempotencyRecords)
+      ? exported.reservationIdempotencyRecords
+      : [],
     reservationEmailOutbox: exported.reservationEmailOutbox.map((row) => {
       const sanitized = { ...row };
       delete sanitized.claimToken;
@@ -249,7 +255,7 @@ async function main() {
     typeof json !== "object" ||
     !SUPPORTED_API_SCHEMA_VERSIONS.has(json.schemaVersion)
   ) {
-    throw new Error("バックアップAPI応答のschemaVersionが未対応です（2または3が必要です）");
+    throw new Error("バックアップAPI応答のschemaVersionが未対応です（2、3、4が必要です）");
   }
 
   const counts = json.counts;
@@ -272,6 +278,8 @@ async function main() {
   );
   const reservationEmailOutbox = readCount(counts, "reservationEmailOutbox");
   const reservationLineLinkTokens = readCount(counts, "reservationLineLinkTokens");
+  const reservationManagementTokens = readOptionalCount(counts, "reservationManagementTokens");
+  const reservationIdempotencyRecords = readOptionalCount(counts, "reservationIdempotencyRecords");
   const notificationEvents = readCount(counts, "notificationEvents");
   for (const [key, expectedCount] of [
     ["businessDays", businessDays],
@@ -286,6 +294,16 @@ async function main() {
   ]) {
     if (!Array.isArray(json[key]) || json[key].length !== expectedCount) {
       throw new Error(`バックアップAPI応答の${key}がcountsと一致しません`);
+    }
+  }
+  if (json.schemaVersion >= 4) {
+    for (const [key, expectedCount] of [
+      ["reservationManagementTokens", reservationManagementTokens],
+      ["reservationIdempotencyRecords", reservationIdempotencyRecords],
+    ]) {
+      if (!Array.isArray(json[key]) || json[key].length !== expectedCount) {
+        throw new Error(`バックアップAPI応答の${key}がcountsと一致しません`);
+      }
     }
   }
   const sanitizedPayload = sanitizeExportPayload(json);
@@ -312,6 +330,8 @@ async function main() {
         reservationCorrectionAuditLogs,
         reservationEmailOutbox,
         reservationLineLinkTokens,
+        reservationManagementTokens,
+        reservationIdempotencyRecords,
         notificationEvents,
       },
     };
@@ -321,7 +341,7 @@ async function main() {
     });
     await fs.writeFile(backupFilePath, `${encrypted}\n`, "utf8");
     await fs.chmod(backupFilePath, 0o600);
-    const encryptedFileSha256 = createHash("sha256").update(encrypted).digest("hex");
+    const encryptedFileSha256 = createHash("sha256").update(`${encrypted}\n`).digest("hex");
 
     const latestRun = {
       schemaVersion: LOCAL_BACKUP_SCHEMA_VERSION,
@@ -345,6 +365,8 @@ async function main() {
         reservationCorrectionAuditLogs,
         reservationEmailOutbox,
         reservationLineLinkTokens,
+        reservationManagementTokens,
+        reservationIdempotencyRecords,
         notificationEvents,
       },
       dryRun: false,

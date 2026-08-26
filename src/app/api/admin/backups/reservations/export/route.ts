@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const MAX_EXPORT_RANGE_DAYS = 31;
-const BACKUP_SCHEMA_VERSION = 3;
+const BACKUP_SCHEMA_VERSION = 4;
 const BACKUP_EXPORT_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 const BACKUP_EXPORT_RATE_LIMIT_MAX = 12;
 const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
@@ -317,12 +317,22 @@ export async function GET(request: NextRequest) {
               where: { reservationId: { in: reservationIds } },
               orderBy: [{ createdAt: "asc" }, { id: "asc" }],
             }),
+            prisma.reservationManagementToken.findMany({
+              where: { reservationId: { in: reservationIds } },
+              orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+            }),
+            prisma.reservationIdempotency.findMany({
+              where: { reservationId: { in: reservationIds } },
+              orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+            }),
           ]);
     const reservationStatusAuditLogs = relatedRows?.[0] ?? [];
     const reservationEmailOutbox = relatedRows?.[1] ?? [];
     const reservationLineLinkTokens = relatedRows?.[2] ?? [];
     const notificationEvents = relatedRows?.[3] ?? [];
     const reservationCorrectionAuditLogs = relatedRows?.[4] ?? [];
+    const reservationManagementTokens = relatedRows?.[5] ?? [];
+    const reservationIdempotencyRecords = relatedRows?.[6] ?? [];
 
     const payload = {
       schemaVersion: BACKUP_SCHEMA_VERSION,
@@ -337,6 +347,8 @@ export async function GET(request: NextRequest) {
         reservationCorrectionAuditLogs: reservationCorrectionAuditLogs.length,
         reservationEmailOutbox: reservationEmailOutbox.length,
         reservationLineLinkTokens: reservationLineLinkTokens.length,
+        reservationManagementTokens: reservationManagementTokens.length,
+        reservationIdempotencyRecords: reservationIdempotencyRecords.length,
         notificationEvents: notificationEvents.length,
       },
       businessDays: businessDays.map((row) => ({
@@ -472,6 +484,30 @@ export async function GET(request: NextRequest) {
         usedAt: row.usedAt?.toISOString() ?? null,
         createdAt: row.createdAt.toISOString(),
       })),
+      reservationManagementTokens: reservationManagementTokens.map((row) => ({
+        id: row.id,
+        reservationId: row.reservationId,
+        // The raw bearer token is never stored. Restoring this hash preserves
+        // validation for management links already held by the customer.
+        tokenHash: row.tokenHash,
+        keyId: row.keyId,
+        expiresAt: row.expiresAt.toISOString(),
+        revokedAt: row.revokedAt?.toISOString() ?? null,
+        createdAt: row.createdAt.toISOString(),
+      })),
+      reservationIdempotencyRecords: reservationIdempotencyRecords.map((row) => ({
+        id: row.id,
+        idempotencyKey: row.idempotencyKey,
+        requestHash: row.requestHash,
+        responseStatus: row.responseStatus,
+        // Public response snapshots are token-free by construction. They are
+        // required to preserve replay behavior after a restore.
+        responseBody: row.responseBody,
+        reservationId: row.reservationId,
+        tokenKeyId: row.tokenKeyId,
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+      })),
       notificationEvents: notificationEvents.map((row) => ({
         id: row.id,
         reservationId: row.reservationId,
@@ -500,6 +536,8 @@ export async function GET(request: NextRequest) {
       reservationCorrectionAuditLogs: payload.reservationCorrectionAuditLogs,
       reservationEmailOutbox: payload.reservationEmailOutbox,
       reservationLineLinkTokens: payload.reservationLineLinkTokens,
+      reservationManagementTokens: payload.reservationManagementTokens,
+      reservationIdempotencyRecords: payload.reservationIdempotencyRecords,
       notificationEvents: payload.notificationEvents,
     });
 
@@ -519,6 +557,8 @@ export async function GET(request: NextRequest) {
         reservationStatusAuditLogCount: payload.counts.reservationStatusAuditLogs,
         reservationEmailOutboxCount: payload.counts.reservationEmailOutbox,
         reservationLineLinkTokenCount: payload.counts.reservationLineLinkTokens,
+        reservationManagementTokenCount: payload.counts.reservationManagementTokens,
+        reservationIdempotencyRecordCount: payload.counts.reservationIdempotencyRecords,
         notificationEventCount: payload.counts.notificationEvents,
         reservationCorrectionAuditLogCount: payload.counts.reservationCorrectionAuditLogs,
         ipHash: hashText(getClientIp(request) ?? "unknown", "backup-export-ip"),

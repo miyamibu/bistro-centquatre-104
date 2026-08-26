@@ -281,9 +281,8 @@ export async function POST(request: NextRequest) {
   return executeRemind(request);
 }
 
-// Vercel Cron calls routes via HTTP GET. Authorization is enforced inside
-// executeRemind via CRON_SECRET Bearer check — the x-vercel-cron header
-// guard has been removed so production GET requests are not rejected 405.
+// The free GitHub scheduler calls this route via HTTP GET and follows
+// nextCursor until null. Authorization remains a CRON_SECRET bearer check.
 export async function GET(request: NextRequest) {
   return executeRemind(request);
 }

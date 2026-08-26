@@ -31,8 +31,8 @@ import {
 } from "./backup-encryption.mjs";
 
 const DEFAULT_ROUTE_PATH = "/api/admin/backups/reservations/export";
-const BACKUP_SCHEMA_VERSION = 3;
-const SUPPORTED_API_SCHEMA_VERSIONS = [2, 3] as const;
+const BACKUP_SCHEMA_VERSION = 4;
+const SUPPORTED_API_SCHEMA_VERSIONS = [2, 3, 4] as const;
 
 const dateStringSchema = z.string().regex(DATE_PATTERN);
 const businessDaySchema = z.object({
@@ -166,6 +166,26 @@ const reservationLineLinkTokenSchema = z.object({
   usedAt: z.string().nullable(),
   createdAt: z.string(),
 });
+const reservationManagementTokenSchema = z.object({
+  id: z.string(),
+  reservationId: z.string(),
+  tokenHash: z.string(),
+  keyId: z.string(),
+  expiresAt: z.string(),
+  revokedAt: z.string().nullable(),
+  createdAt: z.string(),
+});
+const reservationIdempotencyRecordSchema = z.object({
+  id: z.string(),
+  idempotencyKey: z.string(),
+  requestHash: z.string(),
+  responseStatus: z.number().int().nullable(),
+  responseBody: z.unknown().nullable(),
+  reservationId: z.string().nullable(),
+  tokenKeyId: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
 const notificationEventSchema = z.object({
   id: z.string(),
   reservationId: z.string(),
@@ -184,6 +204,7 @@ const exportResponseSchema = z.object({
   schemaVersion: z.union([
     z.literal(SUPPORTED_API_SCHEMA_VERSIONS[0]),
     z.literal(SUPPORTED_API_SCHEMA_VERSIONS[1]),
+    z.literal(SUPPORTED_API_SCHEMA_VERSIONS[2]),
   ]),
   generatedAt: z.string(),
   range: z.object({
@@ -200,6 +221,8 @@ const exportResponseSchema = z.object({
     reservationCorrectionAuditLogs: z.number().int().nonnegative().optional().default(0),
     reservationEmailOutbox: z.number().int().nonnegative(),
     reservationLineLinkTokens: z.number().int().nonnegative(),
+    reservationManagementTokens: z.number().int().nonnegative().optional().default(0),
+    reservationIdempotencyRecords: z.number().int().nonnegative().optional().default(0),
     notificationEvents: z.number().int().nonnegative(),
   }),
   businessDays: z.array(businessDaySchema),
@@ -210,6 +233,8 @@ const exportResponseSchema = z.object({
   reservationCorrectionAuditLogs: z.array(reservationCorrectionAuditLogSchema).default([]),
   reservationEmailOutbox: z.array(reservationEmailOutboxSchema),
   reservationLineLinkTokens: z.array(reservationLineLinkTokenSchema),
+  reservationManagementTokens: z.array(reservationManagementTokenSchema).default([]),
+  reservationIdempotencyRecords: z.array(reservationIdempotencyRecordSchema).default([]),
   notificationEvents: z.array(notificationEventSchema),
   checksumSha256: z.string().regex(/^[0-9a-f]{64}$/),
   requestId: z.string(),
@@ -224,6 +249,8 @@ const exportResponseSchema = z.object({
     ["reservationCorrectionAuditLogs", value.reservationCorrectionAuditLogs.length],
     ["reservationEmailOutbox", value.reservationEmailOutbox.length],
     ["reservationLineLinkTokens", value.reservationLineLinkTokens.length],
+    ["reservationManagementTokens", value.reservationManagementTokens.length],
+    ["reservationIdempotencyRecords", value.reservationIdempotencyRecords.length],
     ["notificationEvents", value.notificationEvents.length],
   ] as const;
 
@@ -262,6 +289,8 @@ type DayBackupFile = {
   reservationCorrectionAuditLogs: Array<z.infer<typeof reservationCorrectionAuditLogSchema>>;
   reservationEmailOutbox: Array<z.infer<typeof reservationEmailOutboxSchema>>;
   reservationLineLinkTokens: Array<z.infer<typeof reservationLineLinkTokenSchema>>;
+  reservationManagementTokens: Array<z.infer<typeof reservationManagementTokenSchema>>;
+  reservationIdempotencyRecords: Array<z.infer<typeof reservationIdempotencyRecordSchema>>;
   notificationEvents: Array<z.infer<typeof notificationEventSchema>>;
   counts: {
     businessDays: number;
@@ -272,6 +301,8 @@ type DayBackupFile = {
     reservationCorrectionAuditLogs: number;
     reservationEmailOutbox: number;
     reservationLineLinkTokens: number;
+    reservationManagementTokens: number;
+    reservationIdempotencyRecords: number;
     notificationEvents: number;
   };
 };
@@ -475,6 +506,8 @@ async function main() {
   let totalReservationCorrectionAuditLogs = 0;
   let totalReservationEmailOutbox = 0;
   let totalReservationLineLinkTokens = 0;
+  let totalReservationManagementTokens = 0;
+  let totalReservationIdempotencyRecords = 0;
   let totalNotificationEvents = 0;
 
   for (const chunk of chunks) {
@@ -501,6 +534,16 @@ async function main() {
     );
     const lineLinkTokensByDate = groupByReservationDate(
       exported.reservationLineLinkTokens,
+      reservationDateById
+    );
+    const managementTokensByDate = groupByReservationDate(
+      exported.reservationManagementTokens,
+      reservationDateById
+    );
+    const idempotencyRecordsByDate = groupByReservationDate(
+      exported.reservationIdempotencyRecords.filter(
+        (row): row is typeof row & { reservationId: string } => typeof row.reservationId === "string"
+      ),
       reservationDateById
     );
     const notificationEventsByDate = groupByReservationDate(
@@ -532,6 +575,8 @@ async function main() {
         reservationCorrectionAuditLogs: correctionAuditByDate[date] ?? [],
         reservationEmailOutbox: emailOutboxByDate[date] ?? [],
         reservationLineLinkTokens: lineLinkTokensByDate[date] ?? [],
+        reservationManagementTokens: managementTokensByDate[date] ?? [],
+        reservationIdempotencyRecords: idempotencyRecordsByDate[date] ?? [],
         notificationEvents: notificationEventsByDate[date] ?? [],
         counts: {
           businessDays: businessDayByDate.has(date) ? 1 : 0,
@@ -542,6 +587,8 @@ async function main() {
           reservationCorrectionAuditLogs: (correctionAuditByDate[date] ?? []).length,
           reservationEmailOutbox: (emailOutboxByDate[date] ?? []).length,
           reservationLineLinkTokens: (lineLinkTokensByDate[date] ?? []).length,
+          reservationManagementTokens: (managementTokensByDate[date] ?? []).length,
+          reservationIdempotencyRecords: (idempotencyRecordsByDate[date] ?? []).length,
           notificationEvents: (notificationEventsByDate[date] ?? []).length,
         },
       };
@@ -571,6 +618,8 @@ async function main() {
     totalReservationCorrectionAuditLogs += exported.counts.reservationCorrectionAuditLogs;
     totalReservationEmailOutbox += exported.counts.reservationEmailOutbox;
     totalReservationLineLinkTokens += exported.counts.reservationLineLinkTokens;
+    totalReservationManagementTokens += exported.counts.reservationManagementTokens;
+    totalReservationIdempotencyRecords += exported.counts.reservationIdempotencyRecords;
     totalNotificationEvents += exported.counts.notificationEvents;
     chunkSummaries.push({
       from: exported.range.from,
@@ -614,6 +663,8 @@ async function main() {
       reservationCorrectionAuditLogs: totalReservationCorrectionAuditLogs,
       reservationEmailOutbox: totalReservationEmailOutbox,
       reservationLineLinkTokens: totalReservationLineLinkTokens,
+      reservationManagementTokens: totalReservationManagementTokens,
+      reservationIdempotencyRecords: totalReservationIdempotencyRecords,
       notificationEvents: totalNotificationEvents,
     },
     chunks: chunkSummaries,

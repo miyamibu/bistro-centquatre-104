@@ -54,6 +54,8 @@
 | `LineFriend` | `SELECT`, `INSERT`, `UPDATE` | LINE友だち状態の更新 |
 | `LineCustomerLink` | `SELECT`, `INSERT`, `UPDATE` | 同意済みLINE顧客リンクの更新 |
 | `DailyJournalEntry` | `SELECT`, `INSERT`, `UPDATE` | 日誌の作成・編集・公開 |
+| `SchedulerHeartbeat` | `SELECT`, `INSERT`, `UPDATE` | scheduler開始・成功・失敗・backlog観測 |
+| `OutboxDrainAuditLog` | `SELECT`, `INSERT`, `UPDATE` | 管理者drainの追記と処理結果確定 |
 
 ```sql
 SELECT rolname
@@ -75,7 +77,9 @@ ON TABLE
   "ReservationRateLimitEvent",
   "LineFriend",
   "LineCustomerLink",
-  "DailyJournalEntry"
+  "DailyJournalEntry",
+  "SchedulerHeartbeat",
+  "OutboxDrainAuditLog"
 FROM bistro_app_runtime;
 
 GRANT SELECT, INSERT, UPDATE
@@ -90,7 +94,9 @@ ON TABLE
   "LineWebhookInbox",
   "LineFriend",
   "LineCustomerLink",
-  "DailyJournalEntry"
+  "DailyJournalEntry",
+  "SchedulerHeartbeat",
+  "OutboxDrainAuditLog"
 TO bistro_app_runtime;
 
 GRANT EXECUTE ON FUNCTION public.cleanup_processed_line_webhook_inbox(timestamptz, integer)

@@ -1,5 +1,3 @@
-import { env } from "@/lib/env";
-
 export const SELF_SERVICE_CANCELLATION_POLICY_VERSION = "self-service-24h-free-no-auto-fee-v1";
 export const SELF_SERVICE_CANCELLATION_CUTOFF_HOURS = 24;
 
@@ -43,7 +41,7 @@ export function evaluateSelfServiceCancellation(input: {
   if (!visitAt) return { allowed: false, code: "CANCELLATION_POLICY_UNAVAILABLE" };
 
   const cutoffAt = new Date(
-    visitAt.getTime() - env.SELF_SERVICE_CANCELLATION_CUTOFF_HOURS * 60 * 60 * 1000,
+    visitAt.getTime() - SELF_SERVICE_CANCELLATION_CUTOFF_HOURS * 60 * 60 * 1000,
   );
   const now = input.now ?? new Date();
   return now.getTime() < cutoffAt.getTime()

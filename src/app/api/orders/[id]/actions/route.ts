@@ -7,7 +7,12 @@ import {
   readLimitedJson,
 } from "@/lib/api-security";
 import { validatePayInStoreVisitDate } from "@/lib/order-rules";
-import { processOrderConfirmationOutboxForOrder } from "@/lib/order-notification-outbox";
+import {
+  getOrderNotificationOutboxBacklog,
+  processOrderConfirmationOutboxForOrder,
+} from "@/lib/order-notification-outbox";
+import { recordImmediateAttempt } from "@/lib/scheduler-heartbeat";
+import { scheduleAfterResponse } from "@/lib/after-response";
 import {
   cancelOrderPayloadSchema,
   confirmHumanPayloadSchema,
@@ -168,40 +173,58 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
               idempotencyKey,
             });
 
-            const notificationResult = await processOrderConfirmationOutboxForOrder({
-              orderId: id,
-              requestId,
-            });
-            if (!notificationResult.sent) {
-              logError("orders.actions.set_payment_method.notification_failed", {
-                requestId,
-                route: "/api/orders/[id]/actions",
-                errorCode: String(notificationResult.reason),
-                context: {
-                  orderId: id,
-                  processed: notificationResult.processed,
-                },
-              });
-              return {
-                ...(actionResult as Record<string, unknown>),
-                notification: {
-                  sent: false,
-                  status: "PENDING_RETRY",
-                  durableState: notificationResult.durableState,
-                },
-              };
-            }
-
             return {
               ...(actionResult as Record<string, unknown>),
               notification: {
-                sent: true,
-                status: "SENT",
-                durableState: notificationResult.durableState,
+                sent: false,
+                status: "QUEUED",
+                durableState: true,
               },
             };
           },
         });
+
+        if (!result.replayed && result.status >= 200 && result.status < 300) {
+          scheduleAfterResponse(async () => {
+            try {
+              const notificationResult = await processOrderConfirmationOutboxForOrder({
+                orderId: id,
+                requestId: `${requestId}:immediate`,
+              });
+              const backlog = await getOrderNotificationOutboxBacklog();
+              const immediateSucceeded =
+                notificationResult.sent || notificationResult.reason === "NO_PENDING_OUTBOX";
+              await recordImmediateAttempt("ORDER_NOTIFICATION", immediateSucceeded, {
+                processed: notificationResult.processed ? 1 : 0,
+                retry: notificationResult.processed && !notificationResult.sent ? 1 : 0,
+                deadLetter: notificationResult.reason === "DEAD_LETTER" ? 1 : 0,
+                backlog: backlog.backlog,
+                oldestBacklogAt: backlog.oldestBacklogAt,
+              });
+            } catch (error) {
+              logError("orders.actions.set_payment_method.notification_failed", {
+                requestId,
+                route: "/api/orders/[id]/actions",
+                errorCode: "IMMEDIATE_OUTBOX_FAILED",
+                context: {
+                  orderId: id,
+                  message: error instanceof Error ? error.message : String(error),
+                },
+              });
+              await getOrderNotificationOutboxBacklog()
+                .then((backlog) =>
+                  recordImmediateAttempt("ORDER_NOTIFICATION", false, {
+                    processed: 0,
+                    retry: 1,
+                    deadLetter: 0,
+                    backlog: backlog.backlog,
+                    oldestBacklogAt: backlog.oldestBacklogAt,
+                  }),
+                )
+                .catch(() => undefined);
+            }
+          });
+        }
 
         return NextResponse.json(result.body, { status: result.status });
       }

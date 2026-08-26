@@ -60,4 +60,80 @@ describe("production-go regression contracts", () => {
     expect(reservationWorkflow).toContain('SKIP_STAFF_AUTH_DB_TESTS: "1"');
     expect(securityWorkflow).toContain('SKIP_STAFF_AUTH_DB_TESTS: "1"');
   });
+
+  it("keeps Vercel Hobby free of cron jobs and uses bounded public GitHub schedulers", () => {
+    const vercel = JSON.parse(source("vercel.json")) as Record<string, unknown>;
+    const outboxWorkflow = source(".github/workflows/production-notification-outbox-drain.yml");
+    const maintenanceWorkflow = source(".github/workflows/production-daily-maintenance.yml");
+
+    expect(vercel).not.toHaveProperty("crons");
+    expect(outboxWorkflow).toContain('cron: "2-57/5 * * * *"');
+    expect(outboxWorkflow).toContain("workflow_dispatch:");
+    expect(outboxWorkflow).toContain("runs-on: ubuntu-latest");
+    expect(outboxWorkflow).not.toMatch(/actions\/checkout|actions\/cache|upload-artifact/i);
+    expect(outboxWorkflow).toContain("--max-time 30");
+    expect(maintenanceWorkflow).toContain("while (( reminder_pages < 4 ))");
+    expect(maintenanceWorkflow).toContain("nextCursor");
+  });
+
+  it("derives canonical URLs from the selected production origin", () => {
+    const seo = source("src/lib/seo.ts");
+    const releaseSafety = source("scripts/check-release-safety.mjs");
+
+    expect(seo).toContain("process.env.NEXT_PUBLIC_APP_URL");
+    expect(seo).toContain("process.env.URL");
+    expect(releaseSafety).toContain('PRODUCTION_HOST_PROVIDER must be netlify');
+    expect(releaseSafety).toContain('BASE_URL and NEXT_PUBLIC_APP_URL must use the same origin');
+  });
+
+  it("protects scheduler and manual-drain audit data with RLS", () => {
+    const migration = source("prisma/migrations/20260826090000_add_scheduler_heartbeat/migration.sql");
+    const privilegeMigration = source("prisma/migrations/20260826091000_enforce_runtime_minimum_privileges/migration.sql");
+    const policyMigration = source("prisma/migrations/20260826092000_drop_runtime_delete_policy/migration.sql");
+    const policies = source("supabase/rls-policies.sql");
+
+    expect(migration).toContain('ALTER TABLE "SchedulerHeartbeat" ENABLE ROW LEVEL SECURITY');
+    expect(migration).toContain('ALTER TABLE "OutboxDrainAuditLog" ENABLE ROW LEVEL SECURITY');
+    for (const table of ["SchedulerHeartbeat", "OutboxDrainAuditLog"]) {
+      expect(policies).toContain(`public."${table}" enable row level security`);
+    }
+    expect(policies).toContain('scheduler_heartbeat_deny_anon_all');
+    expect(policies).toContain('outbox_drain_audit_deny_authenticated_all');
+    expect(privilegeMigration).toContain("REVOKE DELETE, TRUNCATE");
+    expect(privilegeMigration).toContain('"ReservationLineLinkToken"');
+    expect(privilegeMigration).toContain('"OutboxDrainAuditLog"');
+    expect(policyMigration).toContain('DROP POLICY IF EXISTS "bistro_rt_reservationlinelinktoken_delete"');
+  });
+
+  it("keeps the Netlify provider failsafe daily, bounded, and secret-safe", () => {
+    const config = source("netlify.toml");
+    const failsafe = source("netlify/functions/outbox-failsafe.mjs");
+
+    expect(config).toContain("[functions.outbox-failsafe]");
+    expect(config).toContain('schedule = "23 18 * * *"');
+    expect(failsafe).toContain('AbortSignal.timeout(10_000)');
+    expect(failsafe).toContain('"X-Scheduler-Kind": "provider-failsafe"');
+    expect(failsafe).toContain("Promise.allSettled");
+    expect(failsafe).not.toMatch(/console\.(?:log|info|warn|error)\([^\n]*secret/i);
+  });
+
+  it("keeps cancellation at the fixed 24-hour policy boundary", () => {
+    const policy = source("src/lib/cancellation-policy.ts");
+    const env = source("src/lib/env.ts");
+    const example = source(".env.example");
+
+    expect(policy).toContain("SELF_SERVICE_CANCELLATION_CUTOFF_HOURS = 24");
+    expect(env).not.toContain("SELF_SERVICE_CANCELLATION_CUTOFF_HOURS");
+    expect(example).not.toContain("SELF_SERVICE_CANCELLATION_CUTOFF_HOURS");
+  });
+
+  it("creates pre-migration DB safety dumps without plaintext-at-rest or secret arguments", () => {
+    const script = source("scripts/recovery/create-encrypted-db-dump.mjs");
+
+    expect(script).toContain('dump.stdout.pipe(encrypt.stdin)');
+    expect(script).toContain('"-pass", "env:DB_DUMP_ENCRYPTION_KEY"');
+    expect(script).toContain('restoreListVerified: true');
+    expect(script).not.toContain('"--dbname"');
+    expect(script).not.toContain("writeFile(partialPath");
+  });
 });

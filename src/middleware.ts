@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { readStaffSessionStartedAt } from "@/lib/staff-session";
 
 const AI_UA_HINTS = [/GPTBot/i, /ChatGPT/i, /OpenAI/i, /Claude/i, /Anthropic/i, /Perplexity/i];
 const AGENT_ENTRY_PATH = "/agents";
@@ -40,18 +41,6 @@ function copyResponseCookies(source: NextResponse, target: NextResponse) {
 
 function isStaffRole(value: unknown) {
   return value === "ADMIN" || value === "STAFF";
-}
-
-function readIssuedAt(accessToken: string) {
-  try {
-    const segment = accessToken.split(".")[1];
-    if (!segment) return null;
-    const base64 = segment.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(segment.length / 4) * 4, "=");
-    const payload = JSON.parse(atob(base64)) as { iat?: unknown };
-    return typeof payload.iat === "number" ? payload.iat : null;
-  } catch {
-    return null;
-  }
 }
 
 function authFailure(
@@ -133,14 +122,16 @@ export async function middleware(request: NextRequest) {
     }
 
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-    const issuedAt = sessionData.session ? readIssuedAt(sessionData.session.access_token) : null;
+    const sessionStartedAt = sessionData.session
+      ? readStaffSessionStartedAt(sessionData.session.access_token)
+      : null;
     const maxAge = Number(process.env.STAFF_SESSION_MAX_AGE_SECONDS ?? 28800);
     if (
       sessionError ||
       !sessionData.session ||
-      issuedAt === null ||
+      sessionStartedAt === null ||
       !Number.isInteger(maxAge) ||
-      Math.floor(Date.now() / 1000) - issuedAt > maxAge
+      Math.floor(Date.now() / 1000) - sessionStartedAt > maxAge
     ) {
       await supabase.auth.signOut();
       return authFailure(request, supabaseResponse, pathname, "SESSION_EXPIRED");

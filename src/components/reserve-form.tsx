@@ -1456,10 +1456,12 @@ export function ReserveForm({
                 style={{ borderRadius: `${formFieldRadius}px` }}
                 aria-invalid={customerEmailFieldError ? true : undefined}
                 aria-describedby={customerEmailFieldError ? "reservation-error-customer-email" : undefined}
-                required
+                required={lineLinkStatus !== "linked"}
               />
               <p className="text-xs leading-5 text-[#6b5644]">
-                予約内容の確認・キャンセルリンクを送ります。入力間違いにご注意ください。
+                {lineLinkStatus === "linked"
+                  ? "本人確認済みLINEへ管理情報を送るため、メールアドレスは任意です。"
+                  : "予約内容の確認・キャンセルリンクを送ります。入力間違いにご注意ください。"}
               </p>
               <InlineFieldError id="reservation-error-customer-email" message={customerEmailFieldError} />
             </div>
@@ -1684,7 +1686,9 @@ export function ReserveForm({
             <p>コース: {submittedReservation.course}</p>
             <p>ご予約名: {submittedReservation.name}</p>
             <p>電話番号: {submittedReservation.phone}</p>
-            <p>管理リンク送信先: {submittedReservation.customerEmail}</p>
+            <p>
+              管理リンク送信先: {submittedReservation.customerEmail || "本人確認済みLINE"}
+            </p>
           </div>
           {managementUrl ? (
             <div className="space-y-2 rounded-md border border-[#cfa96d]/45 bg-white/70 px-3 py-3">

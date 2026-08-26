@@ -29,6 +29,8 @@ const baseRequiredKeys = [
 
 const deploymentRequiredKeys = [
   "DIRECT_URL",
+  "NEXT_PUBLIC_APP_URL",
+  "PRODUCTION_HOST_PROVIDER",
   "STORE_NOTIFY_EMAIL",
   "EMAIL_PROVIDER",
   "EMAIL_FROM",
@@ -127,6 +129,8 @@ function resolveEnv() {
     "BACKUP_ENCRYPTION_ACTIVE_KEY_ID",
     "VERCEL_PLAN",
     "VERCEL_CONFIG_PATH",
+    "NEXT_PUBLIC_APP_URL",
+    "PRODUCTION_HOST_PROVIDER",
   ]);
 
   for (const key of keysToResolve) {
@@ -330,6 +334,49 @@ function validateVercelCronPlan(mode, envMap) {
   return [];
 }
 
+function validateProductionHost(mode, envMap) {
+  if (mode === "local-build") return [];
+
+  const errors = [];
+  const provider = envMap.PRODUCTION_HOST_PROVIDER?.trim().toLowerCase() ?? "";
+  if (provider !== "netlify") {
+    errors.push(
+      "PRODUCTION_HOST_PROVIDER must be netlify for the approved free commercial deployment",
+    );
+  }
+
+  let baseUrl;
+  let publicUrl;
+  try {
+    baseUrl = new URL(envMap.BASE_URL ?? "");
+  } catch {
+    errors.push("BASE_URL must be a valid URL");
+  }
+  try {
+    publicUrl = new URL(envMap.NEXT_PUBLIC_APP_URL ?? "");
+  } catch {
+    errors.push("NEXT_PUBLIC_APP_URL must be a valid URL");
+  }
+
+  for (const [label, url] of [
+    ["BASE_URL", baseUrl],
+    ["NEXT_PUBLIC_APP_URL", publicUrl],
+  ]) {
+    if (url && url.protocol !== "https:") {
+      errors.push(`${label} must use HTTPS for ${mode}`);
+    }
+    if (url && url.hostname.endsWith(".vercel.app")) {
+      errors.push(`${label} must not point commercial production traffic to Vercel Hobby`);
+    }
+  }
+
+  if (baseUrl && publicUrl && baseUrl.origin !== publicUrl.origin) {
+    errors.push("BASE_URL and NEXT_PUBLIC_APP_URL must use the same origin");
+  }
+
+  return errors;
+}
+
 function getGitAuthorEmail() {
   try {
     return execSync("git config user.email", {
@@ -408,6 +455,7 @@ if (enforceRealSecrets && envMap.STAFF_SESSION_MAX_AGE_SECONDS) {
 }
 const emailConfigurationErrors = validateEmailConfiguration(envMap, enforceRealSecrets);
 const vercelCronErrors = validateVercelCronPlan(mode, envMap);
+const productionHostErrors = validateProductionHost(mode, envMap);
 const missingRecommended = recommendedKeys.filter((key) => !envMap[key] || envMap[key].trim() === "");
 
 printSection(`Release safety check (${mode})`);
@@ -435,6 +483,10 @@ if (vercelCronErrors.length > 0) {
   console.error(`Invalid Vercel Cron plan configuration: ${vercelCronErrors.join("; ")}`);
 }
 
+if (productionHostErrors.length > 0) {
+  console.error(`Invalid production host configuration: ${productionHostErrors.join("; ")}`);
+}
+
 if (missingRecommended.length > 0) {
   console.warn(`Recommended env keys are unset: ${missingRecommended.join(", ")}`);
 }
@@ -450,13 +502,13 @@ if (!gitAuthorEmail) {
 
 if (mode === "preview") {
   console.warn(
-    "Preview deploy also needs the same required keys configured in Vercel Preview environment. Local values alone do not satisfy Vercel build-time checks.",
+    "Preview deploy also needs the same required keys configured in the isolated Netlify environment. Local values alone do not satisfy build-time checks.",
   );
 }
 
 if (mode === "production") {
   console.warn(
-    "Before production deploy, confirm the same required keys are set in Vercel Production and point to the intended live services.",
+    "Before production deploy, confirm the same required keys are set in Netlify Production and point to the intended live services.",
   );
 }
 
@@ -465,7 +517,8 @@ if (
   placeholderRequired.length > 0 ||
   invalidRequired.length > 0 ||
   emailConfigurationErrors.length > 0 ||
-  vercelCronErrors.length > 0
+  vercelCronErrors.length > 0 ||
+  productionHostErrors.length > 0
 ) {
   process.exit(1);
 }

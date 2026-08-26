@@ -38,7 +38,9 @@ BEGIN
     'Photo',
     'LineFriend',
     'LineCustomerLink',
-    'DailyJournalEntry'
+    'DailyJournalEntry',
+    'SchedulerHeartbeat',
+    'OutboxDrainAuditLog'
   ]::text[]) AS required(table_name)
   WHERE to_regclass(format('%I.%I', 'public', required.table_name)) IS NULL;
 
@@ -82,7 +84,9 @@ BEGIN
     'Photo',
     'LineFriend',
     'LineCustomerLink',
-    'DailyJournalEntry'
+    'DailyJournalEntry',
+    'SchedulerHeartbeat',
+    'OutboxDrainAuditLog'
   ]::text[]) AS required(table_name)
   WHERE NOT EXISTS (
     SELECT 1
@@ -134,7 +138,9 @@ BEGIN
       ('Photo', 'photo'),
       ('LineFriend', 'line_friend'),
       ('LineCustomerLink', 'line_customer_link'),
-      ('DailyJournalEntry', 'daily_journal_entry')
+      ('DailyJournalEntry', 'daily_journal_entry'),
+      ('SchedulerHeartbeat', 'scheduler_heartbeat'),
+      ('OutboxDrainAuditLog', 'outbox_drain_audit')
   ),
   expected_rules(policy_suffix, role_name, expected_expression) AS (
     VALUES
@@ -187,7 +193,9 @@ BEGIN
       ('LineWebhookInbox'),
       ('LineFriend'),
       ('LineCustomerLink'),
-      ('DailyJournalEntry')
+      ('DailyJournalEntry'),
+      ('SchedulerHeartbeat'),
+      ('OutboxDrainAuditLog')
   ),
   normalized_policies AS (
     SELECT
@@ -300,6 +308,7 @@ DECLARE
   runtime_role text;
   missing_grants text[];
   forbidden_grants text[];
+  forbidden_delete_policies text[];
 BEGIN
   IF configured_runtime_role IS NOT NULL THEN
     SELECT role_record.rolname::text
@@ -337,7 +346,9 @@ BEGIN
         ('ReservationRateLimitEvent', ARRAY['SELECT', 'INSERT']::text[]),
         ('LineFriend', ARRAY['SELECT', 'INSERT', 'UPDATE']::text[]),
         ('LineCustomerLink', ARRAY['SELECT', 'INSERT', 'UPDATE']::text[]),
-        ('DailyJournalEntry', ARRAY['SELECT', 'INSERT', 'UPDATE']::text[])
+        ('DailyJournalEntry', ARRAY['SELECT', 'INSERT', 'UPDATE']::text[]),
+        ('SchedulerHeartbeat', ARRAY['SELECT', 'INSERT', 'UPDATE']::text[]),
+        ('OutboxDrainAuditLog', ARRAY['SELECT', 'INSERT', 'UPDATE']::text[])
     ),
     expanded_requirements AS (
       SELECT requirement.table_name, privilege_row.privilege_name
@@ -379,7 +390,9 @@ BEGIN
         ('ReservationRateLimitEvent'),
         ('LineFriend'),
         ('LineCustomerLink'),
-        ('DailyJournalEntry')
+        ('DailyJournalEntry'),
+        ('SchedulerHeartbeat'),
+        ('OutboxDrainAuditLog')
     ),
     forbidden_privileges(privilege_name) AS (
       VALUES ('DELETE'), ('TRUNCATE')
@@ -401,6 +414,42 @@ BEGIN
       RAISE EXCEPTION 'FAIL runtime role % has forbidden privileges: %',
         runtime_role,
         array_to_string(forbidden_grants, ', ');
+    END IF;
+
+    SELECT array_agg(
+      format('%s.%s', policy.tablename, policy.policyname)
+      ORDER BY policy.tablename, policy.policyname
+    )
+    INTO forbidden_delete_policies
+    FROM pg_policies policy
+    WHERE policy.schemaname = 'public'
+      AND runtime_role::name = ANY(policy.roles)
+      AND policy.cmd IN ('DELETE', 'ALL')
+      AND policy.tablename = ANY(ARRAY[
+        'Reservation',
+        'BusinessDay',
+        'BusinessDayAuditLog',
+        'ReservationCorrectionAuditLog',
+        'PrivateBlockAuditLog',
+        'ReservationStatusAuditLog',
+        'ReservationEmailOutbox',
+        'ReservationIdempotency',
+        'ReservationLineLinkToken',
+        'ReservationManagementToken',
+        'NotificationEvent',
+        'LineWebhookInbox',
+        'ReservationRateLimitEvent',
+        'LineFriend',
+        'LineCustomerLink',
+        'DailyJournalEntry',
+        'SchedulerHeartbeat',
+        'OutboxDrainAuditLog'
+      ]::text[]);
+
+    IF coalesce(cardinality(forbidden_delete_policies), 0) > 0 THEN
+      RAISE EXCEPTION 'FAIL runtime role % has forbidden DELETE policies: %',
+        runtime_role,
+        array_to_string(forbidden_delete_policies, ', ');
     END IF;
 
     RAISE NOTICE 'PASS runtime role grants: %', runtime_role;
@@ -440,7 +489,9 @@ WHERE table_schema = 'public'
     'Photo',
     'LineFriend',
     'LineCustomerLink',
-    'DailyJournalEntry'
+    'DailyJournalEntry',
+    'SchedulerHeartbeat',
+    'OutboxDrainAuditLog'
   )
 ORDER BY table_name;
 
@@ -478,7 +529,9 @@ WHERE table_namespace.nspname = 'public'
     'Photo',
     'LineFriend',
     'LineCustomerLink',
-    'DailyJournalEntry'
+    'DailyJournalEntry',
+    'SchedulerHeartbeat',
+    'OutboxDrainAuditLog'
   )
 ORDER BY table_class.relname;
 
@@ -513,7 +566,9 @@ WHERE schemaname = 'public'
     'Photo',
     'LineFriend',
     'LineCustomerLink',
-    'DailyJournalEntry'
+    'DailyJournalEntry',
+    'SchedulerHeartbeat',
+    'OutboxDrainAuditLog'
   )
 ORDER BY tablename, policyname;
 

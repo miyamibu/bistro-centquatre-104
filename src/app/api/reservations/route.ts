@@ -7,7 +7,7 @@ import {
   isCoursePeriodConsistent,
 } from "@/lib/availability";
 import {
-  enforceReservationWriteRateLimitInTransaction,
+  enforceReservationWriteRateLimit,
   isReservationRateLimitError,
 } from "@/lib/reservation-rate-limit";
 import { acquireReservationAdvisoryLock } from "@/lib/reservation-advisory-lock";
@@ -50,7 +50,11 @@ import { getRequestId, logError, logInfo, logWarn } from "@/lib/logger";
 import {
   enqueueReservationConfirmationEmail,
   enqueueReservationCustomerEmail,
+  getReservationEmailOutboxBacklog,
+  processReservationEmailOutboxEntries,
 } from "@/lib/reservation-email-outbox";
+import { recordImmediateAttempt } from "@/lib/scheduler-heartbeat";
+import { scheduleAfterResponse } from "@/lib/after-response";
 import {
   buildReservationManagementUrl,
   issueReservationManagementToken,
@@ -416,6 +420,35 @@ export async function POST(request: NextRequest) {
   const linePushStatus = canPushResult?.status ?? null;
   const linePushCheckedAt = canPushResult ? new Date() : null;
 
+  try {
+    // Keep rate-limit accounting in its own committed transaction. Expected
+    // reservation rejection or serialization rollback must not erase the event.
+    await enforceReservationWriteRateLimit(prisma, { ipHash });
+  } catch (error) {
+    if (isReservationRateLimitError(error)) {
+      return apiError(429, {
+        error: error.message,
+        code: error.code,
+        requestId,
+        ...contact,
+      });
+    }
+    logError("reservation.rate_limit.failed", {
+      requestId,
+      route: "/api/reservations",
+      errorCode: "RATE_LIMIT_CHECK_FAILED",
+      context: {
+        message: error instanceof Error ? error.message : String(error),
+      },
+    });
+    return apiError(503, {
+      error: "予約の受付状態を確認できませんでした。時間をおいて再度お試しください",
+      code: "RATE_LIMIT_CHECK_FAILED",
+      requestId,
+      ...contact,
+    });
+  }
+
   for (let attempt = 1; attempt <= RETRIES; attempt += 1) {
     try {
       const now = new Date();
@@ -428,8 +461,6 @@ export async function POST(request: NextRequest) {
           if (claim.kind === "replay") {
             return claim;
           }
-
-          await enforceReservationWriteRateLimitInTransaction(tx, { ipHash });
 
           await acquireReservationAdvisoryLock(tx, date, servicePeriod);
 
@@ -457,6 +488,7 @@ export async function POST(request: NextRequest) {
           let deduplicated = false;
           let lineLinked: boolean | null = null;
           let lineEnabled = false;
+          const immediateOutboxIds: string[] = [];
 
           if (duplicateReservation) {
             deduplicated = true;
@@ -513,8 +545,9 @@ export async function POST(request: NextRequest) {
               linePushCheckedAt,
             });
 
-            await enqueueReservationConfirmationEmail(tx, createdReservation.id);
-            await enqueueReservationCustomerEmail(tx, createdReservation.id);
+            const adminOutbox = await enqueueReservationConfirmationEmail(tx, createdReservation.id);
+            const customerOutbox = await enqueueReservationCustomerEmail(tx, createdReservation.id);
+            immediateOutboxIds.push(adminOutbox.id, customerOutbox.id);
             reservation = createdReservation;
             lineLinked = resolvedLineUserId ? true : null;
             lineEnabled = !!resolvedLineUserId;
@@ -593,6 +626,7 @@ export async function POST(request: NextRequest) {
             reservation,
             deduplicated,
             lineLinked,
+            immediateOutboxIds,
           };
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
@@ -614,7 +648,53 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const { reservation, deduplicated, lineLinked, responseBody } = result;
+      const { reservation, deduplicated, lineLinked, responseBody, immediateOutboxIds } = result;
+
+      if (immediateOutboxIds.length > 0) {
+        scheduleAfterResponse(async () => {
+          try {
+            const immediate = await processReservationEmailOutboxEntries({
+              ids: immediateOutboxIds,
+              requestId: `${requestId}:immediate`,
+              deadlineMs: 8_000,
+            });
+            const backlog = await getReservationEmailOutboxBacklog();
+            const success =
+              immediate.failed === 0 &&
+              immediate.deadLetter === 0 &&
+              immediate.unsafe === 0 &&
+              !immediate.deadlineReached;
+            await recordImmediateAttempt("RESERVATION_EMAIL", success, {
+              processed: immediate.scanned,
+              retry: immediate.failed,
+              deadLetter: immediate.deadLetter,
+              backlog: backlog.backlog,
+              oldestBacklogAt: backlog.oldestBacklogAt,
+            });
+          } catch (error) {
+            logError("reservation.immediate_outbox.failed", {
+              requestId,
+              route: "/api/reservations",
+              errorCode: "IMMEDIATE_OUTBOX_FAILED",
+              context: {
+                reservationId: reservation.id,
+                message: error instanceof Error ? error.message : String(error),
+              },
+            });
+            await getReservationEmailOutboxBacklog()
+              .then((backlog) =>
+                recordImmediateAttempt("RESERVATION_EMAIL", false, {
+                  processed: 0,
+                  retry: 1,
+                  deadLetter: 0,
+                  backlog: backlog.backlog,
+                  oldestBacklogAt: backlog.oldestBacklogAt,
+                }),
+              )
+              .catch(() => undefined);
+          }
+        });
+      }
 
       // Warn if duplicate with conflicting LINE user (no PII in log).
       if (deduplicated && lineLinked === false && resolvedLineUserId) {

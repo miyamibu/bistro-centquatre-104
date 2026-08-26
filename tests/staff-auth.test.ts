@@ -21,8 +21,17 @@ vi.mock("@/lib/env", () => ({ env: authEnv }));
 
 import { getStaffAuth, hasStaffRole } from "@/lib/staff-auth";
 
-function accessToken(iat: number) {
-  const payload = Buffer.from(JSON.stringify({ iat }), "utf8").toString("base64url");
+function accessToken(sessionStartedAt: number, iat = sessionStartedAt) {
+  const payload = Buffer.from(
+    JSON.stringify({
+      iat,
+      amr: [
+        { method: "password", timestamp: sessionStartedAt },
+        { method: "totp", timestamp: sessionStartedAt + 1 },
+      ],
+    }),
+    "utf8",
+  ).toString("base64url");
   return `header.${payload}.signature`;
 }
 
@@ -34,10 +43,22 @@ function user(role?: string) {
   };
 }
 
-function arrangeAuth(options: { role?: string; iat?: number; aal?: "aal1" | "aal2" } = {}) {
+function arrangeAuth(options: {
+  role?: string;
+  sessionStartedAt?: number;
+  iat?: number;
+  aal?: "aal1" | "aal2";
+} = {}) {
   authClient.auth.getUser.mockResolvedValue({ data: { user: user(options.role) }, error: null });
   authClient.auth.getSession.mockResolvedValue({
-    data: { session: { access_token: accessToken(options.iat ?? Math.floor(Date.now() / 1000)) } },
+    data: {
+      session: {
+        access_token: accessToken(
+          options.sessionStartedAt ?? Math.floor(Date.now() / 1000),
+          options.iat,
+        ),
+      },
+    },
     error: null,
   });
   authClient.auth.mfa.getAuthenticatorAssuranceLevel.mockResolvedValue({
@@ -87,7 +108,16 @@ describe("individual staff authentication", () => {
 
   it("signs out and rejects a session older than the configured TTL", async () => {
     authEnv.STAFF_SESSION_MAX_AGE_SECONDS = 60;
-    arrangeAuth({ role: "STAFF", iat: Math.floor(Date.now() / 1000) - 61 });
+    arrangeAuth({ role: "STAFF", sessionStartedAt: Math.floor(Date.now() / 1000) - 61 });
+
+    await expect(getStaffAuth()).resolves.toBeNull();
+    expect(authClient.auth.signOut).toHaveBeenCalledOnce();
+  });
+
+  it("uses the AMR login timestamp instead of a refreshed JWT issue time", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    authEnv.STAFF_SESSION_MAX_AGE_SECONDS = 60;
+    arrangeAuth({ role: "STAFF", sessionStartedAt: now - 61, iat: now });
 
     await expect(getStaffAuth()).resolves.toBeNull();
     expect(authClient.auth.signOut).toHaveBeenCalledOnce();

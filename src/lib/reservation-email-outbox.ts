@@ -26,7 +26,12 @@ const MAX_BATCH_SIZE = 50;
 const MIN_DEADLINE_MS = 250;
 const DEFAULT_DEADLINE_MS = 8_000;
 const MAX_DEADLINE_MS = 15_000;
+const DELIVERY_TIMEOUT_MS = 7_000;
 const IDEMPOTENCY_KEY_PREFIX = "reservation-email-outbox/";
+type ReservationDeliveryResult =
+  | Awaited<ReturnType<typeof sendCustomerReservationEmail>>
+  | Awaited<ReturnType<typeof sendCustomerReservationStatusEmail>>
+  | Awaited<ReturnType<typeof sendReservationEmail>>;
 
 class ReservationEmailDeliveryError extends Error {
   readonly code: string;
@@ -127,6 +132,23 @@ function decodeCursor(value: string | undefined): OutboxCursor | undefined {
 function clampInteger(value: number | undefined, fallback: number, min: number, max: number) {
   if (!Number.isFinite(value)) return fallback;
   return Math.max(min, Math.min(Math.trunc(value as number), max));
+}
+
+async function withDeliveryTimeout<T>(operation: Promise<T>): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new ReservationEmailDeliveryError("TIMEOUT")),
+          DELIVERY_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 }
 
 export async function enqueueReservationConfirmationEmail(
@@ -528,8 +550,8 @@ async function processOutboxItem(
     const managementUrl = !isCustomerStatusDelivery && isCustomerDelivery
       ? await buildCustomerManagementUrl(claimed.reservationId)
       : undefined;
-    const delivery = isCustomerStatusDelivery
-      ? await sendCustomerReservationStatusEmail({
+    const deliveryOperation: Promise<ReservationDeliveryResult> = isCustomerStatusDelivery
+      ? sendCustomerReservationStatusEmail({
           reservation,
           status:
             claimed.notificationType === ReservationEmailNotificationType.RESERVATION_CANCELLED_CUSTOMER
@@ -538,16 +560,17 @@ async function processOutboxItem(
           idempotencyKey: providerIdempotencyKey,
         })
       : isCustomerDelivery
-      ? await sendCustomerReservationEmail({
+      ? sendCustomerReservationEmail({
           reservation,
           managementUrl: managementUrl ?? undefined,
           idempotencyKey: providerIdempotencyKey,
         })
-      : await sendReservationEmail({
+      : sendReservationEmail({
           reservation,
           adminUrl: buildAdminUrl(claimed.reservationId),
           idempotencyKey: providerIdempotencyKey,
         });
+    const delivery = await withDeliveryTimeout(deliveryOperation);
 
     if (!("sent" in delivery) || delivery.sent !== true) {
       const reason =
@@ -695,6 +718,59 @@ async function processOutboxItem(
       durableState: true,
     };
   }
+}
+
+export async function getReservationEmailOutboxBacklog() {
+  const now = new Date();
+  const where: Prisma.ReservationEmailOutboxWhereInput = {
+    OR: [
+      { status: ReservationEmailOutboxStatus.PENDING, nextAttemptAt: { lte: now } },
+      { status: ReservationEmailOutboxStatus.PROCESSING, lockedUntil: { lte: now } },
+    ],
+  };
+  const [count, oldest] = await Promise.all([
+    prisma.reservationEmailOutbox.count({ where }),
+    prisma.reservationEmailOutbox.findFirst({
+      where,
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: { createdAt: true },
+    }),
+  ]);
+  return { backlog: count, oldestBacklogAt: oldest?.createdAt ?? null };
+}
+
+export async function processReservationEmailOutboxEntries(input: {
+  ids: string[];
+  requestId: string;
+  deadlineMs?: number;
+}) {
+  const ids = [...new Set(input.ids.filter(Boolean))].slice(0, 2);
+  const deadlineMs = clampInteger(input.deadlineMs, DEFAULT_DEADLINE_MS, MIN_DEADLINE_MS, MAX_DEADLINE_MS);
+  const deadlineAt = Date.now() + deadlineMs;
+  let sent = 0;
+  let failed = 0;
+  let deadLetter = 0;
+  let skipped = 0;
+  let unsafe = 0;
+  let deadlineReached = false;
+  let scanned = 0;
+
+  for (const id of ids) {
+    if (Date.now() >= deadlineAt) {
+      deadlineReached = true;
+      break;
+    }
+    scanned += 1;
+    const result = await processOutboxItem(id, input.requestId);
+    if (result.sent) sent += 1;
+    else if (!result.durableState) unsafe += 1;
+    else if (result.reason === "DEAD_LETTER") deadLetter += 1;
+    else if (result.reason === "SKIPPED") skipped += 1;
+    else if (result.processed) failed += 1;
+    else skipped += 1;
+  }
+
+  return { scanned, sent, failed, deadLetter, skipped, unsafe, deadlineReached };
 }
 
 export async function processReservationEmailOutbox(input: {

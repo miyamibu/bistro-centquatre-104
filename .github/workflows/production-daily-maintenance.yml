@@ -1,0 +1,98 @@
+name: Production daily maintenance
+
+on:
+  schedule:
+    # 18:17 UTC = 03:17 JST on the following calendar day.
+    - cron: "17 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-daily-maintenance
+  cancel-in-progress: false
+
+jobs:
+  maintain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      PRODUCTION_BASE_URL: ${{ secrets.PRODUCTION_BASE_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+    steps:
+      - name: Run bounded maintenance and follow reminder cursors
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if [[ ! "${PRODUCTION_BASE_URL:-}" =~ ^https://[^/]+(/.*)?$ ]]; then
+            echo "PRODUCTION_BASE_URL must be an HTTPS URL" >&2
+            exit 1
+          fi
+          if [[ -z "${CRON_SECRET:-}" ]]; then
+            echo "CRON_SECRET is not configured" >&2
+            exit 1
+          fi
+
+          base_url="${PRODUCTION_BASE_URL%/}"
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+
+          call_endpoint() {
+            local endpoint="$1"
+            curl \
+              --silent \
+              --show-error \
+              --fail-with-body \
+              --connect-timeout 10 \
+              --max-time 45 \
+              --retry 1 \
+              --retry-all-errors \
+              --header "Authorization: Bearer ${CRON_SECRET}" \
+              --header "X-Scheduler-Kind: github-actions" \
+              --header "X-Scheduler-Run-Id: ${GITHUB_RUN_ID}" \
+              --output "$response_file" \
+              "${base_url}${endpoint}"
+            jq -e '.ok == true' "$response_file" >/dev/null
+          }
+
+          call_endpoint "/api/crons/cancel-expired-orders"
+          call_endpoint "/api/crons/delete-old-histories"
+
+          reminder_pages=0
+          reminder_sent=0
+          reminder_failed=0
+          cursor=""
+          while (( reminder_pages < 4 )); do
+            endpoint="/api/crons/remind?batchSize=100&deadlineMs=12000"
+            if [[ -n "$cursor" ]]; then
+              encoded_cursor="$(jq -nr --arg value "$cursor" '$value|@uri')"
+              endpoint="${endpoint}&cursor=${encoded_cursor}"
+            fi
+            call_endpoint "$endpoint"
+            jq -e '
+              (.sent | type == "number") and
+              (.failed | type == "number") and
+              (.skipped | type == "number") and
+              (.skippedQuota | type == "number") and
+              ((.nextCursor == null) or (.nextCursor | type == "string"))
+            ' "$response_file" >/dev/null
+            reminder_sent=$((reminder_sent + $(jq -r '.sent' "$response_file")))
+            reminder_failed=$((reminder_failed + $(jq -r '.failed' "$response_file")))
+            cursor="$(jq -r '.nextCursor // empty' "$response_file")"
+            reminder_pages=$((reminder_pages + 1))
+            [[ -z "$cursor" ]] && break
+          done
+
+          {
+            echo "## Production daily maintenance"
+            echo "- cancel-expired-orders: PASS"
+            echo "- delete-old-histories: PASS"
+            echo "- reminders: pages=${reminder_pages}, sent=${reminder_sent}, failed=${reminder_failed}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ -n "$cursor" || "$reminder_failed" != "0" ]]; then
+            echo "Reminder drain did not converge safely" >&2
+            exit 1
+          fi

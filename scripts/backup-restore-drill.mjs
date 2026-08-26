@@ -45,8 +45,8 @@ function validatePayload(payload) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new Error("復旧対象payloadがオブジェクトではありません");
   }
-  if (payload.schemaVersion !== 2 && payload.schemaVersion !== 3) {
-    throw new Error("復旧対象payloadのschemaVersion=2または3を確認できません");
+  if (![2, 3, 4].includes(payload.schemaVersion)) {
+    throw new Error("復旧対象payloadのschemaVersion=2、3、4を確認できません");
   }
   for (const key of [
     "businessDays",
@@ -61,6 +61,11 @@ function validatePayload(payload) {
   }
   if (payload.schemaVersion >= 3) {
     for (const key of ["businessDayAuditLogs", "reservationCorrectionAuditLogs"]) {
+      assertCount(payload, key);
+    }
+  }
+  if (payload.schemaVersion >= 4) {
+    for (const key of ["reservationManagementTokens", "reservationIdempotencyRecords"]) {
       assertCount(payload, key);
     }
   }

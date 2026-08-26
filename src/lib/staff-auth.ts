@@ -1,6 +1,7 @@
 import type { User } from "@supabase/supabase-js";
 import { createSupabaseAuthServerClient } from "@/lib/supabase-auth-server";
 import { env } from "@/lib/env";
+import { readStaffSessionStartedAt } from "@/lib/staff-session";
 
 export const STAFF_ROLES = ["ADMIN", "STAFF"] as const;
 export type StaffRole = (typeof STAFF_ROLES)[number];
@@ -22,19 +23,6 @@ export function hasStaffRole(role: StaffRole, required: StaffRole) {
   return required === "STAFF" || role === "ADMIN";
 }
 
-function readIssuedAt(accessToken: string) {
-  try {
-    const payload = accessToken.split(".")[1];
-    if (!payload) return null;
-    const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
-      iat?: unknown;
-    };
-    return typeof parsed.iat === "number" ? parsed.iat : null;
-  } catch {
-    return null;
-  }
-}
-
 export async function getStaffAuth(requiredRole: StaffRole = "STAFF"): Promise<StaffAuth | null> {
   try {
     const supabase = await createSupabaseAuthServerClient();
@@ -43,10 +31,10 @@ export async function getStaffAuth(requiredRole: StaffRole = "STAFF"): Promise<S
 
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !sessionData.session) return null;
-    const issuedAt = readIssuedAt(sessionData.session.access_token);
+    const sessionStartedAt = readStaffSessionStartedAt(sessionData.session.access_token);
     if (
-      issuedAt === null ||
-      Math.floor(Date.now() / 1000) - issuedAt > env.STAFF_SESSION_MAX_AGE_SECONDS
+      sessionStartedAt === null ||
+      Math.floor(Date.now() / 1000) - sessionStartedAt > env.STAFF_SESSION_MAX_AGE_SECONDS
     ) {
       await supabase.auth.signOut();
       return null;

@@ -114,6 +114,34 @@ async function loadRouteWithBackupRows() {
           },
         ]),
       },
+      reservationManagementToken: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "management-token-1",
+            reservationId: "reservation-1",
+            tokenHash: "management-hash-only",
+            keyId: "v1",
+            expiresAt: new Date("2026-05-21T00:00:00.000Z"),
+            revokedAt: null,
+            createdAt: new Date("2026-04-01T00:00:00.000Z"),
+          },
+        ]),
+      },
+      reservationIdempotency: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "idempotency-1",
+            idempotencyKey: "public-idempotency-key",
+            requestHash: "request-hash",
+            responseStatus: 200,
+            responseBody: { reservationId: "reservation-1", managementTokenIssued: true },
+            reservationId: "reservation-1",
+            tokenKeyId: "v1",
+            createdAt: new Date("2026-04-01T00:00:00.000Z"),
+            updatedAt: new Date("2026-04-01T00:00:00.000Z"),
+          },
+        ]),
+      },
       notificationEvent: {
         findMany: vi.fn().mockResolvedValue([
           {
@@ -345,7 +373,7 @@ describe("backup export auth boundary", () => {
     expect(response.headers.get("cache-control")).toBe("no-store");
     const body = await response.json();
     expect(body).toMatchObject({
-      schemaVersion: 3,
+      schemaVersion: 4,
       range: {
         from: "2026-04-21",
         to: "2026-04-21",
@@ -365,6 +393,12 @@ describe("backup export auth boundary", () => {
       reservationStatusAuditLogs: [{ id: "status-audit-1" }],
       reservationEmailOutbox: [{ id: "email-outbox-1" }],
       reservationLineLinkTokens: [{ id: "link-token-1", tokenHash: "hash-only" }],
+      reservationManagementTokens: [
+        { id: "management-token-1", tokenHash: "management-hash-only" },
+      ],
+      reservationIdempotencyRecords: [
+        { id: "idempotency-1", reservationId: "reservation-1" },
+      ],
       notificationEvents: [{ id: "notification-event-1" }],
       checksumSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
       requestId: "test-request-id",

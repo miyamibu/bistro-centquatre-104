@@ -28,6 +28,8 @@ const baseReleaseEnv: Record<string, string> = {
 
 const completeMailEnv: Record<string, string> = {
   DIRECT_URL: "postgresql://bistro:bistro@127.0.0.1:5432/bistro",
+  NEXT_PUBLIC_APP_URL: "https://bistro.invalid",
+  PRODUCTION_HOST_PROVIDER: "netlify",
   STORE_NOTIFY_EMAIL: "operations@bistro.invalid",
   EMAIL_PROVIDER: "resend",
   EMAIL_FROM: "reservations@bistro.invalid",
@@ -96,6 +98,34 @@ describe("release safety environment contract", () => {
 
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain("Required env and mail configuration checks passed.");
+  });
+
+  it("rejects commercial production traffic on Vercel Hobby", () => {
+    const result = runReleaseCheck("production", {
+      set: {
+        ...completeMailEnv,
+        BASE_URL: "https://bistro-centquatre-104.vercel.app",
+        NEXT_PUBLIC_APP_URL: "https://bistro-centquatre-104.vercel.app",
+        PRODUCTION_HOST_PROVIDER: "vercel",
+        VERCEL_PLAN: "hobby",
+      },
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("must be netlify");
+    expect(result.stderr).toContain("must not point commercial production traffic to Vercel Hobby");
+  });
+
+  it("rejects mismatched public and server origins", () => {
+    const result = runReleaseCheck("preview", {
+      set: {
+        ...completeMailEnv,
+        NEXT_PUBLIC_APP_URL: "https://other-bistro.invalid",
+      },
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("must use the same origin");
   });
 
   it.each([

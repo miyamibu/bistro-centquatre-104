@@ -256,6 +256,54 @@ create index if not exists idx_order_notification_outbox_order
   on public.order_notification_outbox (order_id, created_at desc);
 create index if not exists idx_bank_account_history_changed_at on public.bank_account_history (changed_at desc);
 
+create table if not exists public."SchedulerHeartbeat" (
+  "id" text primary key,
+  "schedulerKind" text not null,
+  "lane" text not null,
+  "lastStartedAt" timestamp(3) not null,
+  "lastSuccessAt" timestamp(3),
+  "lastFailureAt" timestamp(3),
+  "processedCount" integer not null default 0,
+  "retryCount" integer not null default 0,
+  "deadLetterCount" integer not null default 0,
+  "backlogCount" integer not null default 0,
+  "oldestBacklogAt" timestamp(3),
+  "lastRunId" text,
+  "lastProviderCronAt" timestamp(3),
+  "immediateAttempts" integer not null default 0,
+  "immediateSuccesses" integer not null default 0,
+  "lastErrorCode" text,
+  "createdAt" timestamp(3) not null default current_timestamp,
+  "updatedAt" timestamp(3) not null
+);
+
+create unique index if not exists "SchedulerHeartbeat_schedulerKind_lane_key"
+  on public."SchedulerHeartbeat" ("schedulerKind", "lane");
+create index if not exists "SchedulerHeartbeat_lane_updatedAt_idx"
+  on public."SchedulerHeartbeat" ("lane", "updatedAt");
+
+create table if not exists public."OutboxDrainAuditLog" (
+  "id" text primary key,
+  "actorUserId" text not null,
+  "actorEmail" text,
+  "actorRole" text not null,
+  "requestId" text not null,
+  "lane" text not null,
+  "dryRun" boolean not null,
+  "requestedLimit" integer not null,
+  "scannedCount" integer not null,
+  "sentCount" integer not null,
+  "failedCount" integer not null,
+  "deadLetterCount" integer not null,
+  "backlogCount" integer not null,
+  "createdAt" timestamp(3) not null default current_timestamp
+);
+
+create index if not exists "OutboxDrainAuditLog_createdAt_idx"
+  on public."OutboxDrainAuditLog" ("createdAt");
+create index if not exists "OutboxDrainAuditLog_actorUserId_createdAt_idx"
+  on public."OutboxDrainAuditLog" ("actorUserId", "createdAt");
+
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql

@@ -7,6 +7,7 @@ import {
   ExternalLink,
   FilePenLine,
   LayoutDashboard,
+  RefreshCcw,
   Store,
   Utensils,
 } from "lucide-react";
@@ -27,6 +28,14 @@ type ManagementLink = {
 };
 
 const managementLinks: ManagementLink[] = [
+  {
+    title: "通知Outbox",
+    href: "/admin/outbox" as Route,
+    label: "通知運用",
+    description: "scheduler heartbeat、滞留件数、手動再処理を確認します。",
+    icon: RefreshCcw,
+    primary: true,
+  },
   {
     title: "日々の出来事を書く",
     href: "/admin/daily-journal",

@@ -71,7 +71,6 @@ const envSchema = z
     BACKUP_ENCRYPTION_KEYS_JSON: optionalString,
     BACKUP_ENCRYPTION_ACTIVE_KEY_ID: optionalString,
     STAFF_SESSION_MAX_AGE_SECONDS: z.coerce.number().int().min(900).max(86400).default(28800),
-    SELF_SERVICE_CANCELLATION_CUTOFF_HOURS: z.coerce.number().int().min(1).max(168).default(24),
     PRIVATE_BLOCK_ACCESS_CODE: optionalString,
     BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY: optionalString,
     BANK_ACCOUNT_HISTORY_KEY_VERSION: z.coerce.number().int().positive().optional().default(1),
