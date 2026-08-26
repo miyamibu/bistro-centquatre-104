@@ -19,6 +19,7 @@ describe("production-go regression contracts", () => {
     const reserveForm = source("src/components/reserve-form.tsx");
     expect(reserveForm).toContain("findFirstWebBookableDate(currentPeriodDays, form.date)");
     expect(reserveForm).toContain("initialFutureDateSearchStartedRef");
+    expect(reserveForm).toContain("AVAILABILITY_REQUEST_TIMEOUT_MS = 20_000");
   });
 
   it("does not make future workspace bundles capture every Git ref", () => {

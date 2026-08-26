@@ -158,7 +158,9 @@ const nonSelectableReasons = new Set([
 ]);
 const servicePeriods: ReservationServicePeriodKey[] = ["LUNCH", "DINNER"];
 const LIFF_OPERATION_TIMEOUT_MS = 10_000;
-const AVAILABILITY_REQUEST_TIMEOUT_MS = 10_000;
+// Netlify Free cold starts plus the first Supabase pooler connection can exceed
+// ten seconds when the daily and two monthly requests start together.
+const AVAILABILITY_REQUEST_TIMEOUT_MS = 20_000;
 
 function createReservationIdempotencyKey() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
