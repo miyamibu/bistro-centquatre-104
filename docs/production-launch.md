@@ -118,6 +118,8 @@ Supabase notes:
 1. The Supabase project must be resumed and reachable before launch.
 2. `NEXT_PUBLIC_SUPABASE_URL` must be the real project URL, not a placeholder.
 3. `SUPABASE_SERVICE_ROLE_KEY` must be the real service role key.
+4. When `DATABASE_URL` uses the Supabase transaction pooler on port `6543`, append `pgbouncer=true&connection_limit=1`. Without both parameters, serverless concurrency can fail with PostgreSQL `42P05` prepared-statement collisions.
+5. Keep `DIRECT_URL` on the direct/session port (normally `5432`); never run Prisma migrations through transaction-pooler port `6543`.
 
 ## Preview environment
 
@@ -144,6 +146,7 @@ Safe default:
 1. Use a preview or staging database instead of the live production database
 2. Use preview/staging Supabase credentials instead of the production service role key
 3. Keep Preview verification read-only when possible
+4. If a branch-specific Netlify environment value exists, update it together with the shared `deploy-preview` value because the branch value takes precedence.
 
 ## One-time database preparation
 
