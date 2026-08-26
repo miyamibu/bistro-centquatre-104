@@ -127,6 +127,9 @@ describe("production-go regression contracts", () => {
     const migration = source(
       "prisma/migrations/20260826130000_expired_line_link_token_cleanup/migration.sql",
     );
+    const previewGrant = source(
+      "prisma/migrations/20260826131000_grant_preview_line_link_cleanup/migration.sql",
+    );
 
     expect(route).toContain("cleanup_expired_reservation_line_link_tokens");
     expect(route).not.toContain("reservationLineLinkToken.deleteMany");
@@ -136,6 +139,8 @@ describe("production-go regression contracts", () => {
     expect(migration).toContain("FOR UPDATE SKIP LOCKED");
     expect(migration).toContain("REVOKE ALL ON FUNCTION");
     expect(migration).toContain("TO bistro_app_runtime");
+    expect(previewGrant).toContain("current_database() = 'bistro_preview'");
+    expect(previewGrant).toContain("TO bistro_preview_runtime");
   });
 
   it("records LINE reminder scheduler outcomes and rate-limits availability reads", () => {
