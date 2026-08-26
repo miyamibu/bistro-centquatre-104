@@ -366,6 +366,50 @@ function validateProductionHost(mode, envMap) {
   return errors;
 }
 
+function validateDatabaseConnections(mode, envMap) {
+  if (mode === "local-build") return [];
+
+  const errors = [];
+  let databaseUrl;
+  let directUrl;
+
+  try {
+    databaseUrl = new URL(envMap.DATABASE_URL ?? "");
+  } catch {
+    errors.push("DATABASE_URL must be a valid PostgreSQL URL");
+  }
+
+  try {
+    directUrl = new URL(envMap.DIRECT_URL ?? "");
+  } catch {
+    errors.push("DIRECT_URL must be a valid PostgreSQL URL");
+  }
+
+  const usesSupabaseTransactionPooler =
+    databaseUrl?.hostname.endsWith(".pooler.supabase.com") && databaseUrl.port === "6543";
+
+  if (usesSupabaseTransactionPooler) {
+    if (databaseUrl.searchParams.get("pgbouncer") !== "true") {
+      errors.push(
+        "DATABASE_URL must set pgbouncer=true when using the Supabase transaction pooler on port 6543",
+      );
+    }
+    if (databaseUrl.searchParams.get("connection_limit") !== "1") {
+      errors.push(
+        "DATABASE_URL must set connection_limit=1 for the serverless Supabase transaction pooler",
+      );
+    }
+  }
+
+  if (directUrl?.hostname.endsWith(".pooler.supabase.com") && directUrl.port === "6543") {
+    errors.push(
+      "DIRECT_URL must not use the Supabase transaction pooler on port 6543; use the direct/session port for migrations",
+    );
+  }
+
+  return errors;
+}
+
 function getGitAuthorEmail() {
   try {
     return execSync("git config user.email", {
@@ -446,6 +490,7 @@ const emailConfigurationErrors = validateEmailConfiguration(envMap, enforceRealS
 const vercelCronErrors = validateVercelCronPlan(envMap);
 const deploymentEmailProviderErrors = validateDeploymentEmailProvider(mode, envMap);
 const productionHostErrors = validateProductionHost(mode, envMap);
+const databaseConnectionErrors = validateDatabaseConnections(mode, envMap);
 const missingRecommended = recommendedKeys.filter((key) => !envMap[key] || envMap[key].trim() === "");
 
 printSection(`Release safety check (${mode})`);
@@ -481,6 +526,10 @@ if (productionHostErrors.length > 0) {
   console.error(`Invalid production host configuration: ${productionHostErrors.join("; ")}`);
 }
 
+if (databaseConnectionErrors.length > 0) {
+  console.error(`Invalid database connection configuration: ${databaseConnectionErrors.join("; ")}`);
+}
+
 if (missingRecommended.length > 0) {
   console.warn(`Recommended env keys are unset: ${missingRecommended.join(", ")}`);
 }
@@ -513,7 +562,8 @@ if (
   emailConfigurationErrors.length > 0 ||
   deploymentEmailProviderErrors.length > 0 ||
   vercelCronErrors.length > 0 ||
-  productionHostErrors.length > 0
+  productionHostErrors.length > 0 ||
+  databaseConnectionErrors.length > 0
 ) {
   process.exit(1);
 }

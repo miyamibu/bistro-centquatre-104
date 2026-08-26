@@ -111,6 +111,61 @@ describe("release safety environment contract", () => {
     expect(result.stdout).toContain("Required env and mail configuration checks passed.");
   });
 
+  it.each(["preview", "production"] as const)(
+    "accepts a Supabase transaction-pooler runtime URL with Prisma compatibility parameters for %s",
+    (mode) => {
+      const result = runReleaseCheck(mode, {
+        set: {
+          ...completeMailEnv,
+          DATABASE_URL:
+            "postgresql://runtime:password@aws-1-ap-south-1.pooler.supabase.com:6543/bistro?pgbouncer=true&connection_limit=1",
+          DIRECT_URL:
+            "postgresql://owner:password@aws-1-ap-south-1.pooler.supabase.com:5432/bistro",
+        },
+      });
+
+      expect(result.status, result.stderr).toBe(0);
+    },
+  );
+
+  it.each([
+    {
+      name: "missing pgbouncer mode",
+      databaseUrl:
+        "postgresql://runtime:password@aws-1-ap-south-1.pooler.supabase.com:6543/bistro?connection_limit=1",
+      expected: "pgbouncer=true",
+    },
+    {
+      name: "missing serverless connection limit",
+      databaseUrl:
+        "postgresql://runtime:password@aws-1-ap-south-1.pooler.supabase.com:6543/bistro?pgbouncer=true",
+      expected: "connection_limit=1",
+    },
+  ])("rejects a Supabase transaction-pooler DATABASE_URL with $name", ({ databaseUrl, expected }) => {
+    const result = runReleaseCheck("preview", {
+      set: {
+        ...completeMailEnv,
+        DATABASE_URL: databaseUrl,
+      },
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(expected);
+  });
+
+  it("rejects DIRECT_URL on the Supabase transaction-pooler port", () => {
+    const result = runReleaseCheck("production", {
+      set: {
+        ...completeMailEnv,
+        DIRECT_URL:
+          "postgresql://owner:password@aws-1-ap-south-1.pooler.supabase.com:6543/bistro?pgbouncer=true&connection_limit=1",
+      },
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("DIRECT_URL must not use the Supabase transaction pooler");
+  });
+
   it("rejects commercial production traffic on Vercel Hobby", () => {
     const result = runReleaseCheck("production", {
       set: {
