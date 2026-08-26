@@ -19,8 +19,15 @@ import { buildOrderActorKey } from "@/lib/order-identity";
 import { validatePayInStoreVisitDate } from "@/lib/order-rules";
 import { getPublishedStoreProduct } from "@/lib/store-products";
 import { getRequestId, logError, logInfo, logWarn } from "@/lib/logger";
+import { prisma } from "@/lib/prisma";
+import { enforceScopedRateLimit } from "@/lib/reservation-rate-limit";
+import { getClientIp, hashClientIp } from "@/lib/request-meta";
 
 export const dynamic = "force-dynamic";
+
+const ORDER_CREATE_RATE_LIMIT_SCOPE = "ORDER_CREATE";
+const ORDER_CREATE_RATE_LIMIT_WINDOW_SECONDS = 10 * 60;
+const ORDER_CREATE_RATE_LIMIT_MAX = 20;
 
 function getIdempotencyKey(request: NextRequest) {
   return request.headers.get("idempotency-key")?.trim() ?? "";
@@ -64,6 +71,49 @@ export async function POST(request: NextRequest) {
         fields: zodFields(parsed.error),
         requestId,
       });
+    }
+
+    try {
+      const allowed = await enforceScopedRateLimit(prisma, {
+        keyHash: hashClientIp(getClientIp(request)),
+        scope: ORDER_CREATE_RATE_LIMIT_SCOPE,
+        windowMs: ORDER_CREATE_RATE_LIMIT_WINDOW_SECONDS * 1_000,
+        limit: ORDER_CREATE_RATE_LIMIT_MAX,
+      });
+      if (!allowed) {
+        return apiError(
+          429,
+          {
+            ok: false,
+            error: "注文リクエストが集中しています。時間をおいて再試行してください。",
+            code: "RATE_LIMITED",
+            requestId,
+          },
+          {
+            headers: {
+              "Cache-Control": "private, no-store",
+              "Retry-After": String(ORDER_CREATE_RATE_LIMIT_WINDOW_SECONDS),
+            },
+          },
+        );
+      }
+    } catch (error) {
+      logError("orders.rate_limit.failed", {
+        requestId,
+        route,
+        errorCode: "RATE_LIMIT_CHECK_FAILED",
+        context: { message: error instanceof Error ? error.message : String(error) },
+      });
+      return apiError(
+        503,
+        {
+          ok: false,
+          error: "注文受付を一時停止しています。時間をおいて再試行してください。",
+          code: "RATE_LIMIT_CHECK_FAILED",
+          requestId,
+        },
+        { headers: { "Cache-Control": "private, no-store" } },
+      );
     }
 
     const input = parsed.data;

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Route } from "next";
+import { redirect } from "next/navigation";
 import { addDays, addMonths, format, getDay, getDaysInMonth, startOfMonth, subMonths } from "date-fns";
 import { Prisma, ReservationStatus } from "@prisma/client";
 import AdminReservationsTable, {
@@ -16,6 +17,7 @@ import {
   isReservationSchemaNotReadyError,
 } from "@/lib/reservation-compat";
 import { RESERVATION_CONFIG } from "@/lib/reservation-config";
+import { getStaffAuth } from "@/lib/staff-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -71,6 +73,10 @@ export default async function AdminReservations({
 }: {
   searchParams: Promise<{ date?: string }>;
 }) {
+  if (!(await getStaffAuth())) {
+    redirect("/admin/login?error=staff_role_required&next=/admin/reservations");
+  }
+
   const resolvedSearchParams = await searchParams;
   const defaultDate = formatJst(new Date());
   const date = normalizeAdminReservationDateInput(resolvedSearchParams.date, defaultDate);

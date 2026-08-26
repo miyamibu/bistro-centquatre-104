@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
 
-export const RESERVATION_IDEMPOTENCY_KEY_MAX_LENGTH = 255;
+export const RESERVATION_IDEMPOTENCY_KEY_MAX_LENGTH = 256;
 
 type ReservationIdempotencyClient = PrismaClient | Prisma.TransactionClient;
 

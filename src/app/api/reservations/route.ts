@@ -74,7 +74,9 @@ const RESERVATION_TRANSACTION_MAX_WAIT_MS = 5_000;
 const RESERVATION_TRANSACTION_TIMEOUT_MS = 20_000;
 
 function getReservationManagementBaseUrl(request: NextRequest) {
-  return resolveReservationManagementBaseUrl(request.nextUrl.origin) ?? request.nextUrl.origin;
+  // readLimitedJson has already validated this browser Origin against the current deploy.
+  const requestOrigin = request.headers.get("origin")?.trim() || request.nextUrl.origin;
+  return resolveReservationManagementBaseUrl(requestOrigin) ?? request.nextUrl.origin;
 }
 
 type ReservationLineNotification = {
@@ -229,7 +231,7 @@ export async function POST(request: NextRequest) {
   if (!isValidReservationIdempotencyKey(idempotencyKey)) {
     return apiError(400, {
       error: idempotencyKey
-        ? "Idempotency-Key は255文字以内で指定してください"
+        ? "Idempotency-Key は256文字以内で指定してください"
         : "Idempotency-Key が必要です",
       code: idempotencyKey ? "INVALID_IDEMPOTENCY_KEY" : "MISSING_IDEMPOTENCY_KEY",
       requestId,

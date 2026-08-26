@@ -1,4 +1,6 @@
 import { supabaseServer } from "@/lib/supabase-server";
+import { redirect } from "next/navigation";
+import { getStaffAuth } from "@/lib/staff-auth";
 import { OrdersClient } from "./orders-client";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +12,10 @@ const ORDER_LIST_SELECT =
   "id, customer_name, email, phone, zip_code, prefecture, city, address, building, payment_method, items, total, store_visit_date, status, version, created_at";
 
 export default async function DashboardOrdersPage() {
+  if (!(await getStaffAuth())) {
+    redirect("/admin/login?error=staff_role_required&next=/dashboard/orders");
+  }
+
   const [ordersResult, bankAccountResult] = await Promise.all([
     supabaseServer
       .from("orders")

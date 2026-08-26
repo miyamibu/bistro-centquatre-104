@@ -34,12 +34,12 @@ export function buildReservationManagementUrl(baseUrl: string, rawToken: string)
 }
 
 /** Prefer the current Netlify deploy origin so Preview links stay in their own isolated context. */
-export function resolveReservationManagementBaseUrl(fallback?: string) {
+export function resolveReservationManagementBaseUrl(preferredOrigin?: string) {
   const candidates = [
+    preferredOrigin,
     process.env.DEPLOY_PRIME_URL,
     process.env.BASE_URL,
     process.env.NEXT_PUBLIC_APP_URL,
-    fallback,
   ];
 
   for (const candidate of candidates) {

@@ -64,11 +64,14 @@ describe("reservation management token", () => {
     expect(parsed.hash).toBe(`#token=${encodeURIComponent(token)}`);
   });
 
-  it("prefers the current Netlify deploy origin for preview-safe management links", () => {
+  it("prefers a validated request origin for preview-safe management links", () => {
     vi.stubEnv("DEPLOY_PRIME_URL", "https://deploy-preview-2--bistro.example/some-path");
     vi.stubEnv("BASE_URL", "https://bistro.example");
 
-    expect(resolveReservationManagementBaseUrl("http://localhost:3000")).toBe(
+    expect(resolveReservationManagementBaseUrl("https://request-preview--bistro.example/path")).toBe(
+      "https://request-preview--bistro.example",
+    );
+    expect(resolveReservationManagementBaseUrl()).toBe(
       "https://deploy-preview-2--bistro.example",
     );
 

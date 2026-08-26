@@ -136,16 +136,21 @@ describe("deployment and documentation contracts", () => {
     expect(page).toContain(".range(0, ORDER_LIST_LIMIT - 1)");
     expect(orderQuery(route)).not.toContain('select("*")');
     expect(orderQuery(page)).not.toContain('select("*")');
+    expect(page).toContain("getStaffAuth");
+    expect(page).toContain("redirect(\"/admin/login");
   });
 
   it("bounds admin reservation reads and keeps the PII projection explicit", () => {
     const route = readSource("src/app/api/admin/reservations/route.ts");
+    const page = readSource("src/app/admin/reservations/page.tsx");
 
     expect(route).toContain("const MAX_PAGE_SIZE = 100");
     expect(route).toContain("const MAX_PAGE = 1_000");
     expect(route).toContain("select: ADMIN_RESERVATION_LIST_SELECT");
     expect(route).toContain("skip: (page - 1) * pageSize");
     expect(route).toContain("take: pageSize");
+    expect(page).toContain("getStaffAuth");
+    expect(page).toContain("redirect(\"/admin/login");
   });
 
   it("uses the bounded JSON reader across both order write APIs", () => {
@@ -158,6 +163,10 @@ describe("deployment and documentation contracts", () => {
       expect(route).toContain("IDEMPOTENCY_KEY_TOO_LONG");
       expect(route).not.toContain("request.json()");
     }
+
+    expect(createRoute).toContain("ORDER_CREATE_RATE_LIMIT_SCOPE");
+    expect(createRoute).toContain("enforceScopedRateLimit");
+    expect(createRoute).toContain('code: "RATE_LIMIT_CHECK_FAILED"');
   });
 
   it("keeps completion navigation server-backed without putting its bearer token in a query", () => {
