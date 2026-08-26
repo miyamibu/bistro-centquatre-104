@@ -37,7 +37,10 @@ export function OutboxOperationsPanel() {
   const dialogRef = useRef<HTMLDivElement>(null);
 
   const loadStatus = useCallback(async () => {
-    const response = await fetch("/api/admin/outbox/status", { cache: "no-store" });
+    const response = await fetch("/api/admin/outbox/status", {
+      cache: "no-store",
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+    });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error ?? "状態取得に失敗しました");
     setStatus(body as StatusPayload);

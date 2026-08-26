@@ -38,6 +38,7 @@ const envSchema = z
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     DATABASE_URL: optionalString,
     BASE_URL: optionalUrl,
+    NEXT_PUBLIC_APP_URL: optionalUrl,
     STORE_NOTIFY_EMAIL: optionalEmail,
     EMAIL_PROVIDER: z.enum(["resend", "sendgrid"]).optional(),
     EMAIL_API_KEY: optionalString,

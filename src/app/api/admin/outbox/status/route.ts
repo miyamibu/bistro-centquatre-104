@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { enforceReadRequestSecurity } from "@/lib/api-security";
 import { getStaffAuth } from "@/lib/staff-auth";
 import {
   getOrderNotificationOutboxBacklog,
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 const HEARTBEAT_WARNING_MS = 15 * 60 * 1000;
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const staff = await getStaffAuth("ADMIN");
   if (!staff) {
     return NextResponse.json(
@@ -18,6 +19,9 @@ export async function GET() {
       { status: 401, headers: { "Cache-Control": "private, no-store" } },
     );
   }
+
+  const requestSecurityError = enforceReadRequestSecurity(request);
+  if (requestSecurityError) return requestSecurityError;
 
   const [heartbeats, reservation, order] = await Promise.all([
     listSchedulerHeartbeats(),

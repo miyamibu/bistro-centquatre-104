@@ -52,4 +52,25 @@ The parent checked every proposed issue against the target source, tests, config
 
 ## Independent-review boundary
 
-The session must re-review the convergence commit in a fresh detached worktree. Preview, physical-device UI, live scheduler, deployment, rollback, merge, and public production remain separate gates.
+The session re-reviewed convergence commit `3e1dcf5d6f1807676c583c2c7105816c2e1e9032` from `/tmp/bistro-nemotron-convergence.vWRrnC` after first verifying the exact detached HEAD.
+
+## First convergence counter-review
+
+- Model/session: `opencode/nemotron-3-ultra-free` / `ses_fc3d15ca8ffeqy86wTmvPhpYrz`
+- Target: `3e1dcf5d6f1807676c583c2c7105816c2e1e9032`
+- Started/completed: `2026-08-26T17:26:59+0900` / `2026-08-26T17:28:36+0900`
+- Raw final text SHA-256: `9f4e16b93b8778af1d2217ed620a9a2fa7c78189261bea4631f159e18ade84c0`
+- Raw verdict: `REVIEW_STATUS: INCOMPLETE`, `VERDICT: NO_GO`, with 1 P0 and 3 P1 retained
+
+The auditor formally withdrew P0-1, P0-3, P1-6, P1-7/P2-5, P2-1, P2-2, P2-3, and P3-2. It retained missing-AMR fail-closed, missing management URL, authenticated status GET request hardening, and LINE-unconfigured reminder recovery.
+
+### Parent convergence after the counter-review
+
+| Retained ID | Final parent action |
+| --- | --- |
+| P0-2 / P2-4 | Security fail-closed remains intentional. Supabase documents AMR as method/timestamp history including `token_refresh`; using refreshed `iat` would reintroduce unlimited session extension. Missing history forces reauthentication and is regression-tested. Availability does not override the fixed absolute-session security requirement. |
+| P1-1 | Accepted as recoverability hardening. `NEXT_PUBLIC_APP_URL` is now a safe origin fallback, and `MISSING_MANAGEMENT_URL` schedules bounded Outbox retry instead of permanent `SKIPPED`. The email is still not sent in an incomplete state. |
+| P1-2 | Accepted as defense in depth. The authenticated status GET now rejects cross-site requests and requires the XMLHttpRequest marker; the UI sends the marker. Unauthorized clients still receive 401 before operational data is loaded. |
+| P1-3 | Accepted as scheduler resilience, not cursor mutation. The reminder workflow now runs at 03:17, 04:17, and 05:17 JST on the same date, so transient configuration/provider failure has two bounded recovery windows. Durable claim/retry keys keep successful repeats idempotent. The auditor's claim that a run five minutes later targets another date was factually incorrect. |
+
+The final convergence commit must receive one more read-only pass from the same named model/session. Preview, physical-device UI, live scheduler, deployment, rollback, merge, and public production remain separate gates.

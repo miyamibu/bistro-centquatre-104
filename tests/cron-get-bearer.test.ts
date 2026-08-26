@@ -148,7 +148,7 @@ describe("remind schedule", () => {
       "utf-8",
     );
     expect(vercelJson.crons).toBeUndefined();
-    expect(workflow).toContain('cron: "17 18 * * *"');
+    expect(workflow).toContain('cron: "17 18,19,20 * * *"');
     expect(workflow).toContain("while (( reminder_pages < 4 ))");
     expect(workflow).toContain("nextCursor");
   });

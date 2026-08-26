@@ -2,8 +2,10 @@ name: Production daily maintenance
 
 on:
   schedule:
-    # 18:17 UTC = 03:17 JST on the following calendar day.
-    - cron: "17 18 * * *"
+    # 18:17/19:17/20:17 UTC = 03:17/04:17/05:17 JST. Repeated same-day
+    # windows recover from a transient provider/configuration outage; durable
+    # reminder claims and retry keys keep successful deliveries idempotent.
+    - cron: "17 18,19,20 * * *"
   workflow_dispatch:
 
 permissions:

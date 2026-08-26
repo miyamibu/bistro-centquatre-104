@@ -3,12 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   findMany: vi.fn(),
   findFirst: vi.fn(),
+  idempotencyFindFirst: vi.fn(),
   findUnique: vi.fn(),
   findUniqueOrThrow: vi.fn(),
   updateMany: vi.fn(),
   upsert: vi.fn(),
   create: vi.fn(),
   sendReservationEmail: vi.fn(),
+  sendCustomerReservationEmail: vi.fn(),
   sendCustomerReservationStatusEmail: vi.fn(),
   logError: vi.fn(),
   logInfo: vi.fn(),
@@ -22,12 +24,15 @@ vi.mock("@/lib/prisma", () => ({
       findFirst: mocks.findFirst,
       updateMany: mocks.updateMany,
     },
+    reservationIdempotency: {
+      findFirst: mocks.idempotencyFindFirst,
+    },
   },
 }));
 
 vi.mock("@/lib/email", () => ({
   sendReservationEmail: mocks.sendReservationEmail,
-  sendCustomerReservationEmail: vi.fn(),
+  sendCustomerReservationEmail: mocks.sendCustomerReservationEmail,
   sendCustomerReservationStatusEmail: mocks.sendCustomerReservationStatusEmail,
 }));
 
@@ -75,6 +80,14 @@ beforeEach(() => {
   mocks.sendCustomerReservationStatusEmail.mockResolvedValue({
     sent: true,
     provider: "resend",
+  });
+  mocks.sendCustomerReservationEmail.mockResolvedValue({
+    sent: true,
+    provider: "resend",
+  });
+  mocks.idempotencyFindFirst.mockResolvedValue({
+    idempotencyKey: "reservation-request-key",
+    tokenKeyId: "v1",
   });
 });
 
@@ -321,6 +334,51 @@ describe("reservation confirmation email outbox", () => {
           lastError: "DELIVERY_MISSING_ENV",
         }),
       })
+    );
+  });
+
+  it("retries a customer confirmation when its management URL cannot be built", async () => {
+    mocks.findFirst.mockResolvedValue(
+      claimedRow({
+        notificationType: "CUSTOMER_CONFIRMATION",
+        reservation: {
+          id: "reservation-1",
+          reservationType: "NORMAL",
+          status: "CONFIRMED",
+          customerEmail: "guest@example.com",
+        },
+      }),
+    );
+    mocks.idempotencyFindFirst.mockResolvedValue(null);
+    mocks.sendCustomerReservationEmail.mockResolvedValue({
+      skipped: true,
+      reason: "MISSING_MANAGEMENT_URL",
+    });
+    const { processReservationEmailOutbox } = await import(
+      "@/lib/reservation-email-outbox"
+    );
+
+    const summary = await processReservationEmailOutbox({
+      requestId: "request-missing-management-url",
+    });
+
+    expect(summary).toMatchObject({
+      scanned: 1,
+      sent: 0,
+      failed: 1,
+      deadLetter: 0,
+      skipped: 0,
+      unsafe: 0,
+    });
+    expect(mocks.updateMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "PENDING",
+          nextAttemptAt: new Date("2026-07-28T09:01:00.000Z"),
+          lastError: "DELIVERY_MISSING_MANAGEMENT_URL",
+        }),
+      }),
     );
   });
 

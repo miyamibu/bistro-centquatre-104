@@ -77,6 +77,7 @@ describe("production-go regression contracts", () => {
     expect(outboxWorkflow).toContain('cron: "2-57/5 * * * *"');
     expect(outboxWorkflow).toContain("workflow_dispatch:");
     expect(outboxWorkflow).toContain("runs-on: ubuntu-latest");
+    expect(maintenanceWorkflow).toContain('cron: "17 18,19,20 * * *"');
     expect(outboxWorkflow).not.toMatch(/actions\/checkout|actions\/cache|upload-artifact/i);
     expect(outboxWorkflow).toContain("--max-time 30");
     expect(maintenanceWorkflow).toContain("while (( reminder_pages < 4 ))");

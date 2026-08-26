@@ -46,6 +46,16 @@ function request(body: Record<string, unknown>, headers: Record<string, string> 
   });
 }
 
+function statusRequest(headers: Record<string, string> = {}) {
+  return new NextRequest("https://bistro.example/api/admin/outbox/status", {
+    method: "GET",
+    headers: {
+      "x-requested-with": "XMLHttpRequest",
+      ...headers,
+    },
+  });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.getStaffAuth.mockResolvedValue({
@@ -141,12 +151,36 @@ describe("admin outbox operations", () => {
       },
     ]);
     const { GET } = await import("@/app/api/admin/outbox/status/route");
-    const response = await GET();
+    const response = await GET(statusRequest());
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       warning: true,
       staleLanes: ["RESERVATION_EMAIL", "ORDER_NOTIFICATION"],
     });
+  });
+
+  it("rejects a cross-site status read before loading operational data", async () => {
+    const { GET } = await import("@/app/api/admin/outbox/status/route");
+    const response = await GET(statusRequest({
+      origin: "https://evil.example",
+      "sec-fetch-site": "cross-site",
+    }));
+
+    expect(response.status).toBe(403);
+    expect(mocks.heartbeatList).not.toHaveBeenCalled();
+    expect(mocks.reservationBacklog).not.toHaveBeenCalled();
+    expect(mocks.orderBacklog).not.toHaveBeenCalled();
+  });
+
+  it("requires an XMLHttpRequest marker for an authenticated status read", async () => {
+    const { GET } = await import("@/app/api/admin/outbox/status/route");
+    const response = await GET(statusRequest({ "x-requested-with": "" }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "MISSING_REQUEST_HEADER",
+    });
+    expect(mocks.heartbeatList).not.toHaveBeenCalled();
   });
 });

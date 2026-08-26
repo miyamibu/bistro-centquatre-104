@@ -315,7 +315,7 @@ async function buildCustomerManagementUrl(reservationId: string) {
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     select: { idempotencyKey: true, tokenKeyId: true },
   });
-  const baseUrl = env.BASE_URL?.trim();
+  const baseUrl = env.BASE_URL?.trim() || env.NEXT_PUBLIC_APP_URL?.trim();
   if (!idempotency || !baseUrl) return null;
 
   const rawToken = deriveReservationScopedToken(
@@ -582,7 +582,6 @@ async function processOutboxItem(
         reason === "PRIVATE_BLOCK" ||
         reason === "RESERVATION_NOT_CONFIRMED" ||
         reason === "MISSING_CUSTOMER_EMAIL" ||
-        reason === "MISSING_MANAGEMENT_URL" ||
         reason === "RESERVATION_STATUS_MISMATCH"
       ) {
         return markSkipped(`SKIPPED_${reason}`);

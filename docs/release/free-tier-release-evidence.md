@@ -47,7 +47,7 @@ Implementation/local evidence, provider evidence, Preview evidence, Production e
 | Production migration | PASS_DB | 23 Prisma migrations and Supabase SQL/RLS applied; `supabase/verify.sql` pass |
 | Runtime DB hardening | PASS_DB | no protected runtime DELETE/TRUNCATE or runtime DELETE policy; RLS/FKs/functions pass |
 | Dependency audit | PASS_LOCAL | `npm audit --omit=dev --audit-level=high`: 0 vulnerabilities |
-| Unit/static suite | PASS_LOCAL | 72 files pass, 3 skip; 530 tests pass, 11 safe skips; lint/typecheck pass |
+| Unit/static suite | PASS_LOCAL | 72 files pass, 3 skip; 533 tests pass, 11 safe skips; lint/typecheck pass |
 | Local DB suite | PASS_WITH_AUTH_EXCLUSION | 7 tests pass; 4 staff-MFA-cookie cases explicitly skipped; dedicated `bistro_test` only |
 | Next build | PASS_LOCAL | production build exits 0 |
 | Netlify compatibility | PASS_OFFLINE | SSR/API, Edge Middleware, and scheduled function bundle |
@@ -90,7 +90,7 @@ The local production build intentionally omitted public Supabase build variables
 | Manual/scheduled scheduler run | NOT_RUN | workflows are not on default branch and no live URL exists |
 | Account plan/usage screens | UNVERIFIED | Netlify/Supabase/Resend/LINE authenticated UI required |
 | Vercel traffic stop/alias | NOT_RUN | final target URL/provider controls required |
-| Nemotron post-fix audit | NO_GO_CONVERGENCE_IN_PROGRESS | exact model/session completed an independent detached-worktree audit; two valid defects are fixed, disputed findings have direct counter-evidence, and the convergence commit requires re-review |
+| Nemotron post-fix audit | NO_GO_FINAL_CONVERGENCE_IN_PROGRESS | exact model/session completed the detached audit and first convergence counter-review; withdrawn items are recorded, three retained P1 items received additional hardening, and missing-AMR remains intentionally fail-closed; final convergence commit requires one last pass |
 | PR merge/SHA alignment | NOT_RUN | preceding gates must pass |
 
 No production GO claim is permitted while any row above is not PASS.

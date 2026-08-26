@@ -31,7 +31,7 @@ Operate Bistro Cent Quatre 104 as a commercial production service without a paid
 ### Scheduler operations
 
 - Primary workflow: `.github/workflows/production-notification-outbox-drain.yml`
-- Daily maintenance: `.github/workflows/production-daily-maintenance.yml`
+- Daily maintenance: `.github/workflows/production-daily-maintenance.yml` at three bounded same-JST-day recovery windows
 - Provider failsafe: `netlify/functions/outbox-failsafe.mjs`
 - Heartbeat warning: no successful GitHub heartbeat for either lane in more than 15 minutes
 - Manual operations: `/admin/outbox`
