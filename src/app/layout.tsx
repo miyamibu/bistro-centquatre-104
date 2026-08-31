@@ -3,9 +3,19 @@ import "./globals.css";
 import { AppShell } from "@/components/app-shell";
 import { createPageMetadata, SITE_URL } from "@/lib/seo";
 
+const pageMetadata = createPageMetadata("/");
+
 export const metadata: Metadata = {
-  ...createPageMetadata("/"),
+  ...pageMetadata,
   metadataBase: new URL(SITE_URL),
+  alternates: {
+    ...pageMetadata.alternates,
+    types: {
+      "text/plain": "/llms.txt",
+      "text/html": "/agents",
+      "application/json": "/api/agent",
+    },
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -23,16 +33,11 @@ Do not put personal data in query strings.
 
   return (
     <html lang="ja">
-      <head>
-        <link rel="alternate" type="text/plain" href="/llms.txt" />
-        <link rel="alternate" type="text/html" href="/agents" />
-        <link rel="alternate" type="application/json" href="/api/agent" />
+      <body className="min-h-screen bg-white text-gray-900 [--header-h:0px]">
         <script
           type="text/llms.txt"
           dangerouslySetInnerHTML={{ __html: llmsInline }}
         />
-      </head>
-      <body className="min-h-screen bg-white text-gray-900 [--header-h:0px]">
         <AppShell>{children}</AppShell>
       </body>
     </html>

@@ -92,6 +92,16 @@ describe("public layout regression contracts", () => {
     );
   });
 
+  it("leaves head ownership to Next.js so Netlify production metadata cannot break hydration", () => {
+    expect(layoutSource).not.toContain("<head");
+    expect(layoutSource).toContain('"text/plain": "/llms.txt"');
+    expect(layoutSource).toContain('"text/html": "/agents"');
+    expect(layoutSource).toContain('"application/json": "/api/agent"');
+    expect(layoutSource.indexOf('type="text/llms.txt"')).toBeGreaterThan(
+      layoutSource.indexOf("<body")
+    );
+  });
+
   it("keeps protected and transaction-helper routes out of search metadata", () => {
     expect(NO_INDEX_METADATA).toMatchObject({
       robots: { index: false, follow: false },
