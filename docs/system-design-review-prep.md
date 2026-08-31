@@ -26,7 +26,7 @@
   - 営業日休業設定の参照・更新
   - 注文一覧参照、注文アクション実行、銀行口座情報の参照・更新・削除
 - 認証方式:
-  - 管理画面/管理 API: Supabase Authの個別ユーザー、`app_metadata.role`（STAFF/ADMIN）、TOTP MFA（aal2）、セッションTTL
+  - 管理画面/管理 API: Supabase Authの個別ユーザー、`app_metadata.role`（STAFF/ADMIN）、パスワード認証、セッションTTL
   - Cron API: `Authorization: Bearer $CRON_SECRET`
   - 一般利用者向け機能: 認証なし
   - エンドユーザアカウント機能: 現状なし
@@ -113,7 +113,7 @@
 - 障害時に止まる部分:
   - DB 接続断で予約・注文とも停止
   - `CRON_SECRET` 不整合で cron が止まる
-  - Supabase Auth / MFA / role設定不整合で管理運用が止まる
+  - Supabase Auth / role設定不整合で管理運用が止まる
 
 ## 7. 今回のレビュー重点
 - 特に見てほしい観点:
@@ -144,7 +144,7 @@
   - 同時刻帯の過剰予約登録
 - 参照・更新してはいけない境界:
   - `SUPABASE_SERVICE_ROLE_KEY` をクライアントへ露出してはいけない
-  - 管理系 API はSupabase Authの個別ユーザー、role、MFAなしで参照・更新してはいけない
+  - 管理系 API はSupabase Authの個別ユーザーとroleなしで参照・更新してはいけない
   - AI ハンドオフ URL に氏名、電話、メール、住所などの個人情報を含めてはいけない
 
 ## 9. 状態遷移

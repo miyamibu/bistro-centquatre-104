@@ -63,8 +63,8 @@ export async function GET(request: NextRequest) {
 - Reservation and order forms submit only to application API routes
 
 ### Server-Side (Service Role Key)
-- `/src/app/api/dashboard/orders/route.ts` - Protected by individual Supabase Auth user + role + MFA
-- `/src/app/api/dashboard/bank-account/route.ts` - Protected by individual Supabase Auth user + role + MFA
+- `/src/app/api/dashboard/orders/route.ts` - Protected by individual Supabase Auth user + role
+- `/src/app/api/dashboard/bank-account/route.ts` - Protected by individual Supabase Auth user + role
 - `/src/app/api/orders/route.ts` - Public order creation endpoint
 - `/src/app/api/crons/delete-old-histories/route.ts` - Protected by CRON_SECRET
 - `/src/app/api/crons/cancel-expired-orders/route.ts` - Protected by CRON_SECRET
@@ -116,7 +116,8 @@ CRON_SECRET=your-cron-secret-token
 - [x] Updated `.env.example` with all required variables
 - [x] Store canonical RLS policies in `supabase/rls-policies.sql`
 - [x] Add executable assertions in `supabase/verify.sql`
-- [x] Require individual staff authentication, role, and MFA for protected staff routes
+- [x] Require individual staff authentication and role for protected staff routes
+- [x] Keep TOTP enrollment available as an optional additional setting; normal login does not require an MFA code
 - [x] Require `CRON_SECRET` bearer authentication for cron routes
 - [ ] Re-run migrations, RLS assertions, authenticated endpoint tests, and cron canaries against each release target before production promotion
 

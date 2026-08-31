@@ -77,6 +77,6 @@ Clone the bundle to a new sibling directory. Do not overwrite a dirty working tr
 - The isolated restore passes migration, RLS, runtime-grant, integrity, and application canaries.
 - The recovered commit and database snapshot are explicitly identified.
 - Outbox and scheduler state are reconciled without duplicate delivery.
-- Unverified provider, Auth/MFA, real-delivery, and public-traffic gates remain labeled unverified.
+- Unverified provider, Auth/role/session, real-delivery, and public-traffic gates remain labeled unverified.
 
 No fixed 60-minute RTO is claimed until a timed end-to-end production-like recovery exercise demonstrates it repeatedly.

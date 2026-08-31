@@ -19,7 +19,7 @@ export default async function AdminOutboxPage() {
         <header className="space-y-2 border-b border-[#eadfce] pb-5">
           <Link href="/admin" className="text-sm font-semibold text-[#8a6233] underline">管理画面一覧へ戻る</Link>
           <h1 className="text-2xl font-semibold sm:text-3xl">通知Outbox</h1>
-          <p className="text-sm leading-6 text-[#6b5644]">個人ADMIN・AAL2認証済みの操作です。表示と結果に予約・注文の個人情報は含めません。</p>
+          <p className="text-sm leading-6 text-[#6b5644]">個人ADMIN認証済みの操作です。表示と結果に予約・注文の個人情報は含めません。</p>
         </header>
         <OutboxOperationsPanel />
       </div>

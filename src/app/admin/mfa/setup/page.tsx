@@ -102,6 +102,9 @@ export default function AdminMfaSetupPage() {
           <p className="mt-3 text-sm leading-6 text-[#6b5644]">
             認証アプリでQRコードを読み取り、表示された6桁コードを入力してください。
           </p>
+          <p className="mt-2 text-sm leading-6 text-[#6b5644]">
+            この登録は任意です。通常の管理画面ログインではTOTPコードを入力する必要はありません。
+          </p>
         </div>
         {loading ? <p role="status">アカウントを確認しています...</p> : null}
         {!loading && !enrollment ? (

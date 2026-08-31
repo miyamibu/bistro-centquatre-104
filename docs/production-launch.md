@@ -291,7 +291,7 @@ Confirm these manually in a browser:
 3. `/on-line-store`
 4. `/on-line-store/apron?mode=agent&qty=2`
 5. `/on-line-store/cart?mode=agent`
-6. `/admin/login` -> sign in with an individual Supabase Auth user, complete TOTP MFA, then open `/dashboard/orders`
+6. `/admin/login` -> sign in with an individual Supabase Auth user using email/password, then open `/dashboard/orders`
 7. `/admin/reservations` -> staff user sees reservations; a user without `app_metadata.role` is denied
 
 ## Rollback

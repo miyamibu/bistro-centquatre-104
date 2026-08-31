@@ -11,7 +11,6 @@ export type StaffAuth = {
   userId: string;
   email: string | null;
   role: StaffRole;
-  aal: "aal2";
 };
 
 function getRole(user: User): StaffRole | null {
@@ -43,16 +42,11 @@ export async function getStaffAuth(requiredRole: StaffRole = "STAFF"): Promise<S
     const role = getRole(data.user);
     if (!role || !hasStaffRole(role, requiredRole)) return null;
 
-    const { data: assurance, error: assuranceError } =
-      await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (assuranceError || assurance.currentLevel !== "aal2") return null;
-
     return {
       user: data.user,
       userId: data.user.id,
       email: data.user.email ?? null,
       role,
-      aal: "aal2",
     };
   } catch {
     return null;

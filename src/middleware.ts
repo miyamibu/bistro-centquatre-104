@@ -32,10 +32,6 @@ function isLoginPath(pathname: string) {
   return pathname === "/admin/login" || pathname.startsWith("/admin/login/");
 }
 
-function isStaffEnrollmentPath(pathname: string) {
-  return pathname === "/admin/password-reset" || pathname === "/admin/mfa/setup";
-}
-
 function copyResponseCookies(source: NextResponse, target: NextResponse) {
   for (const cookie of source.cookies.getAll()) {
     target.cookies.set(cookie);
@@ -51,13 +47,13 @@ function authFailure(
   request: NextRequest,
   response: NextResponse,
   pathname: string,
-  code: "UNAUTHORIZED" | "STAFF_ROLE_REQUIRED" | "MFA_REQUIRED" | "SESSION_EXPIRED",
+  code: "UNAUTHORIZED" | "STAFF_ROLE_REQUIRED" | "SESSION_EXPIRED",
 ) {
   if (pathname.startsWith("/api/")) {
     return copyResponseCookies(
       response,
       NextResponse.json(
-        { error: code === "MFA_REQUIRED" ? "MFA認証が必要です" : "Unauthorized", code },
+        { error: "Unauthorized", code },
         { status: code === "UNAUTHORIZED" || code === "SESSION_EXPIRED" ? 401 : 403, headers: { "Cache-Control": "private, no-store" } },
       ),
     );
@@ -144,14 +140,6 @@ export async function middleware(request: NextRequest) {
     if (!isStaffRole(userData.user.app_metadata?.role)) {
       return authFailure(request, supabaseResponse, pathname, "STAFF_ROLE_REQUIRED");
     }
-
-    if (!isStaffEnrollmentPath(pathname)) {
-      const { data: assurance, error: assuranceError } =
-        await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-      if (assuranceError || assurance.currentLevel !== "aal2") {
-        return authFailure(request, supabaseResponse, pathname, "MFA_REQUIRED");
-      }
-    }
   }
 
   if (pathname === "/" && isAiHint(request)) {
@@ -171,7 +159,7 @@ export async function middleware(request: NextRequest) {
 export const config = {
   // NOTE:
   // - Admin/Dashboard surface is protected by Supabase Auth here and by
-  //   role + MFA checks in each server API.
+  //   role checks in each server API.
   // - Cron endpoints remain protected inside each route by CRON_SECRET bearer auth.
   // - Staff hub uses the same individual staff session.
   // - Next 16 compatibility: if middleware file naming moves to proxy.ts,

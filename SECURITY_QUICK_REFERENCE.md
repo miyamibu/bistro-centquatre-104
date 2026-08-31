@@ -82,7 +82,7 @@ curl http://localhost:3000/api/pdf-to-image?filePath=../../../etc/passwd
    - [ ] `DATABASE_URL` - Server-only ✅
    - [ ] `SUPABASE_SERVICE_ROLE_KEY` - Server-only ✅
    - [ ] Individual Supabase Auth users with `app_metadata.role` (`ADMIN`/`STAFF`) ✅
-   - [ ] TOTP MFA (`aal2`) and `STAFF_SESSION_MAX_AGE_SECONDS` ✅
+   - [ ] Password-based individual staff login, optional TOTP enrollment, and `STAFF_SESSION_MAX_AGE_SECONDS` ✅
    - [ ] `CRON_SECRET` - Server-only ✅
    - [ ] `NEXT_PUBLIC_SUPABASE_URL` - Public OK
    - [ ] `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Public OK
@@ -201,14 +201,14 @@ vercel logs | grep "401\|403\|suspicious"
 ### If Authentication Fails
 
 ```bash
-# 1. Verify the Supabase Auth user, role, and MFA enrollment in the official dashboard.
+# 1. Verify the Supabase Auth user, role, and session policy in the official dashboard.
 # Do not print passwords, access tokens, or cookies in a terminal or ticket.
 
 # 2. Check middleware is protecting routes
 curl -I http://localhost:3000/dashboard
 # Should show: Location: /admin (redirect to login)
 
-# 3. Open the staff login page and complete password + TOTP MFA.
+# 3. Open the staff login page and complete the individual password login.
 open http://localhost:3000/admin/login
 ```
 
@@ -217,8 +217,8 @@ open http://localhost:3000/admin/login
 ## Common Issues & Quick Fixes
 
 ### Issue: 401 Unauthorized on /dashboard
-**Cause**: No valid Supabase Auth session, missing role, missing TOTP MFA, or expired session
-**Fix**: Sign in at `/admin/login`, verify the user's `app_metadata.role`, enroll TOTP MFA, and check `STAFF_SESSION_MAX_AGE_SECONDS`.
+**Cause**: No valid Supabase Auth session, missing role, or expired session
+**Fix**: Sign in at `/admin/login`, verify the user's `app_metadata.role`, and check `STAFF_SESSION_MAX_AGE_SECONDS`. TOTP enrollment is optional.
 ```bash
 # Test the unauthenticated boundary (should redirect to /admin/login)
 curl -I http://localhost:3000/dashboard

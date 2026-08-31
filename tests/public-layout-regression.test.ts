@@ -137,4 +137,15 @@ describe("public layout regression contracts", () => {
       expect(className).not.toContain("md:block");
     }
   });
+
+  it("does not expose the stale Toda city label in the Cent Quatre course", () => {
+    expect(homePageSource).not.toContain("戸田市");
+    expect(homePageSource).toContain('title: "６品 8,000円"');
+  });
+
+  it("keeps inline access and legal actions at a 44px touch target", () => {
+    for (const relativePath of ["src/app/access/page.tsx", "src/app/legal/page.tsx"]) {
+      expect(readSource(relativePath), relativePath).toContain("min-h-11");
+    }
+  });
 });

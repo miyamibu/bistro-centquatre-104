@@ -48,7 +48,7 @@ function splitCourseTitle(raw: string) {
   // 全角/半角スペース両対応で分割
   const parts = raw.split(/[ 　]+/).filter(Boolean);
 
-  const main = parts[0] ?? raw; // キャッチ
+  let main = parts[0] ?? raw; // キャッチ
   let count = "";
   let price = "";
 
@@ -56,7 +56,13 @@ function splitCourseTitle(raw: string) {
     price = parts[parts.length - 1]; // 末尾を価格扱い
     count = parts.slice(1, parts.length - 1).join(" "); // 真ん中を品数扱い
   } else if (parts.length === 2) {
-    count = parts[1];
+    if (parts[1]?.endsWith("円")) {
+      main = "";
+      count = parts[0];
+      price = parts[1];
+    } else {
+      count = parts[1];
+    }
   }
 
   return { main, count, price };
@@ -127,7 +133,7 @@ const MENU = {
         anchor: "joie",
       },
       {
-        title: "戸田市 ６品 8,000円",
+        title: "６品 8,000円",
         subtitle: "サンキャトル Cent Quatre course",
         description: `Amuse-bouches / Hors-d’œuvre / Entrée / Poisson / ${MOBILE_ONLY_BREAK_TOKEN}Viande / ${DESKTOP_ONLY_BREAK_TOKEN}Riz / Café`,
         anchor: "cent-quatre",

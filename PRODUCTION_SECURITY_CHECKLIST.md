@@ -15,10 +15,10 @@ Before deploying to production, verify all items below are complete and tested.
 - [ ] `/api/cron/*` routes require CRON_SECRET
 - [ ] Test unauthorized access returns 401
 
-### Staff identity, roles, and MFA
+### Staff identity, roles, and session policy
 - [ ] Each staff member has an individual Supabase Auth user (no shared account)
 - [ ] `app_metadata.role` is `ADMIN` or `STAFF`; destructive/admin-only routes require `ADMIN`
-- [ ] TOTP MFA is enrolled and `aal2` is required for all protected routes
+- [ ] Normal management login uses the individual user's password; TOTP enrollment is optional and is not required for protected routes
 - [ ] `STAFF_SESSION_MAX_AGE_SECONDS` is between 900 and 86400 (default 8 hours)
 - [ ] Disable/revoke the individual user session when staff access ends
 

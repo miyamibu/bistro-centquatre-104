@@ -103,7 +103,10 @@ export default function InfoPage() {
       <div className="card space-y-3 p-6 text-[14px] leading-6 text-gray-800 md:text-base">
         <p>
           電話予約：
-          <a className="text-brand-700 underline" href={CONTACT_TEL_LINK}>
+          <a
+            className="inline-flex min-h-11 items-center text-brand-700 underline underline-offset-4"
+            href={CONTACT_TEL_LINK}
+          >
             {CONTACT_PHONE_DISPLAY}
           </a>
         </p>
@@ -112,7 +115,10 @@ export default function InfoPage() {
         <p>予約完了画面または確認メールの管理リンクから、ご来店時刻の24時間前まで無料でキャンセルできます。期限後の変更・キャンセルはお電話でご相談ください。現在、キャンセル料の設定・自動請求はありません。</p>
         <p>
           詳しい予約条件は
-          <Link className="ml-1 underline" href="/faq">
+          <Link
+            className="ml-1 inline-flex min-h-11 items-center underline underline-offset-4"
+            href="/faq"
+          >
             FAQ
           </Link>
           にも掲載しています。
@@ -126,7 +132,7 @@ export default function InfoPage() {
         <p>駐車場は 5 台分ございます。満車時は近隣コインパーキングをご利用ください。</p>
         <p>
           <a
-            className="text-brand-700 underline"
+            className="inline-flex min-h-11 items-center text-brand-700 underline underline-offset-4"
             href={GOOGLE_MAP_LINK}
             target="_blank"
             rel="noreferrer"

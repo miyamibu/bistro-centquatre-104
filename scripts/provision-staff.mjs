@@ -115,7 +115,7 @@ async function main() {
         userId: updated.user?.id ?? matched.id,
         email,
         role,
-        next: "対象ユーザー自身がTOTP MFAを登録し、管理画面で再認証してください",
+        next: "対象ユーザー自身がパスワードを設定し、管理画面へログインしてください。TOTP登録は任意です",
       },
       null,
       2,
