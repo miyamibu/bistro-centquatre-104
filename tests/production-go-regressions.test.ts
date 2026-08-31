@@ -185,8 +185,17 @@ describe("production-go regression contracts", () => {
 
   it("keeps the Netlify provider failsafe daily, bounded, and secret-safe", () => {
     const config = source("netlify.toml");
+    const build = source("scripts/netlify-build.mjs");
     const failsafe = source("netlify/functions/outbox-failsafe.mjs");
 
+    expect(config).toContain('command = "node scripts/netlify-build.mjs"');
+    expect(build).toContain('context === "production"');
+    expect(build).toContain('"check:release:production"');
+    expect(build).toContain('context === "deploy-preview" || context === "branch-deploy"');
+    expect(build).toContain('"check:release:preview"');
+    expect(build.indexOf("runNpmScript(releaseCheck)")).toBeLessThan(
+      build.indexOf('runNpmScript("build")'),
+    );
     expect(config).toContain("[functions.outbox-failsafe]");
     expect(config).toContain('schedule = "23 18 * * *"');
     expect(failsafe).toContain('AbortSignal.timeout(10_000)');
