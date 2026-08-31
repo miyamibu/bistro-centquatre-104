@@ -1,20 +1,20 @@
 # Free-tier service matrix
 
-Policy/product documentation verified on 2026-08-26. `Current evidence` is separate from published capability; an undocumented account assumption is never promoted to PASS.
+Policy/product documentation and authenticated account evidence verified through 2026-08-31. `Current evidence` is separate from published capability; an undocumented account assumption is never promoted to PASS.
 
 | Service | Published free-plan facts | Commercial use / cost safety | Current evidence | Decision |
 | --- | --- | --- | --- | --- |
-| Vercel | Hobby has usage limits and cannot provide the required high-frequency cron | Hobby is restricted to non-commercial personal use; no upgrade/trial/card is authorized | Authenticated project is Hobby; existing commercial deployment is older than the candidate; candidate has zero Vercel crons | `KEEP_HOBBY_STOP_COMMERCIAL_TRAFFIC` |
-| Netlify | Free: 300 monthly credits and a hard limit; Next.js/OpenNext and scheduled functions are supported | Commercial projects allowed; Free has no paid overage and requires no card | Offline build passed; CLI is unauthenticated; Preview/Production and account plan screen are unverified | `SELECTED_BLOCKED_LOGIN` |
-| GitHub Actions | Public repositories can use standard hosted runners without metered runner charges; schedule minimum is five minutes and may be delayed | Commercial use allowed; larger/paid runner paths prohibited | Public repo; workflows use `ubuntu-latest`, no checkout/cache/artifact; cron secret exists; URL secret waits for Netlify | `KEEP` |
-| PostgreSQL / Supabase | Free docs list 500 MB DB and 5 GB egress | No paid change authorized | Production DB is about 14.56 MB; schema verification and 23 migrations pass; account plan/billing screen not captured | `KEEP_PENDING_ACCOUNT_CONFIRMATION` |
-| Supabase Auth | Free docs list 50,000 MAU and required auth primitives | No paid change authorized | Staff role/AAL2/login-age code and tests pass; account plan/usage screen not captured | `KEEP_PENDING_ACCOUNT_CONFIRMATION` |
-| Resend | Free docs list 3,000 emails/month and 100/day | Application batches remain bounded; no paid plan authorized | Provider settings exist; no external canary sent; plan/usage screen unverified | `KEEP_PENDING_ACCOUNT_CONFIRMATION` |
-| LINE Messaging API | Japan Communication plan documents 200 free messages/month | Application warns below the configured cap | Provider settings exist; production canary and usage screen unverified | `KEEP_PENDING_ACCOUNT_CONFIRMATION` |
+| Vercel | Hobby has usage limits and cannot provide the required high-frequency cron | Hobby is restricted to non-commercial personal use; no upgrade/trial/card is authorized | Bistro Git integration disconnected; three Bistro production aliases removed and return HTTP 404. Historical immutable deployment URLs may still exist but are not production aliases. | `RETIRED_FOR_BISTRO_COMMERCIAL_TRAFFIC` |
+| Netlify | Free: 300 monthly credits and a hard limit; Next.js/OpenNext and scheduled functions are supported | Commercial projects allowed; account API confirms Free, 300 credits, no Stripe payment method, auto top-up disabled, and no active trial | Production deploy is ready on the release SHA; public, admin, scheduler, failsafe, and rollback checks pass. | `SELECTED_PRODUCTION` |
+| GitHub Actions | Public repositories can use standard hosted runners without metered runner charges; schedule minimum is five minutes and may be delayed | Commercial use allowed; larger/paid runner paths prohibited | Public repo; release main CI and Security checks pass; post-repromotion notification workflow `33348816911` passes. | `KEEP_PRIMARY_SCHEDULER` |
+| PostgreSQL / Supabase | Free docs list 500 MB DB and 5 GB egress | No paid change authorized | Production migration/RLS/runtime grants pass with the operational-audit policy fix; reservation and notification backlogs are empty at check. | `KEEP_PRODUCTION` |
+| Supabase Auth | Free docs list 50,000 MAU and required auth primitives | No paid change authorized | Intended administrator is confirmed, signed in, ADMIN-provisioned, enrolled in verified TOTP, and passed AAL2 protected-page access. | `KEEP_PRODUCTION_MFA` |
+| Resend | Free docs list 3,000 emails/month and 100/day | Application batches remain bounded; no paid plan authorized | Provider settings and durable email Outbox are active; no real-customer canary was sent. Account-plan screen remains a separate observation. | `KEEP_BOUNDED_NO_CUSTOMER_CANARY` |
+| LINE Messaging API | Japan Communication plan documents 200 free messages/month | Application warns below the configured cap | Provider settings, sent event history, durable scheduling, and failsafe lane pass; no real-customer canary was sent. | `KEEP_BOUNDED_NO_CUSTOMER_CANARY` |
 
 ## Product and UX consequences
 
-- New Netlify Free public sites may show a Netlify badge/pre-launch toolbar under the provider's current rollout. Preview must visually verify it; this is not silently accepted as a design change.
+- The exact Netlify Preview was visually checked at 390 px width: no horizontal overflow or provider badge obstruction was observed, and all booking availability requests reached HTTP 200.
 - GitHub schedule is best-effort. Immediate processing, durable Outbox, heartbeat, manual drain, and daily failsafe are required together.
 - A hard free limit may pause the site. Pausing is preferable to unauthorized billing, but usage monitoring remains mandatory.
 

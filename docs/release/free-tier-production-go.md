@@ -1,6 +1,8 @@
 # Free-tier production GO
 
-Status as of 2026-08-26: `PRE_DEPLOY_BLOCKED_USER_INTERACTION`.
+Status as of 2026-08-31: `BLOCKED_EXTERNAL_PROVIDER`.
+
+The Netlify Free production service is deployed and operational. Administrator MFA/AAL2, exact-SHA CI, scheduler/Outbox, provider failsafe, rollback/re-promotion, Vercel retirement, and backup/restore gates have passed. Formal `PRODUCTION_GO_CONFIRMED_FREE_TIER` is withheld because five of the 22 exact requested models did not return a valid runtime response. See [production-go-execution-2026-08-31.md](evidence/production-go-execution-2026-08-31.md).
 
 ## Goal
 
@@ -10,7 +12,7 @@ Operate Bistro Cent Quatre 104 as a commercial production service without a paid
 
 - Vercel remains Hobby. Its current non-commercial restriction means it cannot continue carrying Bistro commercial production traffic.
 - Netlify Free is the selected production host. It supports commercial projects, has a hard monthly credit stop instead of paid overage, supports Next.js App Router through OpenNext, and supports scheduled functions.
-- Netlify account authentication and project creation remain a user-side interaction. No Preview or Production deployment is claimed before that succeeds.
+- Netlify authentication, Free-plan/no-card/no-top-up confirmation, site creation, isolated environment configuration, exact-candidate Preview, and Production publication are complete.
 - GitHub Actions on the public repository is the bounded five-minute primary Outbox scheduler. It is not a strict delivery-time guarantee; the application also performs an immediate post-response attempt and Netlify supplies one daily failsafe.
 - `BASE_URL` and `NEXT_PUBLIC_APP_URL` must use the same HTTPS production origin. `PRODUCTION_HOST_PROVIDER=netlify` is mandatory for Preview and Production release checks.
 - Production notification scheduling never uses Vercel Cron. `vercel.json` contains no cron jobs.
@@ -69,16 +71,16 @@ After Netlify allocates a URL, update Supabase Auth redirect URLs, LINE LIFF end
 
 ## Netlify Preview and production procedure
 
-1. Authenticate with Netlify using the browser flow; never paste tokens into chat.
-2. Create/link one Free site without importing secret values into source control.
-3. Configure Preview with a non-production database or an explicitly read-only safe connection.
-4. Configure all required values in `.env.example`, including both keyrings, active IDs, `PRODUCTION_HOST_PROVIDER=netlify`, `BASE_URL`, and `NEXT_PUBLIC_APP_URL`.
-5. Run `npm run check:release:preview`, deploy Preview, and verify public/admin/cron routes, auth, CSP, robots, sitemap, mobile/desktop, console, TTFB, and rollback.
-6. Fix all Preview findings before configuring Production.
-7. Deploy the fixed candidate SHA, execute synthetic canaries that cannot notify real customers, and capture deployment ID, URL, SHA, build, headers, and logs.
-8. Exercise provider rollback against the prior deployment or an isolated Preview; knowing a command is not evidence.
-9. Only after every gate passes, merge PR #2 with a merge commit and keep the branch.
-10. Align local HEAD, PR head/merge SHA, `origin/main`, CI SHA, workspace bundle HEAD, deployed SHA, and public fingerprint.
+1. Completed: authenticate with Netlify without exposing tokens; confirm Free/no-card/no-top-up/no-trial.
+2. Completed: create/link one site without importing secret values into source control.
+3. Completed: configure Preview with an isolated database and dedicated runtime role.
+4. Completed: configure required Preview and Production values, including keyrings, active IDs, `PRODUCTION_HOST_PROVIDER=netlify`, `BASE_URL`, and `NEXT_PUBLIC_APP_URL`.
+5. Completed: deploy exact candidate Preview and verify public/admin/cron routes, auth boundaries, CSP, robots, sitemap, mobile UI, console, availability TTFB, function logs, and pooler concurrency.
+6. Completed: the intended administrator finished password setup and TOTP enrollment; `ADMIN` and AAL2 access were verified.
+7. Completed: exact release-SHA GitHub CI passed. The 22-model gate remains externally blocked at 17 valid runtime responses and five unavailable exact models.
+8. Completed: deploy the fixed SHA, run non-customer canaries, and capture deployment ID, URL, SHA, headers, scheduler, and function logs.
+9. Completed: restore the previous ready Production deploy, verify public routes, and re-promote the final deploy.
+10. Completed: disconnect the Bistro Vercel Git integration, remove Bistro production aliases, merge PRs #2 and #3, align release main/CI/deploy/bundle evidence, and preserve the branches.
 
 ## Rollback
 
@@ -89,4 +91,4 @@ After Netlify allocates a URL, update Supabase Auth redirect URLs, LINE LIFF end
 
 ## GO gate
 
-`PRODUCTION_GO_CONFIRMED_FREE_TIER` is prohibited until every item in `free-tier-release-evidence.md` is PASS, including authenticated Preview/Production, a real scheduled heartbeat, rollback exercise, Nemotron post-fix audit, PR merge, and production/main SHA alignment.
+`PRODUCTION_GO_CONFIRMED_FREE_TIER` is prohibited until every item in `free-tier-release-evidence.md` is PASS. The operational release gates are complete; the remaining formal blocker is valid execution evidence from all 22 exact requested models.
