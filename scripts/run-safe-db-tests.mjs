@@ -52,7 +52,7 @@ if (!process.env.TEST_STAFF_AUTH_COOKIE?.trim() && !skipStaffAuthDbTests) {
 
 if (!process.env.TEST_STAFF_AUTH_COOKIE?.trim()) {
   console.warn(
-    "[test:db] SKIP_STAFF_AUTH_DB_TESTS=1: スタッフMFAセッション依存DBテストを除外し、残りのDBテストを実行します"
+    "[test:db] SKIP_STAFF_AUTH_DB_TESTS=1: スタッフ認証セッション依存DBテストを除外し、残りのDBテストを実行します"
   );
 }
 

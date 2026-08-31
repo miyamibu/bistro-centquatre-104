@@ -17,7 +17,7 @@ if (!hasSafeDatabase) {
   console.warn(`[tests] Skipping destructive DB tests: ${destructiveTestDbAccess.reason}`);
 } else if (!hasStaffAuthFixture) {
   console.warn(
-    `[tests] Skipping private-block DB tests: TEST_STAFF_AUTH_COOKIE が未設定です（個別Supabase Auth + MFAセッションが必要）`
+    `[tests] Skipping private-block DB tests: TEST_STAFF_AUTH_COOKIE が未設定です（個別Supabase Authセッションが必要）`
   );
 }
 

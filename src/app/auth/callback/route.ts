@@ -4,7 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 function safeNextPath(value: string | null) {
   return value && value.startsWith("/") && !value.startsWith("//")
     ? value
-    : "/admin/mfa/setup";
+    : "/admin/password-reset";
 }
 
 export async function GET(request: NextRequest) {

@@ -38,12 +38,12 @@ describe("Supabase auth callback", () => {
     expect(response.headers.get("location")).toBe("https://preview.example/admin/password-reset");
   });
 
-  it("rejects protocol-relative next targets", async () => {
+  it("rejects protocol-relative next targets and falls back to password reset", async () => {
     const response = await GET(
       new NextRequest("https://preview.example/auth/callback?code=valid-code&next=//evil.example"),
     );
 
-    expect(response.headers.get("location")).toBe("https://preview.example/admin/mfa/setup");
+    expect(response.headers.get("location")).toBe("https://preview.example/admin/password-reset");
   });
 
   it("fails closed when the callback code is missing", async () => {

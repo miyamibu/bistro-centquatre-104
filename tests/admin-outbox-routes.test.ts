@@ -62,7 +62,6 @@ beforeEach(() => {
     userId: "admin-1",
     email: "admin@example.com",
     role: "ADMIN",
-    aal: "aal2",
   });
   mocks.reservationBacklog.mockResolvedValue({ backlog: 4, oldestBacklogAt: new Date("2026-08-26T00:00:00Z") });
   mocks.orderBacklog.mockResolvedValue({ backlog: 2, oldestBacklogAt: null });
@@ -74,7 +73,7 @@ beforeEach(() => {
 });
 
 describe("admin outbox operations", () => {
-  it("requires an ADMIN AAL2 session", async () => {
+  it("requires an ADMIN session", async () => {
     mocks.getStaffAuth.mockResolvedValue(null);
     const { POST } = await import("@/app/api/admin/outbox/drain/route");
     const response = await POST(request({ lane: "RESERVATION_EMAIL", limit: 2, dryRun: true, confirm: false }));

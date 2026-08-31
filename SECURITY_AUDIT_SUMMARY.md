@@ -1,6 +1,6 @@
 # Security Audit & Hardening Summary
 
-> This is the February 2026 remediation snapshot. The current implementation supersedes its shared Basic-auth examples with individual Supabase Auth users, role checks, TOTP MFA, and bounded sessions. Use `SECURITY_ARCHITECTURE.md` and `PRODUCTION_SECURITY_CHECKLIST.md` for the current procedure.
+> This is the February 2026 remediation snapshot. The current implementation supersedes its shared Basic-auth examples with individual Supabase Auth users, role checks, and bounded sessions. TOTP enrollment remains available as an optional additional setting and is not required for normal login. Use `SECURITY_ARCHITECTURE.md` and `PRODUCTION_SECURITY_CHECKLIST.md` for the current procedure.
 
 **Date**: February 2026  
 **Project**: Bistro Reservation System  
@@ -364,7 +364,7 @@ WHERE table_schema = 'public';
 
 ### 🔐 Authentication Layer
 - ✅ Middleware protects `/admin`, `/dashboard`, `/api/admin/*`, `/api/cron/*`
-- ✅ Current protected routes verify individual Supabase Auth user, role, MFA, and session age
+- ✅ Current protected routes verify individual Supabase Auth user, role, and session age
 - ✅ Cron jobs require secret token (`CRON_SECRET`)
 - ✅ Unauthorized access returns 401 status
 
@@ -471,7 +471,7 @@ WHERE table_schema = 'public';
 - A04: Insecure Design → Defense-in-depth implemented
 - A05: Security Misconfiguration → Environment variables secured
 - A06: Vulnerable Components → `npm audit` required
-- A07: Auth Failure → Supabase Auth + role/MFA/session middleware protection
+- A07: Auth Failure → Supabase Auth + role/session middleware protection
 - A09: Logging Monitoring → Audit logging documented
 - Others: Mitigated by architecture
 

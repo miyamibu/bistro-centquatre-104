@@ -1,5 +1,7 @@
 # 🔐 Security Hardening - Completion Report
 
+> This report records the historical hardening snapshot. The current implementation keeps individual Supabase Auth, role, and bounded-session checks while making TOTP enrollment optional for normal management login.
+
 **Project**: Bistro Reservation System  
 **Duration**: 8 commits over comprehensive security review  
 **Status**: ✅ **COMPLETE**  
@@ -211,9 +213,9 @@ Commit 1: bc9d7b6 - Initial repository setup
 
 ### 🔐 Authentication Layer (4/4 Protected)
 ```
-✅ /admin                    → Supabase Auth user + role + MFA + session TTL via middleware
-✅ /dashboard                → Supabase Auth user + role + MFA + session TTL via middleware
-✅ /api/admin/*              → Supabase Auth user + role + MFA + session TTL via middleware
+✅ /admin                    → Supabase Auth user + role + session TTL via middleware
+✅ /dashboard                → Supabase Auth user + role + session TTL via middleware
+✅ /api/admin/*              → Supabase Auth user + role + session TTL via middleware
 ✅ /api/cron/*               → CRON_SECRET verification
 ```
 
@@ -256,7 +258,7 @@ Commit 1: bc9d7b6 - Initial repository setup
 | A04 | Insecure Design | ✅ FIXED - Defense-in-depth architecture |
 | A05 | Security Misconfiguration | ✅ FIXED - Environment variables secured |
 | A06 | Vulnerable Components | 🟡 Requires `npm audit` (dependencies managed) |
-| A07 | authentication Failure | ✅ FIXED - Supabase Auth + role/MFA/session middleware |
+| A07 | authentication Failure | ✅ FIXED - Supabase Auth + role/session middleware |
 | A08 | Software Data Integrity | ✅ FIXED - Price validation, auth checks |
 | A09 | Logging & Monitoring | 🟡 Documented, requires implementation |
 | A10 | SSRF | ✅ Protected - Limited file scope |

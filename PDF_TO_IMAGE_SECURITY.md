@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
 **After:**
 ```typescript
 export async function POST(request: NextRequest) {
-  // ✅ SECURE: Require an individual Supabase Auth user, role, and MFA
+  // ✅ SECURE: Require an individual Supabase Auth user and role
   if (!(await getStaffAuth("STAFF"))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -99,7 +99,7 @@ await page.goto(fileUrl, {
 
 | Layer | Mechanism | Protection |
 |-------|-----------|-----------|
-| **Authentication** | Individual Supabase Auth user + role + MFA | Only enrolled staff users |
+| **Authentication** | Individual Supabase Auth user + role | Only authorized staff users |
 | **Path Validation** | `path.resolve()` + startsWith check | No traversal |
 | **Symlink Check** | `isSymbolicLink()` check | No symlink traversal |
 | **File Type** | Must be `.pdf` + `isFile()` | Only PDFs |
@@ -146,7 +146,7 @@ curl -X POST http://localhost:3000/api/pdf-to-image \
 `src/app/api/pdf-to-image/route.ts`
 
 ### Key Changes
-1. Added `import { getStaffAuth } from "@/lib/staff-auth"` and required an individual MFA session
+1. Added `import { getStaffAuth } from "@/lib/staff-auth"` and required an individual staff session
 2. Path traversal prevention using `path.resolve()` and boundary check
 3. Symlink detection using `fs.statSync().isSymbolicLink()`
 4. File size validation (50 MB max)
@@ -157,7 +157,7 @@ curl -X POST http://localhost:3000/api/pdf-to-image \
 - **Allowed Directory**: `{cwd}/public/photos`
 - **Max File Size**: 50 MB
 - **Navigation Timeout**: 30 seconds
-- **Auth Method**: Supabase Auth individual user with role and TOTP MFA (same as admin dashboard)
+- **Auth Method**: Supabase Auth individual user with role (same as the admin dashboard)
 
 ## Related Security Documents
 

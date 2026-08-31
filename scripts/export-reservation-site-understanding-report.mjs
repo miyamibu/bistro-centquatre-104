@@ -872,7 +872,7 @@ function collectApiRoutes(textFiles) {
       }
 
       const auth = file.content.includes("getStaffAuth(")
-        ? "Supabase Auth(role+MFA)"
+        ? "Supabase Auth(role)"
         : file.content.includes("isCronAuthorized") || file.content.includes("CRON_SECRET")
         ? "Bearer(CRON_SECRET)"
         : "不要";
@@ -1015,7 +1015,7 @@ function summarizeTestGuarantee(filePath) {
   if (key.includes("reservation-integration")) return "予約導線の統合シナリオを検証";
   if (key.includes("api-security")) return "書き込みAPIのセキュリティヘッダ/同一オリジン制約を検証";
   if (key.includes("cron-auth")) return "cron APIのBearer認証強制を検証";
-  if (key.includes("staff-auth")) return "スタッフrole/MFA/セッション期限を検証";
+  if (key.includes("staff-auth")) return "スタッフrole/セッション期限を検証";
   if (key.includes("env-validation")) return "環境変数バリデーションを検証";
   if (key.includes("email-delivery")) return "メール送信失敗時fail-closed挙動を検証";
   if (key.includes("private-block")) return "貸切アクセス制御/DB整合を検証";
@@ -1547,7 +1547,7 @@ Operations boundary
 
 ### 5.3 店舗管理フロー
 
-1. Supabase Authの個別ユーザーで管理画面へログインし、TOTP MFAを完了
+1. Supabase Authの個別ユーザーで管理画面へパスワードログイン
 2. 予約一覧/日次状況を確認
 3. 貸切設定/解除、予約ステータス更新
 4. No-showは \`NOSHOW\` ステータスで記録
@@ -1675,7 +1675,7 @@ ${makeMarkdownTable(["要求API", "判定", "補足"], requiredApiRows)}
 
 API共通整理:
 - 目的: 予約受付、空席照会、管理更新、cron運用
-- 認証: 公開APIは無認証、管理APIはSupabase Authの個別ユーザー（role + TOTP MFA + セッションTTL）、cronはBearer
+- 認証: 公開APIは無認証、管理APIはSupabase Authの個別ユーザー（role + セッションTTL）、cronはBearer
 - 入力: JSON + zod validation
 - 出力: JSON（\`error\`/\`code\`/\`fields\`整備）
 - 状態遷移影響: 予約作成/キャンセル/来店済み/No-show
@@ -1720,7 +1720,7 @@ API共通整理:
 
 - staff / admin のRBAC: Supabase Auth \`app_metadata.role\`（STAFF/ADMIN）で実装
 - session TTL: \`STAFF_SESSION_MAX_AGE_SECONDS\`（既定8時間）で実装
-- password/MFA policy: Supabase Authの個別ユーザーとTOTP MFA
+- password/MFA policy: Supabase Authの個別ユーザーとパスワード認証（TOTP登録は任意）
 - PIN lockout: 未実装
 - 予約閲覧/変更/キャンセル/No-show: 管理APIで実装
 - 空席ブロック/営業日変更: 実装
@@ -1737,7 +1737,7 @@ API共通整理:
 
 - 環境変数で確認される主要secret:
   - APP_SECRET, SESSION_SECRET, CSRF_SECRET: **コード上は専用key未実装**
-  - STAFF_AUTH: Supabase Authユーザー、role、TOTP MFAとして管理
+  - STAFF_AUTH: Supabase Authユーザー、role、セッション期限として管理（TOTP登録は任意）
   - EMAIL_API_KEY / RESEND_API_KEY: 実装あり
   - SMS_API_KEY: 未実装
   - LINE_CHANNEL_SECRET: env定義あり
@@ -1951,7 +1951,7 @@ ${makeMarkdownTable(
     ["営業時間外受付", "入力改ざん/バグ", "運用破綻", "booking-rules fail-closed", "E2E証跡", "P0"],
     ["アレルギー見落とし", "note運用不備", "重大事故", "メモ表示", "必須確認フロー", "P0"],
     ["通知不達", "外部メール障害", "来店トラブル", "ReservationEmailOutboxのretry/dead-letter", "provider実到達確認", "P1"],
-    ["管理画面不正アクセス", "ユーザー/role/MFA設定不備", "改ざん", "Supabase Auth + role + TOTP MFA + session TTL", "本番Auth設定と失効訓練", "P0"],
+    ["管理画面不正アクセス", "ユーザー/role/セッション設定不備", "改ざん", "Supabase Auth + role + session TTL", "本番Auth設定と失効訓練", "P0"],
     ["DB障害", "クラウド障害", "予約停止", "runbook/backup", "復旧訓練継続", "P0"],
     ["SQLite運用限界", "将来拡張", "性能/整合性課題", "現在PostgreSQL", "多店舗向け再設計", "P2"],
     ["スマホUX不備", "入力離脱", "予約率低下", "モバイルUI最適化", "離脱計測改善", "P1"],

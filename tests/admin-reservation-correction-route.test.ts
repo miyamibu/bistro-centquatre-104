@@ -75,7 +75,6 @@ beforeEach(() => {
     userId: "staff-user-1",
     email: "staff@example.com",
     role: "ADMIN",
-    aal: "aal2",
   });
   ensureReservationSchemaReadyMock.mockResolvedValue(undefined);
   isReservationSchemaNotReadyErrorMock.mockReturnValue(false);

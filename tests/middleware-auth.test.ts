@@ -6,9 +6,6 @@ const authClient = vi.hoisted(() => ({
     getUser: vi.fn(),
     getSession: vi.fn(),
     signOut: vi.fn(),
-    mfa: {
-      getAuthenticatorAssuranceLevel: vi.fn(),
-    },
   },
 }));
 
@@ -26,10 +23,7 @@ function accessToken(sessionStartedAt = Math.floor(Date.now() / 1000), iat = ses
   const payload = Buffer.from(
     JSON.stringify({
       iat,
-      amr: [
-        { method: "password", timestamp: sessionStartedAt },
-        { method: "totp", timestamp: sessionStartedAt + 1 },
-      ],
+      amr: [{ method: "password", timestamp: sessionStartedAt }],
     }),
     "utf8",
   ).toString("base64url");
@@ -38,7 +32,6 @@ function accessToken(sessionStartedAt = Math.floor(Date.now() / 1000), iat = ses
 
 function arrangeAuth(options: {
   role?: "STAFF" | "ADMIN";
-  aal?: "aal1" | "aal2";
   sessionStartedAt?: number;
   iat?: number;
   user?: boolean;
@@ -64,10 +57,6 @@ function arrangeAuth(options: {
         ),
       },
     },
-    error: null,
-  });
-  authClient.auth.mfa.getAuthenticatorAssuranceLevel.mockResolvedValue({
-    data: { currentLevel: options.aal ?? "aal2" },
     error: null,
   });
   authClient.auth.signOut.mockResolvedValue({ error: null });
@@ -112,16 +101,11 @@ describe("middleware staff auth boundary", () => {
     await expect(response.json()).resolves.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
-  it("rejects missing role, missing MFA, and expired sessions", async () => {
-    arrangeAuth({ aal: "aal2" });
+  it("rejects missing role and expired sessions", async () => {
+    arrangeAuth();
     const roleResponse = await middleware(request("http://localhost:3000/api/admin/reservations"));
     expect(roleResponse.status).toBe(403);
     await expect(roleResponse.json()).resolves.toMatchObject({ code: "STAFF_ROLE_REQUIRED" });
-
-    arrangeAuth({ role: "STAFF", aal: "aal1" });
-    const mfaResponse = await middleware(request("http://localhost:3000/api/admin/reservations"));
-    expect(mfaResponse.status).toBe(403);
-    await expect(mfaResponse.json()).resolves.toMatchObject({ code: "MFA_REQUIRED" });
 
     arrangeAuth({
       role: "STAFF",
@@ -143,7 +127,7 @@ describe("middleware staff auth boundary", () => {
     await expect(response.json()).resolves.toMatchObject({ code: "SESSION_EXPIRED" });
   });
 
-  it("passes an enrolled staff session and keeps backup export on bearer auth", async () => {
+  it("passes a password-only staff session and keeps backup export on bearer auth", async () => {
     arrangeAuth({ role: "STAFF" });
     const protectedResponse = await middleware(request("http://localhost:3000/dashboard/orders"));
     expect(protectedResponse.status).toBe(200);
@@ -159,22 +143,15 @@ describe("middleware staff auth boundary", () => {
     expect(createServerClientMock).not.toHaveBeenCalled();
   });
 
-  it("allows only the password-reset and MFA-enrollment pages at aal1 for a staff identity", async () => {
-    arrangeAuth({ role: "ADMIN", aal: "aal1" });
-
-    const passwordReset = await middleware(request("http://localhost:3000/admin/password-reset"));
-    expect(passwordReset.status).toBe(200);
-
-    const mfaSetup = await middleware(request("http://localhost:3000/admin/mfa/setup"));
-    expect(mfaSetup.status).toBe(200);
+  it("allows a password-only staff session on protected routes", async () => {
+    arrangeAuth({ role: "ADMIN" });
 
     const protectedPage = await middleware(request("http://localhost:3000/admin/reservations"));
-    expect(protectedPage.status).toBe(307);
-    expect(protectedPage.headers.get("location")).toContain("error=mfa_required");
+    expect(protectedPage.status).toBe(200);
   });
 
   it("does not allow an unprivileged authenticated identity into enrollment pages", async () => {
-    arrangeAuth({ aal: "aal1" });
+    arrangeAuth();
 
     const response = await middleware(request("http://localhost:3000/admin/mfa/setup"));
 

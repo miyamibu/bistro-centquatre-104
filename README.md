@@ -89,7 +89,7 @@ Codex 作業ガイド:
 
 ## 認証・保護範囲
 
-### Supabase Auth（個別スタッフ・RBAC・MFA）
+### Supabase Auth（個別スタッフ・RBAC・パスワード認証）
 
 以下パスはSupabase Authの個別セッションで保護されます。
 
@@ -98,14 +98,15 @@ Codex 作業ガイド:
 - `/api/admin/:path*`
 - `/api/dashboard/:path*`
 
-Supabase Authユーザーの `app_metadata.role` に `STAFF` または `ADMIN` を設定し、
-TOTP MFAを登録してください。管理APIはサーバー側でもroleと `aal2` を再検証します。
+Supabase Authユーザーの `app_metadata.role` に `STAFF` または `ADMIN` を設定してください。
+通常の管理画面ログインはメールアドレスとパスワードで行い、TOTP MFAコードの入力は必須ではありません。
+管理APIはサーバー側でもroleとセッションTTLを再検証します。
 `ADMIN` のみ営業日・貸切・口座情報などの管理者操作を実行できます。
 `STAFF_SESSION_MAX_AGE_SECONDS` を超えたセッションは再ログインが必要です。
 
 初回ユーザー作成・招待はSupabase公式画面で行い、既存ユーザーへのrole付与だけを
 `npm run staff:provision -- --email=<登録済みメール> --role=STAFF` で実施できます。
-パスワードやMFA秘密値はスクリプトやリポジトリに渡しません。
+パスワードやMFA秘密値はスクリプトやリポジトリに渡しません。TOTP登録画面は必要な場合だけ利用する任意の追加設定です。
 
 ### Cron 認証（Bearer）
 

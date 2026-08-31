@@ -46,7 +46,7 @@ The production runtime PostgreSQL login must inherit `bistro_app_runtime`; it mu
 4. Deploy the exact candidate to an isolated Netlify Deploy Preview.
 5. Run public, admin-boundary, reservation/idempotency/manage/cancel, cron-auth, mobile, desktop, CSP, and accessibility canaries.
 6. Exercise rollback on an isolated deploy or restore a prior Netlify deployment and then re-promote the candidate.
-7. Require an identified Supabase Auth staff account with `app_metadata.role=ADMIN` or `STAFF` and TOTP AAL2 before authenticated admin canaries.
+7. Require an identified Supabase Auth staff account with `app_metadata.role=ADMIN` or `STAFF` and a valid bounded session before authenticated admin canaries.
 8. Deploy Production only after Preview, restore, independent audit, and authentication gates pass.
 9. Set GitHub repository secrets `PRODUCTION_BASE_URL` and matching `CRON_SECRET`, then run both workflows manually once.
 10. Capture at least one real scheduled heartbeat before declaring GO.
@@ -58,7 +58,7 @@ The production runtime PostgreSQL login must inherit `bistro_app_runtime`; it mu
 - Every cron endpoint requires constant-time Bearer authentication and returns `ok: true` only for an accepted run, including an explicitly disabled optional LINE lane.
 - Workflows have endpoint deadlines, a global maintenance deadline, bounded pagination, and non-zero failure on partial delivery.
 - Netlify’s daily scheduled function invokes all three notification lanes with a ten-second request timeout.
-- Durable Outbox rows, claim fencing, provider idempotency, heartbeat records, and ADMIN+AAL2 manual drain are the recovery boundary.
+- Durable Outbox rows, claim fencing, provider idempotency, heartbeat records, and ADMIN-only manual drain are the recovery boundary.
 
 ## Rollback
 

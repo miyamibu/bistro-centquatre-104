@@ -26,7 +26,10 @@ export default function LegalPage() {
 
             <dt className="font-semibold">電話番号</dt>
             <dd>
-              <a className="underline" href={CONTACT_TEL_LINK}>
+              <a
+                className="inline-flex min-h-11 items-center underline underline-offset-4"
+                href={CONTACT_TEL_LINK}
+              >
                 {CONTACT_PHONE_DISPLAY}
               </a>
             </dd>

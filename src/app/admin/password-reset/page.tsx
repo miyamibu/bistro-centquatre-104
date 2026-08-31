@@ -29,7 +29,7 @@ export default function AdminPasswordResetPage() {
       setErrorMessage(error.message);
       return;
     }
-    router.replace("/admin/mfa/setup" as Parameters<typeof router.replace>[0]);
+    router.replace("/admin/login" as Parameters<typeof router.replace>[0]);
     router.refresh();
   }
 
@@ -74,7 +74,7 @@ export default function AdminPasswordResetPage() {
             disabled={submitting}
             className="min-h-11 w-full rounded-full bg-[#7a5528] px-4 py-2 font-semibold text-white disabled:opacity-60"
           >
-            {submitting ? "設定中..." : "パスワードを設定してMFA登録へ"}
+            {submitting ? "設定中..." : "パスワードを設定してログインへ"}
           </button>
         </form>
         {errorMessage ? (
