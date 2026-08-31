@@ -46,7 +46,7 @@ BEGIN
         policy_name := lower(runtime_role || '_' || requirement.table_name || '_' || command_name);
         EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', policy_name, requirement.table_name);
 
-        CASE command_name
+        CASE lower(command_name)
           WHEN 'select' THEN
             EXECUTE format(
               'CREATE POLICY %I ON public.%I FOR SELECT TO %I USING (true)',

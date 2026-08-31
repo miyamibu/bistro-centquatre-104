@@ -426,6 +426,7 @@ describe("database release safety contracts", () => {
     ]) {
       expect(runtimePolicyMigration).toContain(`('${table}', ARRAY[`);
     }
+    expect(runtimePolicyMigration).toContain("CASE lower(command_name)");
     expect(runtimePolicyMigration).not.toMatch(/FOR\s+(DELETE|ALL)/i);
 
     const policiesSql = readFileSync(
