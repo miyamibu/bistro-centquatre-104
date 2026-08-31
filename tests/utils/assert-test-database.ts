@@ -21,7 +21,7 @@ function isSafeLocalTestDatabaseUrl(databaseUrl: string | undefined) {
 
   const dbName = parsed.pathname.replace(/^\//, "");
   const isLocalHost = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
-  const isTestDatabase = /(^test$|_test$|test$)/i.test(dbName);
+  const isTestDatabase = dbName === "test" || dbName.endsWith("_test");
   const isPostgres = parsed.protocol === "postgresql:" || parsed.protocol === "postgres:";
 
   return isPostgres && isLocalHost && isTestDatabase;

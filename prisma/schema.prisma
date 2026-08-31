@@ -33,6 +33,11 @@ enum ServicePeriod {
   DINNER
 }
 
+enum ReservationContactChannel {
+  EMAIL
+  LINE
+}
+
 enum PrivateBlockAuditResult {
   CREATED
   NO_OP
@@ -41,7 +46,7 @@ enum PrivateBlockAuditResult {
 
 enum PrivateBlockAuditSource {
   PUBLIC_FORM
-  ADMIN_SHARED_BASIC
+  ADMIN_USER
 }
 
 enum DailyJournalStatus {
@@ -53,43 +58,65 @@ enum ReservationEmailOutboxStatus {
   PENDING
   PROCESSING
   SENT
+  SKIPPED
   DEAD_LETTER
 }
 
 enum ReservationEmailNotificationType {
   RESERVATION_CONFIRMATION
+  CUSTOMER_CONFIRMATION
+  RESERVATION_CANCELLED_CUSTOMER
+  RESERVATION_NOSHOW_CUSTOMER
+}
+
+enum LineWebhookInboxStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
 }
 
 model Reservation {
-  id                     String                      @id @default(cuid())
-  date                   String
-  servicePeriod          ServicePeriod
-  reservationType        ReservationType             @default(NORMAL)
-  seatType               SeatType
-  partySize              Int
-  arrivalTime            String?
-  name                   String
-  phone                  String
-  note                   String?
-  status                 ReservationStatus           @default(CONFIRMED)
-  lineUserId             String?
-  lineReminderSentAt     DateTime?
-  lineReminderStatus     String?
-  lineReminderError      String?
-  lineClaimTokenHash     String?
-  lineClaimExpiresAt     DateTime?
-  lineConfirmationSentAt DateTime?
-  lineLinkedAt           DateTime?
-  lineLinkSource         String?
-  linePushStatus         String?
-  linePushCheckedAt      DateTime?
-  createdAt              DateTime                    @default(now())
-  updatedAt              DateTime                    @updatedAt
-  privateBlockAuditLogs  PrivateBlockAuditLog[]
-  statusAuditLogs        ReservationStatusAuditLog[]
-  lineLinkTokens         ReservationLineLinkToken[]
-  notificationEvents     NotificationEvent[]
-  emailOutboxEntries     ReservationEmailOutbox[]
+  id                           String                          @id @default(cuid())
+  date                         String
+  servicePeriod                ServicePeriod
+  reservationType              ReservationType                 @default(NORMAL)
+  seatType                     SeatType
+  partySize                    Int
+  arrivalTime                  String?
+  name                         String
+  phone                        String
+  customerEmail                String?
+  customerEmailVerifiedAt      DateTime?
+  contactChannel               ReservationContactChannel?
+  note                         String?
+  status                       ReservationStatus               @default(CONFIRMED)
+  cancellationPolicyVersion    String?
+  cancellationPolicyAcceptedAt DateTime?
+  cancelledAt                  DateTime?
+  cancelSource                 String?
+  cancellationReason           String?
+  lineUserId                   String?
+  lineReminderSentAt           DateTime?
+  lineReminderStatus           String?
+  lineReminderError            String?
+  lineClaimTokenHash           String?
+  lineClaimExpiresAt           DateTime?
+  lineConfirmationSentAt       DateTime?
+  lineLinkedAt                 DateTime?
+  lineLinkSource               String?
+  linePushStatus               String?
+  linePushCheckedAt            DateTime?
+  createdAt                    DateTime                        @default(now())
+  updatedAt                    DateTime                        @updatedAt
+  privateBlockAuditLogs        PrivateBlockAuditLog[]
+  statusAuditLogs              ReservationStatusAuditLog[]
+  lineLinkTokens               ReservationLineLinkToken[]
+  managementTokens             ReservationManagementToken[]
+  notificationEvents           NotificationEvent[]
+  emailOutboxEntries           ReservationEmailOutbox[]
+  idempotencyRecords           ReservationIdempotency[]
+  correctionAuditLogs          ReservationCorrectionAuditLog[]
 
   @@index([date, servicePeriod])
   @@index([date, servicePeriod, reservationType])
@@ -97,25 +124,43 @@ model Reservation {
 }
 
 model ReservationEmailOutbox {
-  id               String                           @id @default(cuid())
-  reservationId    String
-  notificationType ReservationEmailNotificationType
-  status           ReservationEmailOutboxStatus     @default(PENDING)
-  attempts         Int                              @default(0)
-  maxAttempts      Int                              @default(5)
-  nextAttemptAt    DateTime?                        @default(now())
-  claimedAt        DateTime?
-  lockedUntil      DateTime?
-  claimToken       String?
-  sentAt           DateTime?
-  lastError        String?
-  createdAt        DateTime                         @default(now())
-  updatedAt        DateTime                         @updatedAt
-  reservation      Reservation                      @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  id                     String                           @id @default(cuid())
+  reservationId          String
+  notificationType       ReservationEmailNotificationType
+  status                 ReservationEmailOutboxStatus     @default(PENDING)
+  attempts               Int                              @default(0)
+  maxAttempts            Int                              @default(5)
+  nextAttemptAt          DateTime?                        @default(now())
+  claimedAt              DateTime?
+  lockedUntil            DateTime?
+  claimToken             String?
+  sentAt                 DateTime?
+  providerMessageId      String?
+  providerIdempotencyKey String?
+  lastError              String?
+  createdAt              DateTime                         @default(now())
+  updatedAt              DateTime                         @updatedAt
+  reservation            Reservation                      @relation(fields: [reservationId], references: [id], onDelete: Restrict)
 
   @@unique([reservationId, notificationType])
   @@index([status, nextAttemptAt])
   @@index([status, lockedUntil])
+  @@index([createdAt])
+}
+
+model ReservationIdempotency {
+  idempotencyKey String       @unique
+  id             String       @id @default(cuid())
+  requestHash    String
+  responseStatus Int?
+  responseBody   Json?
+  reservationId  String?
+  tokenKeyId     String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  reservation    Reservation? @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+
+  @@index([reservationId])
   @@index([createdAt])
 }
 
@@ -124,6 +169,10 @@ model ReservationStatusAuditLog {
   reservationId  String
   reservation    Reservation       @relation(fields: [reservationId], references: [id], onDelete: Restrict)
   actorName      String?
+  actorUserId    String?
+  actorEmail     String?
+  actorRole      String?
+  operatorLabel  String?
   requestId      String
   ipAddress      String?
   userAgent      String?
@@ -140,8 +189,23 @@ model ReservationLineLinkToken {
   id            String      @id @default(cuid())
   reservationId String
   tokenHash     String      @unique
+  keyId         String      @default("v1")
   expiresAt     DateTime
   usedAt        DateTime?
+  createdAt     DateTime    @default(now())
+  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+
+  @@index([reservationId])
+  @@index([expiresAt])
+}
+
+model ReservationManagementToken {
+  id            String      @id @default(cuid())
+  reservationId String
+  tokenHash     String      @unique
+  keyId         String      @default("v1")
+  expiresAt     DateTime
+  revokedAt     DateTime?
   createdAt     DateTime    @default(now())
   reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Restrict)
 
@@ -159,6 +223,26 @@ model LineFriend {
   updatedAt        DateTime  @updatedAt
 }
 
+model LineWebhookInbox {
+  id          String                 @id @default(cuid())
+  eventId     String                 @unique
+  eventType   String
+  payload     Json
+  status      LineWebhookInboxStatus @default(PENDING)
+  attempts    Int                    @default(0)
+  claimedAt   DateTime?
+  lockedUntil DateTime?
+  claimToken  String?
+  processedAt DateTime?
+  lastError   String?
+  requestId   String?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  @@index([status, lockedUntil])
+  @@index([createdAt])
+}
+
 model NotificationEvent {
   id            String      @id @default(cuid())
   reservationId String
@@ -168,6 +252,7 @@ model NotificationEvent {
   status        String      @default("PENDING")
   retryKey      String      @unique
   claimedAt     DateTime?
+  claimToken    String?
   sentAt        DateTime?
   error         String?
   createdAt     DateTime    @default(now())
@@ -201,6 +286,10 @@ model PrivateBlockAuditLog {
   result        PrivateBlockAuditResult
   source        PrivateBlockAuditSource
   actorName     String?
+  actorUserId   String?
+  actorEmail    String?
+  actorRole     String?
+  operatorLabel String?
   requestId     String
   ipAddress     String?
   userAgent     String?
@@ -224,10 +313,98 @@ model ReservationRateLimitEvent {
 }
 
 model BusinessDay {
-  id       String  @id @default(cuid())
-  date     String  @unique
-  isClosed Boolean @default(false)
-  note     String?
+  id        String                @id @default(cuid())
+  date      String                @unique
+  isClosed  Boolean               @default(false)
+  note      String?
+  auditLogs BusinessDayAuditLog[]
+}
+
+model BusinessDayAuditLog {
+  id               String      @id @default(cuid())
+  businessDayId    String
+  businessDay      BusinessDay @relation(fields: [businessDayId], references: [id], onDelete: Restrict)
+  date             String
+  previousIsClosed Boolean?
+  nextIsClosed     Boolean
+  previousNote     String?
+  nextNote         String?
+  actorName        String?
+  actorUserId      String?
+  actorEmail       String?
+  actorRole        String?
+  requestId        String
+  ipAddress        String?
+  userAgent        String?
+  reason           String?
+  createdAt        DateTime    @default(now())
+
+  @@index([date, createdAt])
+  @@index([businessDayId, createdAt])
+}
+
+model ReservationCorrectionAuditLog {
+  id            String      @id @default(cuid())
+  reservationId String
+  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  actorName     String?
+  actorUserId   String?
+  actorEmail    String?
+  actorRole     String?
+  requestId     String
+  ipAddress     String?
+  userAgent     String?
+  reason        String
+  beforeData    Json
+  afterData     Json
+  createdAt     DateTime    @default(now())
+
+  @@index([reservationId, createdAt])
+  @@index([createdAt])
+}
+
+model SchedulerHeartbeat {
+  id                 String    @id @default(cuid())
+  schedulerKind      String
+  lane               String
+  lastStartedAt      DateTime
+  lastSuccessAt      DateTime?
+  lastFailureAt      DateTime?
+  processedCount     Int       @default(0)
+  retryCount         Int       @default(0)
+  deadLetterCount    Int       @default(0)
+  backlogCount       Int       @default(0)
+  oldestBacklogAt    DateTime?
+  lastRunId          String?
+  lastProviderCronAt DateTime?
+  immediateAttempts  Int       @default(0)
+  immediateSuccesses Int       @default(0)
+  lastErrorCode      String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@unique([schedulerKind, lane])
+  @@index([lane, updatedAt])
+}
+
+model OutboxDrainAuditLog {
+  id              String   @id @default(cuid())
+  actorUserId     String
+  actorEmail      String?
+  actorRole       String
+  requestId       String
+  lane            String
+  dryRun          Boolean
+  requestedLimit  Int
+  scannedCount    Int
+  sentCount       Int
+  failedCount     Int
+  deadLetterCount Int
+  backlogCount    Int
+  createdAt       DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorUserId, createdAt])
 }
 
 model MenuItem {

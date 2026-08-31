@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import {
   RESERVATION_BUSINESS_HOURS,
   RESERVATION_WEB_HOURS,
 } from "@/lib/reservation-config";
+import { CONTACT_MESSAGE, CONTACT_PHONE_DISPLAY, CONTACT_TEL_LINK } from "@/lib/contact";
 import { RESERVATION_FAQ_ITEMS } from "@/lib/reservation-copy";
 import { createPageMetadata } from "@/lib/seo";
 
@@ -10,6 +12,7 @@ export const metadata: Metadata = createPageMetadata("/faq");
 
 const BUSINESS_HOURS_QUESTION = "営業時間を教えてください。";
 const WEB_HOURS_QUESTION = "Web予約ができる時間帯を教えてください。";
+const CANCELLATION_QUESTION = "キャンセル方法を教えてください。";
 
 function MobileHoursList({
   title,
@@ -47,6 +50,30 @@ function FaqAnswer({ question, answer }: { question: string; answer: string }) {
         <MobileHoursList title="Web予約可能時間" items={RESERVATION_WEB_HOURS} />
         <p className="mt-2 hidden leading-7 md:block">{answer}</p>
       </>
+    );
+  }
+
+  if (question === CANCELLATION_QUESTION) {
+    return (
+      <div className="mt-2 space-y-2 leading-7">
+        <p>{answer}</p>
+        <p>{CONTACT_MESSAGE}</p>
+        <p>
+          <a
+            href={CONTACT_TEL_LINK}
+            className="font-semibold underline underline-offset-2"
+          >
+            {CONTACT_PHONE_DISPLAY}へ電話する
+          </a>
+        </p>
+        <p className="text-sm leading-6">
+          お電話が難しい場合は、
+          <Link href="/contact" className="font-semibold underline underline-offset-2">
+            お問い合わせフォーム
+          </Link>
+          からご相談ください。
+        </p>
+      </div>
     );
   }
 

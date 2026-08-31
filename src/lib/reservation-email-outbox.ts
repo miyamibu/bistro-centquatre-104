@@ -1,18 +1,40 @@
 import { randomUUID } from "node:crypto";
 import {
   Prisma,
+  ReservationStatus,
+  ReservationType,
   ReservationEmailNotificationType,
   ReservationEmailOutboxStatus,
 } from "@prisma/client";
-import { sendReservationEmail } from "@/lib/email";
+import {
+  sendCustomerReservationEmail,
+  sendCustomerReservationStatusEmail,
+  sendReservationEmail,
+} from "@/lib/email";
 import { env } from "@/lib/env";
 import { logError, logInfo, logWarn } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
+import {
+  buildReservationManagementUrl,
+  resolveReservationManagementBaseUrl,
+} from "@/lib/reservation-management-token";
+import { deriveReservationScopedToken } from "@/lib/reservation-token";
 
 const CRON_ROUTE = "/api/crons/process-reservation-emails";
 const MAX_ATTEMPTS = 5;
 const LOCK_DURATION_MS = 5 * 60 * 1000;
 const MAX_BACKOFF_MINUTES = 60;
+const DEFAULT_BATCH_SIZE = 10;
+const MAX_BATCH_SIZE = 50;
+const MIN_DEADLINE_MS = 250;
+const DEFAULT_DEADLINE_MS = 8_000;
+const MAX_DEADLINE_MS = 15_000;
+const DELIVERY_TIMEOUT_MS = 7_000;
+const IDEMPOTENCY_KEY_PREFIX = "reservation-email-outbox/";
+type ReservationDeliveryResult =
+  | Awaited<ReturnType<typeof sendCustomerReservationEmail>>
+  | Awaited<ReturnType<typeof sendCustomerReservationStatusEmail>>
+  | Awaited<ReturnType<typeof sendReservationEmail>>;
 
 class ReservationEmailDeliveryError extends Error {
   readonly code: string;
@@ -64,6 +86,74 @@ function buildAdminUrl(reservationId: string): string | undefined {
     : undefined;
 }
 
+export function buildReservationEmailIdempotencyKey(outboxId: string): string {
+  return `${IDEMPOTENCY_KEY_PREFIX}${outboxId}`;
+}
+
+export class ReservationEmailOutboxBusyError extends Error {
+  readonly code = "RESERVATION_EMAIL_SEND_IN_PROGRESS";
+
+  constructor() {
+    super("A reservation email is already being sent");
+    this.name = "ReservationEmailOutboxBusyError";
+  }
+}
+
+type OutboxCursor = {
+  createdAt: Date;
+  id: string;
+};
+
+function encodeCursor(cursor: OutboxCursor): string {
+  return Buffer.from(
+    JSON.stringify({ createdAt: cursor.createdAt.toISOString(), id: cursor.id }),
+    "utf8"
+  ).toString("base64url");
+}
+
+function decodeCursor(value: string | undefined): OutboxCursor | undefined {
+  if (!value) return undefined;
+
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as {
+      createdAt?: unknown;
+      id?: unknown;
+    };
+    if (typeof parsed.createdAt !== "string" || typeof parsed.id !== "string") {
+      return undefined;
+    }
+
+    const createdAt = new Date(parsed.createdAt);
+    return Number.isNaN(createdAt.getTime()) || !parsed.id
+      ? undefined
+      : { createdAt, id: parsed.id };
+  } catch {
+    return undefined;
+  }
+}
+
+function clampInteger(value: number | undefined, fallback: number, min: number, max: number) {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(min, Math.min(Math.trunc(value as number), max));
+}
+
+async function withDeliveryTimeout<T>(operation: Promise<T>): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new ReservationEmailDeliveryError("TIMEOUT")),
+          DELIVERY_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
 export async function enqueueReservationConfirmationEmail(
   tx: Prisma.TransactionClient,
   reservationId: string
@@ -94,6 +184,152 @@ export async function enqueueReservationConfirmationEmail(
   });
 }
 
+export async function enqueueReservationCustomerEmail(
+  tx: Prisma.TransactionClient,
+  reservationId: string,
+  options: { reset?: boolean } = {},
+) {
+  const notificationType = ReservationEmailNotificationType.CUSTOMER_CONFIRMATION;
+  if (!options.reset) {
+    return tx.reservationEmailOutbox.upsert({
+      where: { reservationId_notificationType: { reservationId, notificationType } },
+      create: {
+        reservationId,
+        notificationType,
+        status: ReservationEmailOutboxStatus.PENDING,
+        attempts: 0,
+        maxAttempts: MAX_ATTEMPTS,
+        nextAttemptAt: new Date(),
+      },
+      update: {},
+      select: { id: true, status: true },
+    });
+  }
+
+  const existing = await tx.reservationEmailOutbox.findUnique({
+    where: { reservationId_notificationType: { reservationId, notificationType } },
+    select: { id: true, status: true },
+  });
+
+  if (existing?.status === ReservationEmailOutboxStatus.PROCESSING) {
+    throw new ReservationEmailOutboxBusyError();
+  }
+
+  if (!existing) {
+    return tx.reservationEmailOutbox.create({
+      data: {
+        reservationId,
+        notificationType,
+        status: ReservationEmailOutboxStatus.PENDING,
+        attempts: 0,
+        maxAttempts: MAX_ATTEMPTS,
+        nextAttemptAt: new Date(),
+        providerIdempotencyKey: `${IDEMPOTENCY_KEY_PREFIX}resend/${randomUUID()}`,
+      },
+      select: { id: true, status: true },
+    });
+  }
+
+  const updated = await tx.reservationEmailOutbox.updateMany({
+    where: {
+      id: existing.id,
+      status: { not: ReservationEmailOutboxStatus.PROCESSING },
+    },
+    data: {
+      status: ReservationEmailOutboxStatus.PENDING,
+      attempts: 0,
+      nextAttemptAt: new Date(),
+      claimedAt: null,
+      lockedUntil: null,
+      claimToken: null,
+      sentAt: null,
+      providerMessageId: null,
+      providerIdempotencyKey: `${IDEMPOTENCY_KEY_PREFIX}resend/${randomUUID()}`,
+      lastError: null,
+    },
+  });
+  if (updated.count !== 1) {
+    throw new ReservationEmailOutboxBusyError();
+  }
+
+  return tx.reservationEmailOutbox.findUniqueOrThrow({
+    where: { id: existing.id },
+    select: { id: true, status: true },
+  });
+}
+
+export async function enqueueReservationStatusEmail(
+  tx: Prisma.TransactionClient,
+  reservationId: string,
+  status: "CANCELLED" | "NOSHOW",
+) {
+  // Called only after a normal reservation's status CAS succeeds. The unique
+  // (reservationId, notificationType) key makes customer and admin paths share
+  // one durable notification intent without duplicate delivery on a retry.
+  const notificationType =
+    status === "CANCELLED"
+      ? ReservationEmailNotificationType.RESERVATION_CANCELLED_CUSTOMER
+      : ReservationEmailNotificationType.RESERVATION_NOSHOW_CUSTOMER;
+
+  return tx.reservationEmailOutbox.upsert({
+    where: { reservationId_notificationType: { reservationId, notificationType } },
+    create: {
+      reservationId,
+      notificationType,
+      status: ReservationEmailOutboxStatus.PENDING,
+      attempts: 0,
+      maxAttempts: MAX_ATTEMPTS,
+      nextAttemptAt: new Date(),
+    },
+    update: {},
+    select: { id: true, status: true },
+  });
+}
+
+/** Prevent a still-pending confirmation from being sent after cancellation. */
+export async function suppressReservationConfirmationEmail(
+  tx: Prisma.TransactionClient,
+  reservationId: string
+) {
+  return tx.reservationEmailOutbox.updateMany({
+    where: {
+      reservationId,
+      notificationType: {
+        in: [
+          ReservationEmailNotificationType.RESERVATION_CONFIRMATION,
+          ReservationEmailNotificationType.CUSTOMER_CONFIRMATION,
+        ],
+      },
+      status: ReservationEmailOutboxStatus.PENDING,
+    },
+    data: {
+      status: ReservationEmailOutboxStatus.DEAD_LETTER,
+      nextAttemptAt: null,
+      lockedUntil: null,
+      claimToken: null,
+      lastError: "RESERVATION_CANCELLED",
+    },
+  });
+}
+
+async function buildCustomerManagementUrl(reservationId: string) {
+  const idempotency = await prisma.reservationIdempotency.findFirst({
+    where: { reservationId },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { idempotencyKey: true, tokenKeyId: true },
+  });
+  const baseUrl = resolveReservationManagementBaseUrl();
+  if (!idempotency || !baseUrl) return null;
+
+  const rawToken = deriveReservationScopedToken(
+    "management",
+    reservationId,
+    idempotency.idempotencyKey,
+    idempotency.tokenKeyId ?? "v1",
+  );
+  return buildReservationManagementUrl(baseUrl, rawToken);
+}
+
 type ProcessItemResult =
   | {
       processed: true;
@@ -104,7 +340,7 @@ type ProcessItemResult =
   | {
       processed: true;
       sent: false;
-      reason: "RETRY_SCHEDULED" | "DEAD_LETTER";
+      reason: "RETRY_SCHEDULED" | "DEAD_LETTER" | "SKIPPED";
       durableState: true;
     }
   | {
@@ -140,7 +376,7 @@ async function processOutboxItem(
           },
           {
             status: ReservationEmailOutboxStatus.PROCESSING,
-            lockedUntil: { lte: claimedAt },
+            lockedUntil: { not: null, lte: claimedAt },
           },
         ],
       },
@@ -219,19 +455,145 @@ async function processOutboxItem(
     };
   }
 
-  try {
-    const delivery = await sendReservationEmail({
-      reservation: claimed.reservation,
-      adminUrl: buildAdminUrl(claimed.reservationId),
+  async function markSkipped(reason: string): Promise<ProcessItemResult> {
+    try {
+      const marked = await prisma.reservationEmailOutbox.updateMany({
+        where: {
+          id,
+          status: ReservationEmailOutboxStatus.PROCESSING,
+          claimToken,
+        },
+        data: {
+          status: ReservationEmailOutboxStatus.SKIPPED,
+          nextAttemptAt: null,
+          lockedUntil: null,
+          claimToken: null,
+          lastError: reason,
+        },
+      });
+
+      if (marked.count === 1) {
+        return {
+          processed: true,
+          sent: false,
+          reason: "SKIPPED",
+          durableState: true,
+        };
+      }
+    } catch (error) {
+      logError("reservation_email_outbox.skip_update_failed", {
+        requestId,
+        route: CRON_ROUTE,
+        errorCode: safeFailureCode(error),
+        context: { outboxId: id, reason },
+      });
+      return {
+        processed: true,
+        sent: false,
+        reason: "STATE_UPDATE_FAILED",
+        durableState: false,
+      };
+    }
+
+    logError("reservation_email_outbox.skip_update_failed", {
+      requestId,
+      route: CRON_ROUTE,
+      errorCode: "CLAIM_OWNERSHIP_LOST",
+      context: { outboxId: id, reason },
     });
+    return {
+      processed: true,
+      sent: false,
+      reason: "STATE_UPDATE_FAILED",
+      durableState: false,
+    };
+  }
+
+  const reservation = claimed.reservation;
+  if (reservation.reservationType !== ReservationType.NORMAL) {
+    return markSkipped(`SKIPPED_RESERVATION_TYPE_${reservation.reservationType}`);
+  }
+
+  const customerDeliveryTypes = new Set<ReservationEmailNotificationType>([
+    ReservationEmailNotificationType.CUSTOMER_CONFIRMATION,
+    ReservationEmailNotificationType.RESERVATION_CANCELLED_CUSTOMER,
+    ReservationEmailNotificationType.RESERVATION_NOSHOW_CUSTOMER,
+  ]);
+  const customerStatusDeliveryTypes = new Set<ReservationEmailNotificationType>([
+    ReservationEmailNotificationType.RESERVATION_CANCELLED_CUSTOMER,
+    ReservationEmailNotificationType.RESERVATION_NOSHOW_CUSTOMER,
+  ]);
+  const isCustomerDelivery = customerDeliveryTypes.has(claimed.notificationType);
+  const isCustomerStatusDelivery = customerStatusDeliveryTypes.has(claimed.notificationType);
+
+  if (!isCustomerStatusDelivery && reservation.status !== ReservationStatus.CONFIRMED) {
+    return markSkipped(`SKIPPED_RESERVATION_STATUS_${reservation.status}`);
+  }
+  if (isCustomerDelivery && !reservation.customerEmail) {
+    return markSkipped("SKIPPED_MISSING_CUSTOMER_EMAIL");
+  }
+
+  if (
+    isCustomerStatusDelivery &&
+    ((claimed.notificationType === ReservationEmailNotificationType.RESERVATION_CANCELLED_CUSTOMER &&
+      reservation.status !== ReservationStatus.CANCELLED) ||
+      (claimed.notificationType === ReservationEmailNotificationType.RESERVATION_NOSHOW_CUSTOMER &&
+        reservation.status !== ReservationStatus.NOSHOW))
+  ) {
+    return markSkipped("SKIPPED_RESERVATION_STATUS_MISMATCH");
+  }
+
+  // Keep one key across provider retries, but allow an explicit resend to
+  // provide the fresh key written by enqueueReservationCustomerEmail(reset).
+  const providerIdempotencyKey =
+    claimed.providerIdempotencyKey ?? buildReservationEmailIdempotencyKey(id);
+  let providerMessageId: string | undefined = claimed.providerMessageId ?? undefined;
+
+  try {
+    const managementUrl = !isCustomerStatusDelivery && isCustomerDelivery
+      ? await buildCustomerManagementUrl(claimed.reservationId)
+      : undefined;
+    const deliveryOperation: Promise<ReservationDeliveryResult> = isCustomerStatusDelivery
+      ? sendCustomerReservationStatusEmail({
+          reservation,
+          status:
+            claimed.notificationType === ReservationEmailNotificationType.RESERVATION_CANCELLED_CUSTOMER
+              ? "CANCELLED"
+              : "NOSHOW",
+          idempotencyKey: providerIdempotencyKey,
+        })
+      : isCustomerDelivery
+      ? sendCustomerReservationEmail({
+          reservation,
+          managementUrl: managementUrl ?? undefined,
+          idempotencyKey: providerIdempotencyKey,
+        })
+      : sendReservationEmail({
+          reservation,
+          adminUrl: buildAdminUrl(claimed.reservationId),
+          idempotencyKey: providerIdempotencyKey,
+        });
+    const delivery = await withDeliveryTimeout(deliveryOperation);
 
     if (!("sent" in delivery) || delivery.sent !== true) {
       const reason =
         "reason" in delivery && typeof delivery.reason === "string"
           ? delivery.reason
           : "NOT_SENT";
+
+      if (
+        reason === "PRIVATE_BLOCK" ||
+        reason === "RESERVATION_NOT_CONFIRMED" ||
+        reason === "MISSING_CUSTOMER_EMAIL" ||
+        reason === "RESERVATION_STATUS_MISMATCH"
+      ) {
+        return markSkipped(`SKIPPED_${reason}`);
+      }
+
       throw new ReservationEmailDeliveryError(reason);
     }
+
+    providerMessageId = delivery.providerMessageId ?? providerMessageId;
 
     const sentAt = new Date();
     const marked = await prisma.reservationEmailOutbox.updateMany({
@@ -246,6 +608,8 @@ async function processOutboxItem(
         nextAttemptAt: null,
         lockedUntil: null,
         claimToken: null,
+        providerMessageId: providerMessageId ?? null,
+        providerIdempotencyKey,
         lastError: null,
       },
     });
@@ -284,6 +648,8 @@ async function processOutboxItem(
               : nextAttemptAt(claimed.attempts, failedAt),
           lockedUntil: null,
           claimToken: null,
+          ...(providerMessageId ? { providerMessageId } : {}),
+          providerIdempotencyKey,
           lastError: failureCode,
         },
       });
@@ -356,28 +722,112 @@ async function processOutboxItem(
   }
 }
 
+export async function getReservationEmailOutboxBacklog() {
+  const now = new Date();
+  const where: Prisma.ReservationEmailOutboxWhereInput = {
+    OR: [
+      { status: ReservationEmailOutboxStatus.PENDING, nextAttemptAt: { lte: now } },
+      { status: ReservationEmailOutboxStatus.PROCESSING, lockedUntil: { lte: now } },
+    ],
+  };
+  const [count, oldest] = await Promise.all([
+    prisma.reservationEmailOutbox.count({ where }),
+    prisma.reservationEmailOutbox.findFirst({
+      where,
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: { createdAt: true },
+    }),
+  ]);
+  return { backlog: count, oldestBacklogAt: oldest?.createdAt ?? null };
+}
+
+export async function processReservationEmailOutboxEntries(input: {
+  ids: string[];
+  requestId: string;
+  deadlineMs?: number;
+}) {
+  const ids = [...new Set(input.ids.filter(Boolean))].slice(0, 2);
+  const deadlineMs = clampInteger(input.deadlineMs, DEFAULT_DEADLINE_MS, MIN_DEADLINE_MS, MAX_DEADLINE_MS);
+  const deadlineAt = Date.now() + deadlineMs;
+  let sent = 0;
+  let failed = 0;
+  let deadLetter = 0;
+  let skipped = 0;
+  let unsafe = 0;
+  let deadlineReached = false;
+  let scanned = 0;
+
+  for (const id of ids) {
+    if (Date.now() >= deadlineAt) {
+      deadlineReached = true;
+      break;
+    }
+    scanned += 1;
+    const result = await processOutboxItem(id, input.requestId);
+    if (result.sent) sent += 1;
+    else if (!result.durableState) unsafe += 1;
+    else if (result.reason === "DEAD_LETTER") deadLetter += 1;
+    else if (result.reason === "SKIPPED") skipped += 1;
+    else if (result.processed) failed += 1;
+    else skipped += 1;
+  }
+
+  return { scanned, sent, failed, deadLetter, skipped, unsafe, deadlineReached };
+}
+
 export async function processReservationEmailOutbox(input: {
   requestId: string;
   limit?: number;
+  batchSize?: number;
+  cursor?: string;
+  deadlineMs?: number;
 }) {
   const now = new Date();
-  const limit = Math.max(1, Math.min(input.limit ?? 10, 50));
+  const batchSize = clampInteger(
+    input.batchSize ?? input.limit,
+    DEFAULT_BATCH_SIZE,
+    1,
+    MAX_BATCH_SIZE
+  );
+  const deadlineMs = clampInteger(
+    input.deadlineMs,
+    DEFAULT_DEADLINE_MS,
+    MIN_DEADLINE_MS,
+    MAX_DEADLINE_MS
+  );
+  const deadlineAt = Date.now() + deadlineMs;
+  const cursor = decodeCursor(input.cursor);
+
   const candidates = await prisma.reservationEmailOutbox.findMany({
     where: {
-      OR: [
+      AND: [
         {
-          status: ReservationEmailOutboxStatus.PENDING,
-          nextAttemptAt: { lte: now },
+          OR: [
+            {
+              status: ReservationEmailOutboxStatus.PENDING,
+              nextAttemptAt: { lte: now },
+            },
+            {
+              status: ReservationEmailOutboxStatus.PROCESSING,
+              lockedUntil: { lte: now },
+            },
+          ],
         },
-        {
-          status: ReservationEmailOutboxStatus.PROCESSING,
-          lockedUntil: { lte: now },
-        },
+        ...(cursor
+          ? [
+              {
+                OR: [
+                  { createdAt: { gt: cursor.createdAt } },
+                  { createdAt: cursor.createdAt, id: { gt: cursor.id } },
+                ],
+              },
+            ]
+          : []),
       ],
     },
-    orderBy: [{ nextAttemptAt: "asc" }, { createdAt: "asc" }],
-    take: limit,
-    select: { id: true },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    take: batchSize,
+    select: { id: true, createdAt: true },
   });
 
   let sent = 0;
@@ -385,16 +835,39 @@ export async function processReservationEmailOutbox(input: {
   let deadLetter = 0;
   let skipped = 0;
   let unsafe = 0;
+  let deadlineReached = false;
+  let lastCursor: OutboxCursor | undefined;
+  let cursorSafe = true;
 
   // Keep provider pressure bounded and claim each row independently.
   for (const candidate of candidates) {
+    if (Date.now() >= deadlineAt) {
+      deadlineReached = true;
+      break;
+    }
+
     const result = await processOutboxItem(candidate.id, input.requestId);
+    lastCursor = {
+      createdAt:
+        candidate.createdAt instanceof Date ? candidate.createdAt : now,
+      id: candidate.id,
+    };
     if (result.sent) {
       sent += 1;
     } else if (!result.durableState) {
       unsafe += 1;
+      cursorSafe = false;
     } else if (result.reason === "DEAD_LETTER") {
       deadLetter += 1;
+    } else if (result.reason === "SKIPPED") {
+      skipped += 1;
+    } else if (result.reason === "RETRY_SCHEDULED" || result.reason === "CLAIM_SKIPPED") {
+      cursorSafe = false;
+      if (result.processed) {
+        failed += 1;
+      } else {
+        skipped += 1;
+      }
     } else if (result.processed) {
       failed += 1;
     } else {
@@ -409,6 +882,13 @@ export async function processReservationEmailOutbox(input: {
     deadLetter,
     skipped,
     unsafe,
+    deadlineReached,
+    nextCursor:
+      cursorSafe && (deadlineReached || candidates.length === batchSize)
+        ? lastCursor
+          ? encodeCursor(lastCursor)
+          : input.cursor ?? null
+        : null,
   };
 
   logInfo("reservation_email_outbox.processed", {

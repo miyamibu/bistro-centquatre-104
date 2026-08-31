@@ -48,10 +48,10 @@ describe("public layout regression contracts", () => {
   it("builds route-specific canonical and Open Graph URLs", () => {
     expect(createPageMetadata("/").alternates?.canonical).toBe(SITE_URL);
     expect(createPageMetadata("/privacy/").alternates?.canonical).toBe(
-      "https://bistro-centquatre-104.vercel.app/privacy"
+      `${SITE_URL}/privacy`
     );
     expect(createPageMetadata("/on-line-store/apron?mode=agent").alternates?.canonical).toBe(
-      "https://bistro-centquatre-104.vercel.app/on-line-store/apron"
+      `${SITE_URL}/on-line-store/apron`
     );
 
     for (const pathname of Object.keys(indexedRouteMetadataSources)) {

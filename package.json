@@ -2,6 +2,10 @@
   "name": "bistro-reservation",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "npm@11.11.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
@@ -13,9 +17,10 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --maxWorkers=1",
-    "test:db": "vitest run tests/*-db.test.ts --maxWorkers=1",
-    "preflight": "npm run check:release && npm run lint && npm run test && npm run build",
-    "preflight:production": "npm run check:release:production && npm run lint && npm run test && npm run build",
+    "test:db": "node scripts/run-safe-db-tests.mjs",
+    "test:db:runner": "vitest run tests/*-db.test.ts --maxWorkers=1",
+    "preflight": "npm run check:release && npm run lint && npm run typecheck && npm run security:env && npm run security:destructive && npm run test && npm run build",
+    "preflight:production": "npm run check:release:production && npm run lint && npm run typecheck && npm run security:env && npm run security:destructive && npm run test && npm run build",
     "qa:user-stories:evidence": "node scripts/export-canonical-user-story-evidence.mjs",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
@@ -25,11 +30,16 @@
     "backup:reservations:cleanup": "BACKUP_CLEANUP_ENABLED=false tsx scripts/cleanup-reservation-backups.ts --out-dir=backups/reservation-daily-backups",
     "backup:reservations:run": "node scripts/run-local-reservation-backup.mjs",
     "backup:reservations": "node scripts/recovery/export-reservation-backup.mjs --out-dir=backups/manual-export-backups",
+    "backup:database:safety-dump": "node scripts/recovery/create-encrypted-db-dump.mjs",
+    "backup:restore-drill": "node scripts/backup-restore-drill.mjs",
+    "staff:provision": "node scripts/provision-staff.mjs",
     "backup:project-snapshot": "bash scripts/recovery/create-project-snapshot.sh",
     "backup:workspace:snapshot": "node scripts/run-local-safety-backups.mjs",
+    "backup:workspace:status": "node scripts/check-workspace-bundle-provenance.mjs",
     "security:env": "node scripts/security/check-env-permissions.mjs",
     "security:destructive": "node scripts/security/check-destructive-reservation-queries.mjs",
     "security:destructive-reservations": "node scripts/security/check-destructive-reservation-queries.mjs",
+    "audit:production": "npm audit --omit=dev --audit-level=high",
     "add": "liftkit add",
     "convert:pdf": "tsx batch-convert-pdf.mts"
   },
@@ -37,9 +47,11 @@
     "@csstools/normalize.css": "^12.1.1",
     "@line/liff": "^2.28.0",
     "@material/material-color-utilities": "^0.4.0",
+    "@opentelemetry/api": "1.9.1",
     "@prisma/client": "^5.19.1",
     "@radix-ui/react-slot": "^1.1.0",
     "@sendgrid/mail": "^8.1.6",
+    "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.97.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
@@ -49,7 +61,7 @@
     "lucide-react": "^0.446.0",
     "next": "^15.5.20",
     "pdf-parse": "^2.4.5",
-    "puppeteer": "^24.43.1",
+    "puppeteer": "^25.8.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.52.0",
@@ -80,7 +92,9 @@
     "flatted": "^3.4.2",
     "follow-redirects": "^1.16.0",
     "form-data": "^4.0.6",
-    "js-yaml": "^4.2.0",
+    "brace-expansion": "^5.0.9",
+    "ip-address": "^10.5.0",
+    "js-yaml": "^4.3.1",
     "minimatch": "10.2.6",
     "@typescript-eslint/typescript-estree": {
       "minimatch": "10.2.6"
@@ -90,6 +104,7 @@
     "tinyglobby": {
       "picomatch": "^4.0.4"
     },
+    "nanoid": "^3.3.18",
     "postcss": "$postcss",
     "sharp": "$sharp"
   }

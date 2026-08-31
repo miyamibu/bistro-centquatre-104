@@ -1,5 +1,7 @@
 # Security Audit & Hardening Summary
 
+> This is the February 2026 remediation snapshot. The current implementation supersedes its shared Basic-auth examples with individual Supabase Auth users, role checks, TOTP MFA, and bounded sessions. Use `SECURITY_ARCHITECTURE.md` and `PRODUCTION_SECURITY_CHECKLIST.md` for the current procedure.
+
 **Date**: February 2026  
 **Project**: Bistro Reservation System  
 **Audit Type**: Comprehensive security review and remediation  
@@ -31,7 +33,7 @@ A complete security audit and hardening of the Bistro Reservation System was per
 **Vulnerability**: `.env` file tracked in Git with exposed secrets
 - `DATABASE_URL` (production connection string)
 - `SUPABASE_SERVICE_ROLE_KEY` (elevated database access)
-- Admin credentials (`ADMIN_BASIC_USER`, `ADMIN_BASIC_PASS`)
+- Legacy shared Basic-auth credentials (removed from current routes)
 - Email API keys
 
 **Attack Vector**: Clone repository → Read `.env` from Git history → Access production database/APIs
@@ -56,7 +58,7 @@ git commit -m "security: Remove .env from tracking and add to .gitignore"
 
 **Vulnerability**: `/dashboard` route not protected by authentication middleware
 - Direct Supabase access from browser client
-- No Basic Auth check like `/admin` route
+- No individual session, role, or MFA check on the original dashboard route
 - Unauthenticated users could access order history/manage reservations
 
 **Attack Vector**: Visit https://domain.com/dashboard → Full dashboard access without login
@@ -73,7 +75,7 @@ git commit -m "security: Remove .env from tracking and add to .gitignore"
 **Verification**:
 ```bash
 # Before: Accessible without auth
-# After: Returns 401 Unauthorized without ADMIN_BASIC_PASS header
+# After: Returns 401 Unauthorized without an authenticated Supabase Auth session
 curl https://domain.com/dashboard  # →  401
 ```
 
@@ -362,7 +364,7 @@ WHERE table_schema = 'public';
 
 ### 🔐 Authentication Layer
 - ✅ Middleware protects `/admin`, `/dashboard`, `/api/admin/*`, `/api/cron/*`
-- ✅ All protected routes verify Basic Auth credentials
+- ✅ Current protected routes verify individual Supabase Auth user, role, MFA, and session age
 - ✅ Cron jobs require secret token (`CRON_SECRET`)
 - ✅ Unauthorized access returns 401 status
 
@@ -469,7 +471,7 @@ WHERE table_schema = 'public';
 - A04: Insecure Design → Defense-in-depth implemented
 - A05: Security Misconfiguration → Environment variables secured
 - A06: Vulnerable Components → `npm audit` required
-- A07: Auth Failure → Basic Auth + middleware protection
+- A07: Auth Failure → Supabase Auth + role/MFA/session middleware protection
 - A09: Logging Monitoring → Audit logging documented
 - Others: Mitigated by architecture
 

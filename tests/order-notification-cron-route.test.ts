@@ -2,6 +2,13 @@ import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const processOrderNotificationOutboxMock = vi.hoisted(() => vi.fn());
+const getOrderNotificationOutboxBacklogMock = vi.hoisted(() => vi.fn());
+const heartbeatMocks = vi.hoisted(() => ({
+  markSchedulerStarted: vi.fn(),
+  markSchedulerSucceeded: vi.fn(),
+  markSchedulerFailed: vi.fn(),
+  readSchedulerContext: vi.fn(() => ({ schedulerKind: "GITHUB_ACTIONS", runId: "123" })),
+}));
 
 vi.mock("@/lib/env", () => ({
   env: { CRON_SECRET: "cron-secret" },
@@ -9,7 +16,10 @@ vi.mock("@/lib/env", () => ({
 
 vi.mock("@/lib/order-notification-outbox", () => ({
   processOrderNotificationOutbox: processOrderNotificationOutboxMock,
+  getOrderNotificationOutboxBacklog: getOrderNotificationOutboxBacklogMock,
 }));
+
+vi.mock("@/lib/scheduler-heartbeat", () => heartbeatMocks);
 
 vi.mock("@/lib/logger", () => ({
   getRequestId: vi.fn(() => "req-cron-test"),
@@ -19,12 +29,21 @@ vi.mock("@/lib/logger", () => ({
 describe("process order notification cron route", () => {
   beforeEach(() => {
     processOrderNotificationOutboxMock.mockReset();
+    getOrderNotificationOutboxBacklogMock.mockReset();
+    getOrderNotificationOutboxBacklogMock.mockResolvedValue({
+      backlog: 0,
+      oldestBacklogAt: null,
+    });
+    heartbeatMocks.markSchedulerStarted.mockReset().mockResolvedValue(undefined);
+    heartbeatMocks.markSchedulerSucceeded.mockReset().mockResolvedValue(undefined);
+    heartbeatMocks.markSchedulerFailed.mockReset().mockResolvedValue(undefined);
     processOrderNotificationOutboxMock.mockResolvedValue({
       scanned: 0,
       sent: 0,
       failed: 0,
       deadLetter: 0,
       skipped: 0,
+      deadlineReached: false,
     });
   });
 
@@ -49,6 +68,8 @@ describe("process order notification cron route", () => {
     expect(response.status).toBe(200);
     expect(processOrderNotificationOutboxMock).toHaveBeenCalledWith({
       requestId: "req-cron-test",
+      limit: 10,
+      deadlineMs: 8000,
     });
     await expect(response.json()).resolves.toMatchObject({
       ok: true,

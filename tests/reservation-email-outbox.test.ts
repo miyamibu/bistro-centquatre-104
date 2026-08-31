@@ -3,8 +3,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   findMany: vi.fn(),
   findFirst: vi.fn(),
+  idempotencyFindFirst: vi.fn(),
+  findUnique: vi.fn(),
+  findUniqueOrThrow: vi.fn(),
   updateMany: vi.fn(),
+  upsert: vi.fn(),
+  create: vi.fn(),
   sendReservationEmail: vi.fn(),
+  sendCustomerReservationEmail: vi.fn(),
+  sendCustomerReservationStatusEmail: vi.fn(),
   logError: vi.fn(),
   logInfo: vi.fn(),
   logWarn: vi.fn(),
@@ -17,11 +24,16 @@ vi.mock("@/lib/prisma", () => ({
       findFirst: mocks.findFirst,
       updateMany: mocks.updateMany,
     },
+    reservationIdempotency: {
+      findFirst: mocks.idempotencyFindFirst,
+    },
   },
 }));
 
 vi.mock("@/lib/email", () => ({
   sendReservationEmail: mocks.sendReservationEmail,
+  sendCustomerReservationEmail: mocks.sendCustomerReservationEmail,
+  sendCustomerReservationStatusEmail: mocks.sendCustomerReservationStatusEmail,
 }));
 
 vi.mock("@/lib/env", () => ({
@@ -49,6 +61,7 @@ function claimedRow(overrides: Record<string, unknown> = {}) {
     reservation: {
       id: "reservation-1",
       reservationType: "NORMAL",
+      status: "CONFIRMED",
     },
     ...overrides,
   };
@@ -61,6 +74,21 @@ beforeEach(() => {
   mocks.findMany.mockResolvedValue([{ id: "outbox-1" }]);
   mocks.updateMany.mockResolvedValue({ count: 1 });
   mocks.findFirst.mockResolvedValue(claimedRow());
+  mocks.findUnique.mockResolvedValue(null);
+  mocks.findUniqueOrThrow.mockResolvedValue({ id: "outbox-1", status: "PENDING" });
+  mocks.create.mockResolvedValue({ id: "outbox-1", status: "PENDING" });
+  mocks.sendCustomerReservationStatusEmail.mockResolvedValue({
+    sent: true,
+    provider: "resend",
+  });
+  mocks.sendCustomerReservationEmail.mockResolvedValue({
+    sent: true,
+    provider: "resend",
+  });
+  mocks.idempotencyFindFirst.mockResolvedValue({
+    idempotencyKey: "reservation-request-key",
+    tokenKeyId: "v1",
+  });
 });
 
 afterEach(() => {
@@ -109,6 +137,85 @@ describe("reservation confirmation email outbox", () => {
     expect(upsert.mock.calls[1]).toEqual(upsert.mock.calls[0]);
   });
 
+  it("uses a fresh provider idempotency key for an explicit customer resend", async () => {
+    const upsert = vi.fn().mockResolvedValue({ id: "outbox-1", status: "PENDING" });
+    const tx = {
+      reservationEmailOutbox: {
+        upsert,
+        findUnique: mocks.findUnique,
+        updateMany: mocks.updateMany,
+        findUniqueOrThrow: mocks.findUniqueOrThrow,
+        create: mocks.create,
+      },
+    };
+    mocks.findUnique.mockResolvedValue({ id: "outbox-1", status: "SENT" });
+    const { enqueueReservationCustomerEmail } = await import(
+      "@/lib/reservation-email-outbox"
+    );
+
+    await enqueueReservationCustomerEmail(tx as never, "reservation-1", { reset: true });
+
+    expect(upsert).not.toHaveBeenCalled();
+    expect(mocks.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "outbox-1",
+        status: { not: "PROCESSING" },
+      },
+      data: expect.objectContaining({
+        status: "PENDING",
+        providerIdempotencyKey: expect.stringMatching(
+          /^reservation-email-outbox\/resend\/[0-9a-f-]{36}$/,
+        ),
+      }),
+    });
+  });
+
+  it("does not reset an outbox row while a worker is processing it", async () => {
+    mocks.findUnique.mockResolvedValue({ id: "outbox-1", status: "PROCESSING" });
+    const { enqueueReservationCustomerEmail, ReservationEmailOutboxBusyError } = await import(
+      "@/lib/reservation-email-outbox"
+    );
+    const tx = {
+      reservationEmailOutbox: {
+        findUnique: mocks.findUnique,
+        updateMany: mocks.updateMany,
+        findUniqueOrThrow: mocks.findUniqueOrThrow,
+        create: mocks.create,
+      },
+    };
+
+    await expect(
+      enqueueReservationCustomerEmail(tx as never, "reservation-1", { reset: true }),
+    ).rejects.toBeInstanceOf(ReservationEmailOutboxBusyError);
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("suppresses a pending confirmation when a reservation is cancelled", async () => {
+    const { suppressReservationConfirmationEmail } = await import(
+      "@/lib/reservation-email-outbox"
+    );
+    const tx = { reservationEmailOutbox: { updateMany: mocks.updateMany } };
+
+    await suppressReservationConfirmationEmail(tx as never, "reservation-1");
+
+    expect(mocks.updateMany).toHaveBeenCalledWith({
+      where: {
+        reservationId: "reservation-1",
+        notificationType: {
+          in: ["RESERVATION_CONFIRMATION", "CUSTOMER_CONFIRMATION"],
+        },
+        status: "PENDING",
+      },
+      data: {
+        status: "DEAD_LETTER",
+        nextAttemptAt: null,
+        lockedUntil: null,
+        claimToken: null,
+        lastError: "RESERVATION_CANCELLED",
+      },
+    });
+  });
+
   it("marks SENT only after the provider confirms delivery", async () => {
     mocks.sendReservationEmail.mockResolvedValue({
       sent: true,
@@ -129,6 +236,8 @@ describe("reservation confirmation email outbox", () => {
       deadLetter: 0,
       skipped: 0,
       unsafe: 0,
+      deadlineReached: false,
+      nextCursor: null,
     });
     expect(mocks.updateMany).toHaveBeenNthCalledWith(
       1,
@@ -141,6 +250,11 @@ describe("reservation confirmation email outbox", () => {
       })
     );
     expect(mocks.sendReservationEmail).toHaveBeenCalledTimes(1);
+    expect(mocks.sendReservationEmail).toHaveBeenCalledWith({
+      reservation: expect.objectContaining({ id: "reservation-1" }),
+      adminUrl: "https://example.test/admin/reservations/reservation-1",
+      idempotencyKey: "reservation-email-outbox/outbox-1",
+    });
     expect(mocks.updateMany).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
@@ -157,6 +271,36 @@ describe("reservation confirmation email outbox", () => {
     expect(mocks.sendReservationEmail.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.updateMany.mock.invocationCallOrder[1]
     );
+  });
+
+  it("sends a customer notification for a matching cancellation status event", async () => {
+    mocks.findMany.mockResolvedValue([{ id: "outbox-1" }]);
+    mocks.findFirst.mockResolvedValue(
+      claimedRow({
+        notificationType: "RESERVATION_CANCELLED_CUSTOMER",
+        reservation: {
+          id: "reservation-1",
+          reservationType: "NORMAL",
+          status: "CANCELLED",
+          customerEmail: "guest@example.com",
+        },
+      }),
+    );
+
+    const { processReservationEmailOutbox } = await import(
+      "@/lib/reservation-email-outbox"
+    );
+    const summary = await processReservationEmailOutbox({ requestId: "request-status-1" });
+
+    expect(summary.sent).toBe(1);
+    expect(mocks.sendCustomerReservationStatusEmail).toHaveBeenCalledWith({
+      reservation: expect.objectContaining({
+        id: "reservation-1",
+        status: "CANCELLED",
+      }),
+      status: "CANCELLED",
+      idempotencyKey: "reservation-email-outbox/outbox-1",
+    });
   });
 
   it("returns a failed delivery to PENDING with exponential backoff", async () => {
@@ -190,6 +334,51 @@ describe("reservation confirmation email outbox", () => {
           lastError: "DELIVERY_MISSING_ENV",
         }),
       })
+    );
+  });
+
+  it("retries a customer confirmation when its management URL cannot be built", async () => {
+    mocks.findFirst.mockResolvedValue(
+      claimedRow({
+        notificationType: "CUSTOMER_CONFIRMATION",
+        reservation: {
+          id: "reservation-1",
+          reservationType: "NORMAL",
+          status: "CONFIRMED",
+          customerEmail: "guest@example.com",
+        },
+      }),
+    );
+    mocks.idempotencyFindFirst.mockResolvedValue(null);
+    mocks.sendCustomerReservationEmail.mockResolvedValue({
+      skipped: true,
+      reason: "MISSING_MANAGEMENT_URL",
+    });
+    const { processReservationEmailOutbox } = await import(
+      "@/lib/reservation-email-outbox"
+    );
+
+    const summary = await processReservationEmailOutbox({
+      requestId: "request-missing-management-url",
+    });
+
+    expect(summary).toMatchObject({
+      scanned: 1,
+      sent: 0,
+      failed: 1,
+      deadLetter: 0,
+      skipped: 0,
+      unsafe: 0,
+    });
+    expect(mocks.updateMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "PENDING",
+          nextAttemptAt: new Date("2026-07-28T09:01:00.000Z"),
+          lastError: "DELIVERY_MISSING_MANAGEMENT_URL",
+        }),
+      }),
     );
   });
 
@@ -260,5 +449,165 @@ describe("reservation confirmation email outbox", () => {
     });
     expect(mocks.findFirst).not.toHaveBeenCalled();
     expect(mocks.sendReservationEmail).not.toHaveBeenCalled();
+  });
+
+  it("persists the provider message ID when marking SENT fails after provider acceptance", async () => {
+    mocks.sendReservationEmail.mockResolvedValue({
+      sent: true,
+      provider: "resend",
+      providerMessageId: "mail-accepted-1",
+    });
+    mocks.updateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockRejectedValueOnce(new Error("database write failed"))
+      .mockResolvedValueOnce({ count: 1 });
+
+    const { processReservationEmailOutbox } = await import(
+      "@/lib/reservation-email-outbox"
+    );
+    const summary = await processReservationEmailOutbox({ requestId: "request-post-send" });
+
+    expect(summary).toMatchObject({
+      sent: 0,
+      failed: 1,
+      unsafe: 0,
+    });
+    expect(mocks.updateMany).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "PENDING",
+          providerMessageId: "mail-accepted-1",
+          providerIdempotencyKey: "reservation-email-outbox/outbox-1",
+        }),
+      })
+    );
+  });
+
+  it("does not let a stale worker overwrite a newer fenced claim", async () => {
+    mocks.sendReservationEmail.mockResolvedValue({
+      sent: true,
+      provider: "resend",
+      providerMessageId: "mail-stale-1",
+    });
+    mocks.updateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 0 });
+
+    const { processReservationEmailOutbox } = await import(
+      "@/lib/reservation-email-outbox"
+    );
+    const summary = await processReservationEmailOutbox({ requestId: "request-stale" });
+
+    expect(summary).toMatchObject({
+      sent: 0,
+      failed: 0,
+      unsafe: 1,
+    });
+    expect(mocks.updateMany).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          claimToken: expect.any(String),
+          status: "PROCESSING",
+        }),
+      })
+    );
+  });
+
+  it("marks a cancelled reservation SKIPPED immediately before provider send", async () => {
+    mocks.findFirst.mockResolvedValueOnce(
+      claimedRow({
+        reservation: {
+          id: "reservation-1",
+          reservationType: "NORMAL",
+          status: "CANCELLED",
+        },
+      })
+    );
+    const { processReservationEmailOutbox } = await import(
+      "@/lib/reservation-email-outbox"
+    );
+    const summary = await processReservationEmailOutbox({ requestId: "request-cancel-race" });
+    expect(summary).toMatchObject({
+      sent: 0,
+      failed: 0,
+      skipped: 1,
+      unsafe: 0,
+    });
+    expect(mocks.sendReservationEmail).not.toHaveBeenCalled();
+    expect(mocks.updateMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "SKIPPED",
+          lastError: "SKIPPED_RESERVATION_STATUS_CANCELLED",
+        }),
+      })
+    );
+  });
+
+  it("uses the same idempotency key on a replay of the same outbox row", async () => {
+    mocks.sendReservationEmail.mockResolvedValue({ sent: true, provider: "resend" });
+    const { processReservationEmailOutbox } = await import(
+      "@/lib/reservation-email-outbox"
+    );
+
+    await processReservationEmailOutbox({ requestId: "request-replay-1" });
+    await processReservationEmailOutbox({ requestId: "request-replay-2" });
+
+    expect(mocks.sendReservationEmail).toHaveBeenCalledTimes(2);
+    expect(mocks.sendReservationEmail.mock.calls[0][0].idempotencyKey).toBe(
+      "reservation-email-outbox/outbox-1"
+    );
+    expect(mocks.sendReservationEmail.mock.calls[1][0].idempotencyKey).toBe(
+      "reservation-email-outbox/outbox-1"
+    );
+  });
+
+  it("uses the persisted resend idempotency key instead of regenerating it", async () => {
+    const resendKey = "reservation-email-outbox/resend/test-generation";
+    mocks.findFirst.mockResolvedValue(
+      claimedRow({ providerIdempotencyKey: resendKey }),
+    );
+    mocks.sendReservationEmail.mockResolvedValue({ sent: true, provider: "resend" });
+    const { processReservationEmailOutbox } = await import(
+      "@/lib/reservation-email-outbox"
+    );
+
+    await processReservationEmailOutbox({ requestId: "request-resend" });
+
+    expect(mocks.sendReservationEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: resendKey }),
+    );
+  });
+
+  it("stops at the deadline and returns a cursor for the next batch", async () => {
+    mocks.findMany.mockResolvedValue([
+      { id: "outbox-1", createdAt: new Date("2026-07-28T09:00:00.000Z") },
+      { id: "outbox-2", createdAt: new Date("2026-07-28T09:00:01.000Z") },
+    ]);
+    mocks.sendReservationEmail.mockImplementation(async () => {
+      vi.advanceTimersByTime(300);
+      return { sent: true, provider: "resend" };
+    });
+
+    const { processReservationEmailOutbox } = await import(
+      "@/lib/reservation-email-outbox"
+    );
+    const summary = await processReservationEmailOutbox({
+      requestId: "request-deadline",
+      batchSize: 2,
+      deadlineMs: 250,
+    });
+
+    expect(summary).toMatchObject({
+      scanned: 2,
+      sent: 1,
+      deadlineReached: true,
+    });
+    expect(summary.nextCursor).toEqual(expect.any(String));
+    expect(mocks.sendReservationEmail).toHaveBeenCalledTimes(1);
   });
 });

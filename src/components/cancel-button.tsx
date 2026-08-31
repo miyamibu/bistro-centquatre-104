@@ -17,11 +17,17 @@ export default function CancelButton({
   disabled,
   label,
   requireOperatorName,
+  expectedDate,
+  expectedServicePeriod,
+  expectedReservationType,
 }: {
   id: string;
   disabled?: boolean;
   label?: string;
   requireOperatorName?: boolean;
+  expectedDate?: string;
+  expectedServicePeriod?: "LUNCH" | "DINNER";
+  expectedReservationType?: "NORMAL" | "PRIVATE_BLOCK";
 }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<CancelMessage | null>(null);
@@ -51,6 +57,17 @@ export default function CancelButton({
       operatorName = trimmed;
     }
 
+    const reasonInput = window.prompt("キャンセルの理由を入力してください");
+    if (reasonInput == null) {
+      setMessage({ type: "info", text: "キャンセル操作を取り消しました" });
+      return;
+    }
+    const reason = reasonInput.trim();
+    if (!reason) {
+      setMessage({ type: "error", text: "キャンセル理由は必須です" });
+      return;
+    }
+
     setLoading(true);
     setMessage(null);
     let timeoutId: number | null = null;
@@ -63,7 +80,18 @@ export default function CancelButton({
           "Content-Type": "application/json",
           "X-Requested-With": "XMLHttpRequest",
         },
-        body: JSON.stringify({ status: ReservationStatus.CANCELLED, operatorName }),
+        body: JSON.stringify({
+          status: ReservationStatus.CANCELLED,
+          operatorName,
+          reason,
+          ...(requireOperatorName
+            ? {
+                expectedDate,
+                expectedServicePeriod,
+                expectedReservationType,
+              }
+            : {}),
+        }),
         signal: controller.signal,
       });
       if (res.ok) {

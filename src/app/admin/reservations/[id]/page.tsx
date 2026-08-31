@@ -1,15 +1,16 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { StatusForm } from "@/components/status-form";
-import { formatJst } from "@/lib/dates";
-import { buildMockReservations } from "@/lib/admin-reservation-mock";
+import { ReservationCorrectionForm } from "@/components/reservation-correction-form";
 import { parseReservationNote } from "@/lib/reservation-note";
+import { getReservationStatusLabel } from "@/lib/reservation-labels";
+import { getStaffAuth } from "@/lib/staff-auth";
 import {
   ensureReservationSchemaReady,
   findReservationByIdCompat,
   isReservationSchemaNotReadyError,
 } from "@/lib/reservation-compat";
-import { getDaysInMonth, startOfMonth } from "date-fns";
 
 export const dynamic = "force-dynamic";
 
@@ -18,20 +19,16 @@ export default async function AdminReservationDetail({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  if (!(await getStaffAuth("STAFF"))) {
+    redirect("/admin/login");
+  }
+
   const { id } = await params;
   let reservation = null;
 
   try {
-    reservation = !process.env.DATABASE_URL
-      ? (() => {
-          const monthStart = startOfMonth(new Date(`${formatJst(new Date())}T00:00:00`));
-          const monthDays = getDaysInMonth(monthStart);
-          return buildMockReservations(monthStart, monthDays).find((row) => row.id === id) ?? null;
-        })()
-      : await (async () => {
-          await ensureReservationSchemaReady(prisma);
-          return findReservationByIdCompat(prisma, id);
-        })();
+    await ensureReservationSchemaReady(prisma);
+    reservation = await findReservationByIdCompat(prisma, id);
   } catch (error) {
     if (isReservationSchemaNotReadyError(error)) {
       return (
@@ -83,7 +80,7 @@ export default async function AdminReservationDetail({
             <p className="whitespace-pre-wrap leading-6">要望: {note ?? "なし"}</p>
           </>
         )}
-        <p>ステータス: {reservation.status}</p>
+        <p>ステータス: {getReservationStatusLabel(reservation.status)}</p>
         <p>作成: {reservation.createdAt.toISOString()}</p>
       </div>
 
@@ -92,8 +89,25 @@ export default async function AdminReservationDetail({
           id={reservation.id}
           current={reservation.status}
           isPrivateBlock={isPrivateBlock}
+          expectedDate={reservation.date}
+          expectedServicePeriod={reservation.servicePeriod}
+          expectedReservationType={reservation.reservationType}
         />
       </div>
+
+      {!isPrivateBlock ? (
+        <ReservationCorrectionForm
+          id={reservation.id}
+          date={reservation.date}
+          servicePeriod={reservation.servicePeriod}
+          partySize={reservation.partySize}
+          arrivalTime={reservation.arrivalTime}
+          name={reservation.name}
+          phone={reservation.phone}
+          note={reservation.note}
+          updatedAt={reservation.updatedAt.toISOString()}
+        />
+      ) : null}
     </div>
   );
 }

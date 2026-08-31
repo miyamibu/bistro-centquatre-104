@@ -3,6 +3,7 @@ import { getPrivateBlockMarkerText } from "@/lib/booking-rules";
 import { formatJst } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import { ensureReservationSchemaReady, findReservationsCompat } from "@/lib/reservation-compat";
+import { isCapacityBlockingReservation } from "@/lib/reservation-capacity";
 
 const ACTIVE_RESERVATION_STATUS_FILTER = {
   not: ReservationStatus.CANCELLED,
@@ -55,17 +56,21 @@ export async function getStaffDaySummary(date = formatJst(new Date())): Promise<
   ]);
 
   const normalReservations = reservations.filter(
-    (row) => row.reservationType !== ReservationType.PRIVATE_BLOCK
+    (row) =>
+      isCapacityBlockingReservation(row) &&
+      row.reservationType !== ReservationType.PRIVATE_BLOCK
   );
   const privateBlocks = reservations.filter(
-    (row) => row.reservationType === ReservationType.PRIVATE_BLOCK
+    (row) =>
+      isCapacityBlockingReservation(row) &&
+      row.reservationType === ReservationType.PRIVATE_BLOCK
   );
 
   const lunchPrivateBlocked = privateBlocks.some((row) => row.servicePeriod === "LUNCH");
   const dinnerPrivateBlocked = privateBlocks.some((row) => row.servicePeriod === "DINNER");
   const privateBlockMarkerText = getPrivateBlockMarkerText(
-    lunchPrivateBlocked ? "PRIVATE_BLOCK" : undefined,
-    dinnerPrivateBlocked ? "PRIVATE_BLOCK" : undefined
+    lunchPrivateBlocked ? "PRIVATE_BLOCK" : "OK",
+    dinnerPrivateBlocked ? "PRIVATE_BLOCK" : "OK"
   );
 
   return {

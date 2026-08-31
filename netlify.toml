@@ -1,0 +1,15 @@
+[build]
+command = "node scripts/netlify-build.mjs"
+publish = ".next"
+
+[build.environment]
+NODE_VERSION = "22"
+NETLIFY_NEXT_SKEW_PROTECTION = "true"
+
+[functions]
+  node_bundler = "esbuild"
+
+# GitHub Actions is the five-minute primary scheduler. This daily provider-side
+# invocation is an independent, bounded failsafe available on Netlify Free.
+[functions.outbox-failsafe]
+  schedule = "23 18 * * *"

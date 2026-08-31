@@ -29,11 +29,12 @@ export type JsonReadResult<T = unknown> =
 
 function resolveAllowedOrigins(request: NextRequest) {
   const origins = new Set<string>([request.nextUrl.origin]);
-  if (env.BASE_URL) {
+  for (const configuredUrl of [env.BASE_URL, process.env.DEPLOY_PRIME_URL]) {
+    if (!configuredUrl) continue;
     try {
-      origins.add(new URL(env.BASE_URL).origin);
+      origins.add(new URL(configuredUrl).origin);
     } catch {
-      // Ignore invalid BASE_URL because env schema can be relaxed in non-prod.
+      // Ignore invalid optional origins because env validation can be relaxed outside production.
     }
   }
   return origins;
@@ -131,6 +132,36 @@ export function enforceWriteRequestSecurity(
         });
       }
     }
+  }
+
+  return null;
+}
+
+export function enforceReadRequestSecurity(request: NextRequest, requestId?: string) {
+  const secFetchSite = request.headers.get("sec-fetch-site");
+  if (secFetchSite === "cross-site") {
+    return apiError(403, {
+      error: "Cross-site requests are not allowed",
+      code: "CSRF_BLOCKED",
+      requestId,
+    });
+  }
+
+  const origin = request.headers.get("origin");
+  if (origin && !resolveAllowedOrigins(request).has(origin)) {
+    return apiError(403, {
+      error: "Origin not allowed",
+      code: "ORIGIN_NOT_ALLOWED",
+      requestId,
+    });
+  }
+
+  if (request.headers.get("x-requested-with") !== "XMLHttpRequest") {
+    return apiError(400, {
+      error: "Missing X-Requested-With header",
+      code: "MISSING_REQUEST_HEADER",
+      requestId,
+    });
   }
 
   return null;

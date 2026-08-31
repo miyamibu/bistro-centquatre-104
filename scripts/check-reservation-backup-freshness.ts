@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 import {
@@ -13,6 +14,11 @@ type BackupRunSummary = {
   schemaVersion: number;
   pulledAt: string;
   dryRun: boolean;
+  encryption?: {
+    format?: string;
+    encryptionVersion?: number;
+    algorithm?: string;
+  } | null;
   config?: {
     baseUrl?: string;
     routePath?: string;
@@ -25,6 +31,12 @@ type BackupRunSummary = {
     businessDays?: number;
     reservations?: number;
     privateBlockAuditLogs?: number;
+    businessDayAuditLogs?: number;
+    reservationStatusAuditLogs?: number;
+    reservationCorrectionAuditLogs?: number;
+    reservationEmailOutbox?: number;
+    reservationLineLinkTokens?: number;
+    notificationEvents?: number;
   };
   chunks?: Array<{
     from: string;
@@ -36,6 +48,7 @@ type BackupRunSummary = {
       privateBlockAuditLogs?: number;
     };
   }>;
+  encryptedDayFiles?: Array<{ date: string; path: string; sha256: string }>;
 };
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -71,6 +84,38 @@ async function readJson(filePath: string) {
   return JSON.parse(raw) as unknown;
 }
 
+async function findFreshestRun(outputDir: string) {
+  const candidates = [path.join(outputDir, "latest-run.json")];
+  const runsDir = path.join(outputDir, "runs");
+  try {
+    const names = await fs.readdir(runsDir);
+    candidates.push(...names.filter((name) => /^pull-.*\.json$/.test(name)).map((name) => path.join(runsDir, name)));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  const summaries = await Promise.all(candidates.map(async (filePath) => ({ filePath, summary: parseRunSummary(await readJson(filePath)) })));
+  return summaries.reduce((freshest, candidate) => Date.parse(candidate.summary.pulledAt) > Date.parse(freshest.summary.pulledAt) ? candidate : freshest);
+}
+
+async function verifyEncryptedDayFiles(outputDir: string, run: BackupRunSummary) {
+  if (!run.encryption?.format || !run.encryption.algorithm || !run.encryption.encryptionVersion) {
+    return { verified: false, reason: "encryption metadata is missing", files: 0 };
+  }
+  if (!Array.isArray(run.encryptedDayFiles) || run.encryptedDayFiles.length === 0) {
+    return { verified: false, reason: "encrypted day-file checksums are missing", files: 0 };
+  }
+  for (const entry of run.encryptedDayFiles) {
+    if (!/^days\/\d{4}-\d{2}-\d{2}\.json\.enc$/.test(entry.path) || !/^[0-9a-f]{64}$/.test(entry.sha256)) {
+      return { verified: false, reason: "encrypted day-file metadata is invalid", files: 0 };
+    }
+    const [contents, stats] = await Promise.all([fs.readFile(path.join(outputDir, entry.path)), fs.stat(path.join(outputDir, entry.path))]);
+    if (createHash("sha256").update(contents).digest("hex") !== entry.sha256 || modeOctal(stats.mode) !== "600") {
+      return { verified: false, reason: `encrypted day-file integrity check failed: ${entry.path}`, files: 0 };
+    }
+  }
+  return { verified: true, reason: null, files: run.encryptedDayFiles.length };
+}
+
 async function main() {
   const cwd = process.cwd();
   const cli = parseCliArgs(process.argv.slice(2));
@@ -82,19 +127,19 @@ async function main() {
     "--max-age-hours"
   );
 
-  const latestRunPath = path.join(outputDir, "latest-run.json");
-  const latestRun = parseRunSummary(await readJson(latestRunPath));
+  const { filePath: latestRunPath, summary: latestRun } = await findFreshestRun(outputDir);
   const latestStats = await fs.stat(latestRunPath);
   const outputStats = await fs.stat(outputDir);
   const pulledAtMs = Date.parse(latestRun.pulledAt);
   const checkedAt = new Date();
   const ageHours = (checkedAt.getTime() - pulledAtMs) / (60 * 60 * 1000);
-  const fresh = ageHours <= maxAgeHours && !latestRun.dryRun;
+  const integrity = await verifyEncryptedDayFiles(outputDir, latestRun);
+  const fresh = ageHours <= maxAgeHours && !latestRun.dryRun && integrity.verified;
 
   const manifest = {
     schemaVersion: 1,
     checkedAt: checkedAt.toISOString(),
-    status: fresh ? "FRESH" : "STALE",
+    status: fresh ? "FRESH" : integrity.verified ? "STALE" : "UNVERIFIABLE",
     freshness: {
       latestPulledAt: latestRun.pulledAt,
       ageHours: Number(ageHours.toFixed(2)),
@@ -111,6 +156,8 @@ async function main() {
       baseUrl: latestRun.config?.baseUrl ?? null,
       routePath: latestRun.config?.routePath ?? null,
     },
+    encryption: latestRun.encryption ?? null,
+    integrity,
     coverage: {
       from: latestRun.config?.from ?? null,
       to: latestRun.config?.to ?? null,
@@ -121,6 +168,12 @@ async function main() {
       reservations: latestRun.totals?.reservations ?? 0,
       businessDays: latestRun.totals?.businessDays ?? 0,
       privateBlockAuditLogs: latestRun.totals?.privateBlockAuditLogs ?? 0,
+      businessDayAuditLogs: latestRun.totals?.businessDayAuditLogs ?? 0,
+      reservationStatusAuditLogs: latestRun.totals?.reservationStatusAuditLogs ?? 0,
+      reservationCorrectionAuditLogs: latestRun.totals?.reservationCorrectionAuditLogs ?? 0,
+      reservationEmailOutbox: latestRun.totals?.reservationEmailOutbox ?? 0,
+      reservationLineLinkTokens: latestRun.totals?.reservationLineLinkTokens ?? 0,
+      notificationEvents: latestRun.totals?.notificationEvents ?? 0,
     },
     chunkChecksums: (latestRun.chunks ?? []).map((chunk) => ({
       from: chunk.from,

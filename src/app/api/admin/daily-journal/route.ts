@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { isAuthorized } from "@/lib/basic-auth";
+import { getStaffAuth } from "@/lib/staff-auth";
 import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
 import { dailyJournalPayloadSchema, toDailyJournalCreateUpdate, toDailyJournalEntry } from "@/lib/daily-journal/server";
 import { getRequestId, logError } from "@/lib/logger";
@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const requestId = getRequestId(request);
 
-  if (!isAuthorized(request)) {
+  if (!(await getStaffAuth())) {
     return apiError(401, { error: "Unauthorized", code: "UNAUTHORIZED", requestId });
   }
 
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const requestId = getRequestId(request);
 
-  if (!isAuthorized(request)) {
+  if (!(await getStaffAuth())) {
     return apiError(401, { error: "Unauthorized", code: "UNAUTHORIZED", requestId });
   }
 

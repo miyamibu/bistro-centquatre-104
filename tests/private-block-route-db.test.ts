@@ -6,29 +6,26 @@ import { createTestPrismaClient, destructiveTestDbAccess } from "./test-database
 
 const PRIVATE_BLOCK_TEST_CODE = "test-private-block-code";
 process.env.PRIVATE_BLOCK_ACCESS_CODE ??= PRIVATE_BLOCK_TEST_CODE;
-process.env.ADMIN_BASIC_USER ??= "admin";
-process.env.ADMIN_BASIC_PASS ??= "changeme";
 
 const hasSafeDatabase = destructiveTestDbAccess.enabled;
-const describeIfDatabase = hasSafeDatabase ? describe : describe.skip;
+const testStaffAuthCookie = process.env.TEST_STAFF_AUTH_COOKIE;
+const hasStaffAuthFixture = Boolean(testStaffAuthCookie);
+const describeIfDatabase = hasSafeDatabase && hasStaffAuthFixture ? describe : describe.skip;
 const prisma = hasSafeDatabase ? createTestPrismaClient() : null;
-const hasAdminCredentials =
-  Boolean(process.env.ADMIN_BASIC_USER) && Boolean(process.env.ADMIN_BASIC_PASS);
-const itIfAdmin = hasAdminCredentials ? it : it.skip;
 
 if (!hasSafeDatabase) {
   console.warn(`[tests] Skipping destructive DB tests: ${destructiveTestDbAccess.reason}`);
+} else if (!hasStaffAuthFixture) {
+  console.warn(
+    `[tests] Skipping private-block DB tests: TEST_STAFF_AUTH_COOKIE が未設定です（個別Supabase Auth + MFAセッションが必要）`
+  );
 }
 
 function buildReservationRequest(body: unknown) {
-  const basicToken = Buffer.from(
-    `${process.env.ADMIN_BASIC_USER}:${process.env.ADMIN_BASIC_PASS}`
-  ).toString("base64");
-
   return new NextRequest("http://localhost:3000/api/admin/private-block", {
     method: "POST",
     headers: {
-      authorization: `Basic ${basicToken}`,
+      cookie: testStaffAuthCookie ?? "",
       "content-type": "application/json",
       "x-requested-with": "XMLHttpRequest",
       origin: "http://localhost:3000",
@@ -70,14 +67,10 @@ function getPrismaOrThrow() {
 }
 
 function buildAdminPatchRequest(id: string, body: unknown) {
-  const basicToken = Buffer.from(
-    `${process.env.ADMIN_BASIC_USER}:${process.env.ADMIN_BASIC_PASS}`
-  ).toString("base64");
-
   return new NextRequest(`http://localhost:3000/api/admin/reservations/${id}`, {
     method: "PATCH",
     headers: {
-      authorization: `Basic ${basicToken}`,
+      cookie: testStaffAuthCookie ?? "",
       "content-type": "application/json",
       "x-requested-with": "XMLHttpRequest",
       origin: "http://localhost:3000",
@@ -179,7 +172,7 @@ describeIfDatabase("private block route contract (db)", () => {
     expect(activePrivateBlocks).toBe(1);
   });
 
-  itIfAdmin("requires operatorName for private-block release and writes RELEASED audit", async () => {
+  it("requires operatorName for private-block release and writes RELEASED audit", async () => {
     const created = await postPrivateBlock({
       date: "2099-12-27",
       servicePeriod: "LUNCH",
@@ -194,6 +187,9 @@ describeIfDatabase("private block route contract (db)", () => {
     const missingOperatorResponse = await patchAdminReservation(
       buildAdminPatchRequest(reservationId, {
         status: ReservationStatus.CANCELLED,
+        expectedDate: "2099-12-27",
+        expectedServicePeriod: "LUNCH",
+        expectedReservationType: ReservationType.PRIVATE_BLOCK,
       }),
       { params: Promise.resolve({ id: reservationId }) }
     );
@@ -204,6 +200,9 @@ describeIfDatabase("private block route contract (db)", () => {
       buildAdminPatchRequest(reservationId, {
         status: ReservationStatus.CANCELLED,
         operatorName: "運用担当A",
+        expectedDate: "2099-12-27",
+        expectedServicePeriod: "LUNCH",
+        expectedReservationType: ReservationType.PRIVATE_BLOCK,
       }),
       { params: Promise.resolve({ id: reservationId }) }
     );

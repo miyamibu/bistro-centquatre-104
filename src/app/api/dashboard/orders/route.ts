@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { isAuthorized } from "@/lib/basic-auth";
+import { getStaffAuth } from "@/lib/staff-auth";
 import { supabaseServer } from "@/lib/supabase-server";
 import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
 import { getRequestId, logError } from "@/lib/logger";
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   const requestId = getRequestId(request);
   const route = "/api/dashboard/orders";
 
-  if (!isAuthorized(request)) {
+  if (!(await getStaffAuth())) {
     return unauthorized(requestId);
   }
 
@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   const requestId = getRequestId(request);
 
-  if (!isAuthorized(request)) {
+  if (!(await getStaffAuth())) {
     return unauthorized(requestId);
   }
 
@@ -71,7 +71,7 @@ export async function PUT(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const requestId = getRequestId(request);
 
-  if (!isAuthorized(request)) {
+  if (!(await getStaffAuth())) {
     return unauthorized(requestId);
   }
 

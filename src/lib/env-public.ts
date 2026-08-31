@@ -14,7 +14,16 @@ const publicEnvSchema = z.object({
   NEXT_PUBLIC_LIFF_LINK_ID: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
 });
 
-const parsedPublicEnv = publicEnvSchema.safeParse(process.env);
+// Next.js only inlines NEXT_PUBLIC_* values in client bundles when each key is
+// referenced directly. Passing the whole process.env object leaves these
+// values undefined in the browser even when they are present at build time.
+const parsedPublicEnv = publicEnvSchema.safeParse({
+  NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  NEXT_PUBLIC_LIFF_ID: process.env.NEXT_PUBLIC_LIFF_ID,
+  NEXT_PUBLIC_LIFF_BOOKING_ID: process.env.NEXT_PUBLIC_LIFF_BOOKING_ID,
+  NEXT_PUBLIC_LIFF_LINK_ID: process.env.NEXT_PUBLIC_LIFF_LINK_ID,
+});
 
 if (!parsedPublicEnv.success) {
   const issues = parsedPublicEnv.error.issues

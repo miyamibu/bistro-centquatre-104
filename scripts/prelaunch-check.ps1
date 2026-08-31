@@ -201,14 +201,15 @@ function Wait-For-RepoNodeProcessesToExit {
 $requiredEnvKeys = @(
   "DATABASE_URL",
   "BASE_URL",
-  "ADMIN_BASIC_USER",
-  "ADMIN_BASIC_PASS",
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
+  "STAFF_SESSION_MAX_AGE_SECONDS",
   "CRON_SECRET",
   "BACKUP_EXPORT_SECRET",
+  "BACKUP_ENCRYPTION_KEY",
   "RATE_LIMIT_HASH_SECRET",
+  "RESERVATION_TOKEN_SECRET",
   "BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY"
 )
 
@@ -272,14 +273,14 @@ try {
   }
 
   $placeholderKeys = @(@(
-    "ADMIN_BASIC_USER",
-    "ADMIN_BASIC_PASS",
     "NEXT_PUBLIC_SUPABASE_URL",
     "NEXT_PUBLIC_SUPABASE_ANON_KEY",
     "SUPABASE_SERVICE_ROLE_KEY",
     "CRON_SECRET",
     "BACKUP_EXPORT_SECRET",
+    "BACKUP_ENCRYPTION_KEY",
     "RATE_LIMIT_HASH_SECRET",
+    "RESERVATION_TOKEN_SECRET",
     "BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY"
   ) | Where-Object { Test-Placeholder -Value ([string]$envMap[$_]) })
 
@@ -409,7 +410,8 @@ try {
   Assert-Contains -Actual ([string]$homeResponse.Headers["Link"]) -ExpectedFragment "</api/agent>" -Message "Home page must advertise /api/agent."
 
   $admin = Invoke-Http -Method "HEAD" -Url "$rootUrl/admin/reservations"
-  Assert-Equal -Actual $admin.Status -Expected 401 -Message "Admin reservations must require Basic auth."
+  Assert-Equal -Actual $admin.Status -Expected 307 -Message "Admin reservations must redirect to Supabase staff login."
+  Assert-Contains -Actual ([string]$admin.Headers["Location"]) -ExpectedFragment "/admin/login" -Message "Admin reservations must redirect to staff login."
 
   $manifest = Invoke-Http -Method "GET" -Url "$rootUrl/api/agent?pretty=1"
   Assert-Equal -Actual $manifest.Status -Expected 200 -Message "/api/agent must respond."
@@ -418,7 +420,12 @@ try {
 
   $reservationProbe = Invoke-Http -Method "POST" `
     -Url "$rootUrl/api/reservations" `
-    -Headers @{ "Content-Type" = "application/json" } `
+    -Headers @{
+      "Content-Type" = "application/json"
+      "Origin" = $rootUrl
+      "X-Requested-With" = "XMLHttpRequest"
+      "Idempotency-Key" = "prelaunch-validation-probe"
+    } `
     -Body "{}"
   Assert-Equal -Actual $reservationProbe.Status -Expected 400 -Message "Reservation probe should fail validation, not transport."
   Assert-Contains -Actual $reservationProbe.Body -ExpectedFragment '"code":"VALIDATION_ERROR"' -Message "Reservation probe must reach validation."

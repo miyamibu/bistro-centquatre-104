@@ -4,6 +4,7 @@ import {
   canAcceptWebReservation,
   getAllowedArrivalTimesForServicePeriod,
   getNextBookableReservationDate,
+  getPrivateBlockMarkerAriaLabel,
   getPrivateBlockMarkerText,
   getReservationCutoffDate,
   isBeforeOpeningReservationDate,
@@ -188,6 +189,16 @@ describe("Availability Rules", () => {
 
     it("does not return 夜のみ when dinner is closed", () => {
       expect(getPrivateBlockMarkerText("PRIVATE_BLOCK", "CLOSED")).toBeNull();
+    });
+
+    it("does not claim the opposite period is bookable when it is phone-only", () => {
+      expect(getPrivateBlockMarkerText("PRIVATE_BLOCK", "PHONE_ONLY")).toBeNull();
+      expect(getPrivateBlockMarkerText("PHONE_ONLY", "PRIVATE_BLOCK")).toBeNull();
+    });
+
+    it("uses a single 予約可 suffix in the accessible marker label", () => {
+      expect(getPrivateBlockMarkerAriaLabel("昼のみ")).toBe("昼のみ予約可");
+      expect(getPrivateBlockMarkerAriaLabel("夜のみ")).toBe("夜のみ予約可");
     });
   });
 });

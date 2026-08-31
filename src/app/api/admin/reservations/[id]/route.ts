@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma, ReservationStatus, ReservationType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { isAuthorized } from "@/lib/basic-auth";
+import { getStaffAuth } from "@/lib/staff-auth";
 import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
 import { updateReservationStatusSchema, zodFields } from "@/lib/validation";
 import { getRequestId, logError, logInfo } from "@/lib/logger";
 import { createPrivateBlockAuditLog } from "@/lib/private-block-audit";
-import { getClientIp, getUserAgent, hashClientIp } from "@/lib/request-meta";
+import {
+  enqueueReservationStatusEmail,
+  suppressReservationConfirmationEmail,
+} from "@/lib/reservation-email-outbox";
+import { getClientIp, getUserAgent, hashAuditIp, hashClientIp } from "@/lib/request-meta";
 import {
   RESERVATION_SCHEMA_NOT_READY_CODE,
   ensureReservationSchemaReady,
@@ -14,22 +18,58 @@ import {
   isReservationSchemaNotReadyError,
   updateReservationStatusCompat,
 } from "@/lib/reservation-compat";
+import {
+  evaluateReservationStatusTransition,
+  requiresOperatorForReservationStatusTransition,
+} from "@/lib/reservation-status";
 
 export const dynamic = "force-dynamic";
 
 type RouteContext = { params: Promise<{ id: string }> };
-const TERMINAL_RESERVATION_STATUSES = new Set<ReservationStatus>([
-  ReservationStatus.CANCELLED,
-  ReservationStatus.DONE,
-  ReservationStatus.NOSHOW,
-]);
+
+type ReservationTargetInput = {
+  date?: string;
+  servicePeriod?: "LUNCH" | "DINNER";
+  reservationType?: ReservationType;
+  expectedDate?: string;
+  expectedServicePeriod?: "LUNCH" | "DINNER";
+  expectedReservationType?: ReservationType;
+  expected?: {
+    date: string;
+    servicePeriod: "LUNCH" | "DINNER";
+    reservationType: ReservationType;
+  };
+};
+
+function getExpectedReservationTarget(input: ReservationTargetInput) {
+  return {
+    date: input.expected?.date ?? input.expectedDate ?? input.date,
+    servicePeriod:
+      input.expected?.servicePeriod ?? input.expectedServicePeriod ?? input.servicePeriod,
+    reservationType:
+      input.expected?.reservationType ?? input.expectedReservationType ?? input.reservationType,
+  };
+}
+
+function hasAnyExpectedReservationTarget(
+  target: ReturnType<typeof getExpectedReservationTarget>
+) {
+  return Boolean(target.date || target.servicePeriod || target.reservationType);
+}
+
+function hasCompleteExpectedReservationTarget(
+  target: ReturnType<typeof getExpectedReservationTarget>
+) {
+  return Boolean(target.date && target.servicePeriod && target.reservationType);
+}
 
 export async function GET(request: NextRequest, { params }: RouteContext) {
   const requestId = getRequestId(request);
   const route = "/api/admin/reservations/[id]";
   const { id } = await params;
 
-  if (!isAuthorized(request)) {
+  const staffAuth = await getStaffAuth();
+  if (!staffAuth) {
     return apiError(401, { error: "Unauthorized", code: "UNAUTHORIZED", requestId });
   }
 
@@ -69,7 +109,8 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
   const route = "/api/admin/reservations/[id]";
   const { id } = await params;
 
-  if (!isAuthorized(request)) {
+  const staffAuth = await getStaffAuth();
+  if (!staffAuth) {
     return apiError(401, { error: "Unauthorized", code: "UNAUTHORIZED", requestId });
   }
 
@@ -77,6 +118,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
   if (securityError) return securityError;
 
   const ipAddress = getClientIp(request);
+  const auditIpAddress = hashAuditIp(ipAddress);
   const userAgent = getUserAgent(request);
 
   try {
@@ -93,7 +135,8 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       });
     }
 
-    const operatorName = parsed.data.operatorName?.trim() || null;
+    const operatorLabel = parsed.data.operatorName?.trim() || null;
+    const reason = parsed.data.reason?.trim() || null;
     const updated = await prisma.$transaction(async (tx) => {
       const current = await findReservationByIdCompat(tx, id);
       if (!current) {
@@ -104,16 +147,64 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         return { current, next: current };
       }
 
-      if (TERMINAL_RESERVATION_STATUSES.has(current.status)) {
-        throw new Error("TERMINAL_STATUS_TRANSITION_NOT_ALLOWED");
-      }
-
       const privateBlockReleaseRequested =
         current.reservationType === ReservationType.PRIVATE_BLOCK &&
         parsed.data.status === ReservationStatus.CANCELLED;
+      const transition = evaluateReservationStatusTransition({
+        reservationType: current.reservationType,
+        currentStatus: current.status,
+        nextStatus: parsed.data.status,
+      });
 
-      if (privateBlockReleaseRequested && !operatorName) {
+      if (transition === "TERMINAL_STATUS_NOT_ALLOWED") {
+        throw new Error("TERMINAL_STATUS_TRANSITION_NOT_ALLOWED");
+      }
+
+      if (transition === "RESERVATION_TYPE_NOT_ALLOWED") {
+        throw new Error("RESERVATION_STATUS_TRANSITION_NOT_ALLOWED");
+      }
+
+      const expectedTarget = getExpectedReservationTarget(parsed.data);
+      const hasExpectedTarget = hasAnyExpectedReservationTarget(expectedTarget);
+      const hasCompleteExpectedTarget = hasCompleteExpectedReservationTarget(expectedTarget);
+
+      if (privateBlockReleaseRequested && !hasCompleteExpectedTarget) {
+        throw new Error("PRIVATE_BLOCK_TARGET_REQUIRED");
+      }
+
+      if (hasExpectedTarget && !hasCompleteExpectedTarget) {
+        throw new Error("INVALID_RESERVATION_TARGET");
+      }
+
+      if (
+        hasCompleteExpectedTarget &&
+        (current.date !== expectedTarget.date ||
+          current.servicePeriod !== expectedTarget.servicePeriod ||
+          current.reservationType !== expectedTarget.reservationType)
+      ) {
+        throw new Error("RESERVATION_TARGET_MISMATCH");
+      }
+
+      if (
+        requiresOperatorForReservationStatusTransition({
+          reservationType: current.reservationType,
+          currentStatus: current.status,
+          nextStatus: parsed.data.status,
+        }) &&
+        !operatorLabel
+      ) {
         throw new Error("MISSING_OPERATOR_NAME");
+      }
+
+      if (
+        new Set<ReservationStatus>([
+          ReservationStatus.CANCELLED,
+          ReservationStatus.DONE,
+          ReservationStatus.NOSHOW,
+        ]).has(parsed.data.status) &&
+        !reason
+      ) {
+        throw new Error("MISSING_STATUS_REASON");
       }
 
       const next = await updateReservationStatusCompat(tx, id, current.status, parsed.data.status);
@@ -124,15 +215,30 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       await tx.reservationStatusAuditLog.create({
         data: {
           reservationId: next.id,
-          actorName: operatorName,
+          actorName: staffAuth.email ?? staffAuth.userId,
+          actorUserId: staffAuth.userId,
+          actorEmail: staffAuth.email,
+          actorRole: staffAuth.role,
+          operatorLabel,
           requestId,
-          ipAddress,
+          ipAddress: auditIpAddress,
           userAgent,
           previousStatus: current.status,
           nextStatus: next.status,
-          reason: privateBlockReleaseRequested ? "PRIVATE_BLOCK_RELEASE" : null,
+          reason,
         },
       });
+
+      if (next.status === ReservationStatus.CANCELLED) {
+        await suppressReservationConfirmationEmail(tx, next.id);
+      }
+
+      if (
+        next.reservationType === ReservationType.NORMAL &&
+        (next.status === ReservationStatus.CANCELLED || next.status === ReservationStatus.NOSHOW)
+      ) {
+        await enqueueReservationStatusEmail(tx, next.id, next.status);
+      }
 
       if (privateBlockReleaseRequested) {
         await createPrivateBlockAuditLog(tx, {
@@ -140,12 +246,16 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
           date: next.date,
           servicePeriod: next.servicePeriod,
           result: "RELEASED",
-          source: "ADMIN_SHARED_BASIC",
-          actorName: operatorName,
+          source: "ADMIN_USER",
+          actorName: staffAuth.email ?? staffAuth.userId,
+          actorUserId: staffAuth.userId,
+          actorEmail: staffAuth.email,
+          actorRole: staffAuth.role,
+          operatorLabel,
           requestId,
-          ipAddress,
+          ipAddress: auditIpAddress,
           userAgent,
-          note: null,
+          note: reason ?? "PRIVATE_BLOCK_RELEASE",
         });
       }
 
@@ -170,7 +280,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         nextStatus: updated.next.status,
         date: updated.next.date,
         servicePeriod: updated.next.servicePeriod,
-        operatorName,
+        operatorLabel,
         ipHash: hashClientIp(ipAddress),
         userAgent,
         privateBlockReleaseRequested:
@@ -185,6 +295,46 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       return apiError(400, {
         error: "貸切解除には担当者名が必須です",
         code: "MISSING_OPERATOR_NAME",
+        requestId,
+      });
+    }
+
+    if (error instanceof Error && error.message === "MISSING_STATUS_REASON") {
+      return apiError(400, {
+        error: "終端ステータスへの変更には理由が必要です",
+        code: "MISSING_STATUS_REASON",
+        requestId,
+      });
+    }
+
+    if (error instanceof Error && error.message === "PRIVATE_BLOCK_TARGET_REQUIRED") {
+      return apiError(400, {
+        error: "貸切解除には対象のdate、servicePeriod、reservationTypeが必要です",
+        code: "PRIVATE_BLOCK_TARGET_REQUIRED",
+        requestId,
+      });
+    }
+
+    if (error instanceof Error && error.message === "INVALID_RESERVATION_TARGET") {
+      return apiError(400, {
+        error: "対象確認情報が不足しています",
+        code: "INVALID_RESERVATION_TARGET",
+        requestId,
+      });
+    }
+
+    if (error instanceof Error && error.message === "RESERVATION_TARGET_MISMATCH") {
+      return apiError(409, {
+        error: "対象の予約情報が現在の状態と一致しません。最新状態を確認してください",
+        code: "RESERVATION_TARGET_MISMATCH",
+        requestId,
+      });
+    }
+
+    if (error instanceof Error && error.message === "RESERVATION_STATUS_TRANSITION_NOT_ALLOWED") {
+      return apiError(409, {
+        error: "貸切レコードはキャンセル以外の終端状態へ変更できません",
+        code: "RESERVATION_STATUS_TRANSITION_NOT_ALLOWED",
         requestId,
       });
     }

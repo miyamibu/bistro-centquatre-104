@@ -11,6 +11,10 @@ type HeaderEntry = {
 };
 
 describe("Next security headers", () => {
+  it("does not disclose the framework through X-Powered-By", () => {
+    expect(nextConfig.poweredByHeader).toBe(false);
+  });
+
   it("enforces the production CSP header", async () => {
     const entries = (await nextConfig.headers?.()) as HeaderEntry[] | undefined;
     const headers = entries?.flatMap((entry: HeaderEntry) => entry.headers) ?? [];

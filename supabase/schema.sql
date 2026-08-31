@@ -155,6 +155,8 @@ create table if not exists public.api_idempotency (
   response_status integer,
   response_body jsonb,
   resource_id text,
+  claim_expires_at timestamptz,
+  claim_token uuid,
   created_at timestamptz not null default now(),
   unique (scope, actor_key, idempotency_key)
 );
@@ -223,12 +225,84 @@ create index if not exists idx_order_actions_action_created on public.order_acti
 create index if not exists idx_human_tokens_order_active
   on public.human_tokens (order_id, expires_at)
   where used_at is null;
+
+create table if not exists public.order_receipt_tokens (
+  id uuid primary key default gen_random_uuid(),
+  order_id uuid not null references public.orders(id) on delete restrict,
+  token_hash text not null unique,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+
+create unique index if not exists uq_order_receipt_tokens_order_id
+  on public.order_receipt_tokens (order_id);
+
+create table if not exists public.contact_rate_limit_buckets (
+  scope text not null check (scope in ('IP', 'EMAIL')),
+  key_hash text not null,
+  window_started_at timestamptz not null,
+  request_count integer not null check (request_count > 0),
+  updated_at timestamptz not null default now(),
+  primary key (scope, key_hash)
+);
+
 create index if not exists idx_api_idempotency_created_at on public.api_idempotency (created_at);
+create index if not exists idx_api_idempotency_unfinalized_claim
+  on public.api_idempotency (claim_expires_at)
+  where response_status is null or response_body is null;
 create index if not exists idx_order_notification_outbox_status_created
   on public.order_notification_outbox (status, created_at);
 create index if not exists idx_order_notification_outbox_order
   on public.order_notification_outbox (order_id, created_at desc);
 create index if not exists idx_bank_account_history_changed_at on public.bank_account_history (changed_at desc);
+
+create table if not exists public."SchedulerHeartbeat" (
+  "id" text primary key,
+  "schedulerKind" text not null,
+  "lane" text not null,
+  "lastStartedAt" timestamp(3) not null,
+  "lastSuccessAt" timestamp(3),
+  "lastFailureAt" timestamp(3),
+  "processedCount" integer not null default 0,
+  "retryCount" integer not null default 0,
+  "deadLetterCount" integer not null default 0,
+  "backlogCount" integer not null default 0,
+  "oldestBacklogAt" timestamp(3),
+  "lastRunId" text,
+  "lastProviderCronAt" timestamp(3),
+  "immediateAttempts" integer not null default 0,
+  "immediateSuccesses" integer not null default 0,
+  "lastErrorCode" text,
+  "createdAt" timestamp(3) not null default current_timestamp,
+  "updatedAt" timestamp(3) not null
+);
+
+create unique index if not exists "SchedulerHeartbeat_schedulerKind_lane_key"
+  on public."SchedulerHeartbeat" ("schedulerKind", "lane");
+create index if not exists "SchedulerHeartbeat_lane_updatedAt_idx"
+  on public."SchedulerHeartbeat" ("lane", "updatedAt");
+
+create table if not exists public."OutboxDrainAuditLog" (
+  "id" text primary key,
+  "actorUserId" text not null,
+  "actorEmail" text,
+  "actorRole" text not null,
+  "requestId" text not null,
+  "lane" text not null,
+  "dryRun" boolean not null,
+  "requestedLimit" integer not null,
+  "scannedCount" integer not null,
+  "sentCount" integer not null,
+  "failedCount" integer not null,
+  "deadLetterCount" integer not null,
+  "backlogCount" integer not null,
+  "createdAt" timestamp(3) not null default current_timestamp
+);
+
+create index if not exists "OutboxDrainAuditLog_createdAt_idx"
+  on public."OutboxDrainAuditLog" ("createdAt");
+create index if not exists "OutboxDrainAuditLog_actorUserId_createdAt_idx"
+  on public."OutboxDrainAuditLog" ("actorUserId", "createdAt");
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -237,6 +311,109 @@ as $$
 begin
   new.updated_at := now();
   return new;
+end;
+$$;
+
+create or replace function public.consume_contact_rate_limit(
+  p_ip_hash text,
+  p_email_hash text,
+  p_window_seconds integer default 600,
+  p_ip_max_requests integer default 5,
+  p_email_max_requests integer default 3,
+  p_now timestamptz default now()
+)
+returns boolean
+language plpgsql
+as $$
+declare
+  v_scope text;
+  v_key_hash text;
+  v_max_requests integer;
+  v_window_started_at timestamptz;
+  v_request_count integer;
+begin
+  if p_window_seconds <= 0 or p_ip_max_requests <= 0 or p_email_max_requests <= 0 then
+    return false;
+  end if;
+
+  for v_scope, v_key_hash, v_max_requests in
+    select key_scope, key_value, max_requests
+    from (
+      values
+        ('EMAIL'::text, nullif(trim(p_email_hash), ''), p_email_max_requests),
+        ('IP'::text, nullif(trim(p_ip_hash), ''), p_ip_max_requests)
+    ) as keys(key_scope, key_value, max_requests)
+    where key_value is not null
+    order by key_scope, key_value
+  loop
+    perform pg_advisory_xact_lock(
+      hashtext('bistro:contact-rate:' || v_scope || ':' || v_key_hash)
+    );
+  end loop;
+
+  for v_scope, v_key_hash, v_max_requests in
+    select key_scope, key_value, max_requests
+    from (
+      values
+        ('EMAIL'::text, nullif(trim(p_email_hash), ''), p_email_max_requests),
+        ('IP'::text, nullif(trim(p_ip_hash), ''), p_ip_max_requests)
+    ) as keys(key_scope, key_value, max_requests)
+    where key_value is not null
+    order by key_scope, key_value
+  loop
+    select window_started_at, request_count
+    into v_window_started_at, v_request_count
+    from public.contact_rate_limit_buckets
+    where scope = v_scope
+      and key_hash = v_key_hash
+    for update;
+
+    if found
+       and v_window_started_at > p_now - make_interval(secs => p_window_seconds)
+       and v_request_count >= v_max_requests then
+      return false;
+    end if;
+  end loop;
+
+  for v_scope, v_key_hash, v_max_requests in
+    select key_scope, key_value, max_requests
+    from (
+      values
+        ('EMAIL'::text, nullif(trim(p_email_hash), ''), p_email_max_requests),
+        ('IP'::text, nullif(trim(p_ip_hash), ''), p_ip_max_requests)
+    ) as keys(key_scope, key_value, max_requests)
+    where key_value is not null
+    order by key_scope, key_value
+  loop
+    insert into public.contact_rate_limit_buckets (
+      scope,
+      key_hash,
+      window_started_at,
+      request_count,
+      updated_at
+    ) values (
+      v_scope,
+      v_key_hash,
+      p_now,
+      1,
+      p_now
+    )
+    on conflict (scope, key_hash) do update
+    set
+      window_started_at = case
+        when public.contact_rate_limit_buckets.window_started_at <= p_now - make_interval(secs => p_window_seconds)
+          then excluded.window_started_at
+        else public.contact_rate_limit_buckets.window_started_at
+      end,
+      request_count = case
+        when public.contact_rate_limit_buckets.window_started_at <= p_now - make_interval(secs => p_window_seconds)
+          then 1
+        else public.contact_rate_limit_buckets.request_count + 1
+      end,
+      updated_at = excluded.updated_at;
+  end loop;
+
+  return true;
 end;
 $$;
 
@@ -391,6 +568,469 @@ begin
       'createdAt', v_action_created_at
     )
   );
+end;
+$$;
+
+create or replace function public.execute_terminal_order_action(
+  p_scope text,
+  p_actor_key text,
+  p_idempotency_key text,
+  p_request_hash text,
+  p_order_id uuid,
+  p_expected_version integer,
+  p_action text,
+  p_reason_code text,
+  p_actor_type text,
+  p_actor_id text,
+  p_request_id text,
+  p_admin_note text default null
+)
+returns jsonb
+language plpgsql
+as $$
+declare
+  c_claim_lease interval := interval '5 minutes';
+  v_idempotency public.api_idempotency%rowtype;
+  v_order public.orders%rowtype;
+  v_existing_action public.order_actions%rowtype;
+  v_action_result jsonb;
+  v_body jsonb;
+  v_status integer;
+  v_is_new_claim boolean := false;
+  v_reconciled boolean := false;
+  v_action_type text;
+  v_error_message text;
+  v_error_code text;
+begin
+  if p_action not in ('MARK_SHIPPED', 'CANCEL') then
+    return jsonb_build_object(
+      'status', 400,
+      'body', jsonb_build_object(
+        'ok', false,
+        'error', 'INVALID_TERMINAL_ACTION',
+        'code', 'INVALID_TERMINAL_ACTION'
+      ),
+      'replayed', false
+    );
+  end if;
+
+  if p_action = 'CANCEL' and nullif(btrim(coalesce(p_reason_code, '')), '') is null then
+    return jsonb_build_object(
+      'status', 400,
+      'body', jsonb_build_object(
+        'ok', false,
+        'error', 'CANCEL_REASON_REQUIRED',
+        'code', 'CANCEL_REASON_REQUIRED'
+      ),
+      'replayed', false
+    );
+  end if;
+
+  v_action_type := case p_action
+    when 'MARK_SHIPPED' then 'MARK_SHIPPED'
+    else 'CANCELLED'
+  end;
+
+  loop
+    select *
+    into v_idempotency
+    from public.api_idempotency
+    where scope = p_scope
+      and actor_key = p_actor_key
+      and idempotency_key = p_idempotency_key
+    for update;
+
+    exit when found;
+
+    insert into public.api_idempotency (
+      scope,
+      actor_key,
+      idempotency_key,
+      request_hash,
+      claim_expires_at
+    ) values (
+      p_scope,
+      p_actor_key,
+      p_idempotency_key,
+      p_request_hash,
+      now() + c_claim_lease
+    )
+    on conflict (scope, actor_key, idempotency_key) do nothing;
+
+    if found then
+      v_is_new_claim := true;
+    end if;
+  end loop;
+
+  if v_idempotency.request_hash <> p_request_hash then
+    return jsonb_build_object(
+      'status', 409,
+      'body', jsonb_build_object(
+        'ok', false,
+        'error', '同じキーで別の内容は送信できません',
+        'code', 'IDEMPOTENCY_CONFLICT'
+      ),
+      'replayed', false
+    );
+  end if;
+
+  if v_idempotency.response_status is not null
+     and v_idempotency.response_body is not null then
+    return jsonb_build_object(
+      'status', v_idempotency.response_status,
+      'body', v_idempotency.response_body,
+      'replayed', true
+    );
+  end if;
+
+  if not v_is_new_claim
+     and coalesce(v_idempotency.claim_expires_at, v_idempotency.created_at + c_claim_lease) > now() then
+    return jsonb_build_object(
+      'status', 409,
+      'body', jsonb_build_object(
+        'ok', false,
+        'error', '同じキーの処理が進行中です',
+        'code', 'IDEMPOTENCY_IN_PROGRESS'
+      ),
+      'replayed', false
+    );
+  end if;
+
+  update public.api_idempotency
+  set claim_expires_at = now() + c_claim_lease
+  where id = v_idempotency.id;
+
+  begin
+    select *
+    into v_existing_action
+    from public.order_actions
+    where order_id = p_order_id
+      and idempotency_key = p_idempotency_key
+      and action_type = v_action_type
+    order by created_at desc
+    limit 1;
+
+    if found then
+      select *
+      into v_order
+      from public.orders
+      where id = p_order_id
+      for update;
+
+      if not found then
+        raise exception 'ORDER_NOT_FOUND';
+      end if;
+
+      if (p_action = 'MARK_SHIPPED' and v_order.status <> 'SHIPPED')
+         or (p_action = 'CANCEL' and v_order.status <> 'CANCELLED') then
+        raise exception 'IDEMPOTENCY_RECOVERY_CONFLICT';
+      end if;
+
+      v_reconciled := true;
+      v_body := case p_action
+        when 'MARK_SHIPPED' then jsonb_build_object(
+          'ok', true,
+          'order', jsonb_build_object(
+            'id', v_order.id,
+            'status', v_order.status,
+            'shippedAt', v_order.shipped_at,
+            'version', v_order.version
+          ),
+          'action', jsonb_build_object(
+            'id', v_existing_action.id,
+            'type', 'MARK_SHIPPED',
+            'createdAt', v_existing_action.created_at
+          )
+        )
+        else jsonb_build_object(
+          'ok', true,
+          'order', jsonb_build_object(
+            'id', v_order.id,
+            'status', v_order.status,
+            'canceledAt', v_order.canceled_at,
+            'version', v_order.version
+          ),
+          'action', jsonb_build_object(
+            'id', v_existing_action.id,
+            'type', 'CANCELLED',
+            'createdAt', v_existing_action.created_at
+          )
+        )
+      end;
+    else
+      if p_action = 'MARK_SHIPPED' then
+        v_action_result := public.mark_order_shipped_action(
+          p_order_id,
+          p_expected_version,
+          p_actor_type,
+          p_actor_id,
+          p_request_id,
+          p_idempotency_key,
+          p_admin_note
+        );
+      else
+        v_action_result := public.cancel_order_action(
+          p_order_id,
+          p_expected_version,
+          p_reason_code,
+          p_actor_type,
+          p_actor_id,
+          p_request_id,
+          p_idempotency_key,
+          p_admin_note
+        );
+      end if;
+
+      select *
+      into v_order
+      from public.orders
+      where id = p_order_id
+      for update;
+
+      if not found then
+        raise exception 'ORDER_NOT_FOUND';
+      end if;
+
+      if (p_action = 'MARK_SHIPPED' and v_order.status <> 'SHIPPED')
+         or (p_action = 'CANCEL' and v_order.status <> 'CANCELLED') then
+        raise exception 'TERMINAL_ORDER_ACTION_FAILED';
+      end if;
+
+      v_body := v_action_result;
+    end if;
+
+    insert into public.order_history (
+      id,
+      customer_name,
+      email,
+      phone,
+      zip_code,
+      prefecture,
+      city,
+      address,
+      building,
+      payment_method,
+      payment_reference,
+      items,
+      total,
+      store_visit_date,
+      status,
+      paid_at,
+      shipped_at,
+      canceled_at,
+      cancel_reason,
+      version,
+      created_at,
+      deleted_at
+    ) values (
+      v_order.id,
+      v_order.customer_name,
+      v_order.email,
+      v_order.phone,
+      v_order.zip_code,
+      v_order.prefecture,
+      v_order.city,
+      v_order.address,
+      v_order.building,
+      v_order.payment_method,
+      v_order.payment_reference,
+      v_order.items,
+      v_order.total,
+      v_order.store_visit_date,
+      v_order.status,
+      v_order.paid_at,
+      v_order.shipped_at,
+      v_order.canceled_at,
+      v_order.cancel_reason,
+      v_order.version,
+      v_order.created_at,
+      case
+        when v_order.status = 'SHIPPED' then coalesce(v_order.shipped_at, now())
+        else coalesce(v_order.canceled_at, now())
+      end
+    )
+    on conflict (id) do nothing;
+
+    v_status := 200;
+  exception
+    when others then
+      get stacked diagnostics v_error_message = message_text;
+
+      v_error_code := case
+        when upper(v_error_message) like '%ORDER_NOT_FOUND%' then 'ORDER_NOT_FOUND'
+        when upper(v_error_message) like '%VERSION_CONFLICT%' then 'VERSION_CONFLICT'
+        when upper(v_error_message) like '%INVALID_STATUS_TRANSITION%' then 'INVALID_STATUS_TRANSITION'
+        when upper(v_error_message) like '%ALREADY_CANCELLED%' then 'ALREADY_CANCELLED'
+        when upper(v_error_message) like '%ALREADY_COMPLETED%' then 'ALREADY_COMPLETED'
+        when upper(v_error_message) like '%IDEMPOTENCY_RECOVERY_CONFLICT%' then 'IDEMPOTENCY_RECOVERY_CONFLICT'
+        else case p_action
+          when 'MARK_SHIPPED' then 'MARK_SHIPPED_FAILED'
+          else 'CANCEL_ORDER_FAILED'
+        end
+      end;
+
+      v_status := case
+        when v_error_code = 'ORDER_NOT_FOUND' then 404
+        when v_error_code in (
+          'VERSION_CONFLICT',
+          'INVALID_STATUS_TRANSITION',
+          'ALREADY_CANCELLED',
+          'ALREADY_COMPLETED',
+          'IDEMPOTENCY_RECOVERY_CONFLICT'
+        ) then 409
+        else 500
+      end;
+
+      if v_status >= 500 then
+        v_body := jsonb_build_object(
+          'ok', false,
+          'error', 'Internal server error',
+          'code', 'TERMINAL_ORDER_ACTION_FAILED'
+        );
+      else
+        v_body := jsonb_build_object(
+          'ok', false,
+          'error', v_error_message,
+          'code', v_error_code
+        );
+      end if;
+
+      if v_reconciled and v_error_code <> 'IDEMPOTENCY_RECOVERY_CONFLICT' then
+        update public.api_idempotency
+        set claim_expires_at = now() - interval '1 second'
+        where id = v_idempotency.id;
+
+        return jsonb_build_object(
+          'status', 500,
+          'body', jsonb_build_object(
+            'ok', false,
+            'error', 'Internal server error',
+            'code', 'TERMINAL_ORDER_ACTION_FAILED'
+          ),
+          'replayed', false,
+          'reconciled', true
+        );
+      end if;
+  end;
+
+  update public.api_idempotency
+  set
+    response_status = v_status,
+    response_body = v_body,
+    resource_id = case when v_status = 200 then p_order_id::text else null end,
+    claim_expires_at = null
+  where id = v_idempotency.id;
+
+  if not found then
+    raise exception 'IDEMPOTENCY_FINALIZE_FAILED';
+  end if;
+
+  return jsonb_build_object(
+    'status', v_status,
+    'body', v_body,
+    'replayed', false,
+    'reconciled', v_reconciled
+  );
+end;
+$$;
+
+revoke execute on function public.execute_terminal_order_action(
+  text,
+  text,
+  text,
+  text,
+  uuid,
+  integer,
+  text,
+  text,
+  text,
+  text,
+  text,
+  text
+) from public, anon, authenticated;
+
+grant execute on function public.execute_terminal_order_action(
+  text,
+  text,
+  text,
+  text,
+  uuid,
+  integer,
+  text,
+  text,
+  text,
+  text,
+  text,
+  text
+) to service_role;
+
+create or replace function public.create_order_quote_with_receipt_action(
+  p_customer_name text,
+  p_email text,
+  p_phone text,
+  p_zip_code text,
+  p_prefecture text,
+  p_city text,
+  p_address text,
+  p_building text,
+  p_items jsonb,
+  p_total integer,
+  p_hold_expires_at timestamptz,
+  p_token_hash text,
+  p_actor_id text,
+  p_request_id text,
+  p_idempotency_key text,
+  p_selected_payment_method text,
+  p_selected_store_visit_date date default null,
+  p_receipt_token_hash text default null
+)
+returns jsonb
+language plpgsql
+as $$
+declare
+  v_result jsonb;
+  v_order_id uuid;
+begin
+  if p_receipt_token_hash is null or length(trim(p_receipt_token_hash)) <> 64 then
+    raise exception 'ORDER_RECEIPT_TOKEN_REQUIRED';
+  end if;
+
+  v_result := public.create_order_quote_action(
+    p_customer_name => p_customer_name,
+    p_email => p_email,
+    p_phone => p_phone,
+    p_zip_code => p_zip_code,
+    p_prefecture => p_prefecture,
+    p_city => p_city,
+    p_address => p_address,
+    p_building => p_building,
+    p_items => p_items,
+    p_total => p_total,
+    p_hold_expires_at => p_hold_expires_at,
+    p_token_hash => p_token_hash,
+    p_actor_id => p_actor_id,
+    p_request_id => p_request_id,
+    p_idempotency_key => p_idempotency_key,
+    p_selected_payment_method => p_selected_payment_method,
+    p_selected_store_visit_date => p_selected_store_visit_date
+  );
+
+  v_order_id := nullif(v_result -> 'order' ->> 'id', '')::uuid;
+  if v_order_id is null then
+    raise exception 'ORDER_RECEIPT_ORDER_ID_MISSING';
+  end if;
+
+  insert into public.order_receipt_tokens (
+    order_id,
+    token_hash,
+    expires_at
+  ) values (
+    v_order_id,
+    lower(trim(p_receipt_token_hash)),
+    now() + interval '30 days'
+  );
+
+  return v_result;
 end;
 $$;
 

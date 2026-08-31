@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { isAuthorized } from "@/lib/basic-auth";
+import { getStaffAuth } from "@/lib/staff-auth";
 import { encryptBankHistoryValue } from "@/lib/bank-account-history-crypto";
 import { env } from "@/lib/env";
 import { supabaseServer } from "@/lib/supabase-server";
@@ -31,16 +31,22 @@ type BankAccountRecord = {
   account_holder: string;
 };
 
+const BANK_ACCOUNT_SELECT =
+  "id, bank_name, branch_name, account_type, account_number, account_holder";
+
 export async function GET(request: NextRequest) {
   const requestId = getRequestId(request);
   const route = "/api/dashboard/bank-account";
 
-  if (!isAuthorized(request)) {
+  if (!(await getStaffAuth("ADMIN"))) {
     return unauthorized(requestId);
   }
 
   try {
-    const { data, error } = await supabaseServer.from("bank_account").select("*").limit(1);
+    const { data, error } = await supabaseServer
+      .from("bank_account")
+      .select(BANK_ACCOUNT_SELECT)
+      .limit(1);
     if (error) throw error;
     return NextResponse.json(data?.[0] || {});
   } catch (error) {
@@ -62,7 +68,7 @@ export async function PUT(request: NextRequest) {
   const requestId = getRequestId(request);
   const route = "/api/dashboard/bank-account";
 
-  if (!isAuthorized(request)) {
+  if (!(await getStaffAuth("ADMIN"))) {
     return unauthorized(requestId);
   }
 
@@ -133,7 +139,7 @@ export async function DELETE(request: NextRequest) {
   const requestId = getRequestId(request);
   const route = "/api/dashboard/bank-account";
 
-  if (!isAuthorized(request)) {
+  if (!(await getStaffAuth("ADMIN"))) {
     return unauthorized(requestId);
   }
 
@@ -154,7 +160,7 @@ export async function DELETE(request: NextRequest) {
 
     const { data: existing, error: fetchError } = await supabaseServer
       .from("bank_account")
-      .select("*")
+      .select(BANK_ACCOUNT_SELECT)
       .eq("id", parsed.data.id)
       .maybeSingle();
 

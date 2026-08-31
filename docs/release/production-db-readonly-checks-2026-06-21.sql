@@ -64,8 +64,10 @@ with target_tables(schema_name, table_name) as (
     ('public', 'PrivateBlockAuditLog'),
     ('public', 'ReservationStatusAuditLog'),
     ('public', 'ReservationEmailOutbox'),
+    ('public', 'ReservationIdempotency'),
     ('public', 'ReservationLineLinkToken'),
     ('public', 'NotificationEvent'),
+    ('public', 'LineWebhookInbox'),
     ('public', 'ReservationRateLimitEvent'),
     ('public', 'BusinessDay')
 )
@@ -99,8 +101,10 @@ with target_tables(schema_name, table_name) as (
     ('public', 'PrivateBlockAuditLog'),
     ('public', 'ReservationStatusAuditLog'),
     ('public', 'ReservationEmailOutbox'),
+    ('public', 'ReservationIdempotency'),
     ('public', 'ReservationLineLinkToken'),
     ('public', 'NotificationEvent'),
+    ('public', 'LineWebhookInbox'),
     ('public', 'ReservationRateLimitEvent'),
     ('public', 'BusinessDay')
 )
@@ -132,8 +136,10 @@ with target_tables(schema_name, table_name) as (
     ('public', 'PrivateBlockAuditLog'),
     ('public', 'ReservationStatusAuditLog'),
     ('public', 'ReservationEmailOutbox'),
+    ('public', 'ReservationIdempotency'),
     ('public', 'ReservationLineLinkToken'),
     ('public', 'NotificationEvent'),
+    ('public', 'LineWebhookInbox'),
     ('public', 'ReservationRateLimitEvent'),
     ('public', 'BusinessDay')
 ),
@@ -182,8 +188,10 @@ where schemaname = 'public'
     'PrivateBlockAuditLog',
     'ReservationStatusAuditLog',
     'ReservationEmailOutbox',
+    'ReservationIdempotency',
     'ReservationLineLinkToken',
     'NotificationEvent',
+    'LineWebhookInbox',
     'ReservationRateLimitEvent',
     'BusinessDay'
   )
@@ -222,6 +230,7 @@ where n.nspname = 'public'
     'mark_order_collected_action',
     'mark_order_shipped_action',
     'cancel_order_action',
+    'execute_terminal_order_action',
     'save_bank_account_with_history',
     'delete_bank_account_with_history',
     'set_updated_at'
@@ -259,7 +268,7 @@ select
   column_default is not null as has_default
 from information_schema.columns
 where table_schema = 'public'
-  and table_name = 'order_notification_outbox'
+  and table_name in ('order_notification_outbox', 'LineWebhookInbox')
 order by ordinal_position;
 
 with expected_columns(table_name, column_name) as (
@@ -268,9 +277,17 @@ with expected_columns(table_name, column_name) as (
     ('order_notification_outbox', 'customer_sent_at'),
     ('order_notification_outbox', 'admin_sent_at'),
     ('order_notification_outbox', 'admin_skipped_at'),
+    ('api_idempotency', 'claim_expires_at'),
     ('ReservationEmailOutbox', 'claimToken'),
     ('ReservationEmailOutbox', 'lockedUntil'),
-    ('ReservationEmailOutbox', 'lastError')
+    ('ReservationEmailOutbox', 'lastError'),
+    ('LineWebhookInbox', 'eventId'),
+    ('LineWebhookInbox', 'status'),
+    ('LineWebhookInbox', 'attempts'),
+    ('LineWebhookInbox', 'lockedUntil'),
+    ('LineWebhookInbox', 'claimToken'),
+    ('LineWebhookInbox', 'processedAt'),
+    ('LineWebhookInbox', 'lastError')
 )
 select
   expected.table_name,
@@ -301,12 +318,14 @@ where routine_schema = 'public'
     'mark_order_paid_action',
     'mark_order_collected_action',
     'mark_order_shipped_action',
-    'cancel_order_action'
+    'cancel_order_action',
+    'execute_terminal_order_action'
   )
 order by routine_name;
 
 select
   to_regclass('public.order_notification_outbox') is not null as has_order_notification_outbox,
+  to_regprocedure('public.execute_terminal_order_action(text,text,text,text,uuid,integer,text,text,text,text,text,text)') is not null as has_execute_terminal_order_action_rpc,
   to_regprocedure('public.set_order_payment_method_action(uuid,integer,text,date,timestamp with time zone,text,text,text,text,text)') is not null as has_set_payment_method_rpc,
   to_regprocedure('public.save_bank_account_with_history(text,text,text,text,text,text,text,text,text,text,text,integer)') is not null as has_save_bank_account_rpc,
   to_regprocedure('public.delete_bank_account_with_history(uuid,text,text,text,text,text,integer)') is not null as has_delete_bank_account_rpc;

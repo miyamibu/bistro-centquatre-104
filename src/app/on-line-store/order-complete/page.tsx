@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { Noto_Serif_JP, Tangerine } from "next/font/google";
 import {
   loadOrderCompletionReceipt,
+  saveOrderCompletionReceipt,
   type OrderCompletionReceipt,
 } from "@/lib/store-checkout-session";
 
@@ -24,11 +25,84 @@ function OrderCompleteContent() {
   const searchParams = useSearchParams();
   const orderId = searchParams.get("order_id");
   const [receipt, setReceipt] = useState<OrderCompletionReceipt | null>(null);
-  const [isReady, setIsReady] = useState(false);
+  const [receiptState, setReceiptState] = useState<
+    "loading" | "loaded" | "missing" | "error"
+  >("loading");
 
   useEffect(() => {
-    setReceipt(loadOrderCompletionReceipt(orderId));
-    setIsReady(true);
+    let cancelled = false;
+    const receiptTokenFromHash =
+      new URLSearchParams(window.location.hash.replace(/^#/, ""))
+        .get("receipt_token")
+        ?.trim() ?? "";
+    const storedReceipt = (() => {
+      try {
+        return loadOrderCompletionReceipt(orderId);
+      } catch {
+        return null;
+      }
+    })();
+    const receiptToken = receiptTokenFromHash || storedReceipt?.receiptToken || "";
+
+    if (!orderId || !receiptToken) {
+      setReceipt(null);
+      setReceiptState("missing");
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const controller = new AbortController();
+    setReceipt(null);
+    setReceiptState("loading");
+    fetch(`/api/orders/${encodeURIComponent(orderId)}/receipt`, {
+      cache: "no-store",
+      headers: {
+        "X-Order-Receipt-Token": receiptToken,
+      },
+      referrerPolicy: "no-referrer",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("ORDER_RECEIPT_LOOKUP_FAILED");
+        const body = (await response.json()) as Partial<OrderCompletionReceipt>;
+        if (
+          body.orderId !== orderId ||
+          (body.paymentMethod !== "BANK_TRANSFER" && body.paymentMethod !== "PAY_IN_STORE") ||
+          (body.storeVisitDate !== null && typeof body.storeVisitDate !== "string") ||
+          (body.notificationStatus !== "SENT" && body.notificationStatus !== "PENDING_RETRY")
+        ) {
+          throw new Error("ORDER_RECEIPT_RESPONSE_INVALID");
+        }
+        if (cancelled) return;
+        const verifiedReceipt: OrderCompletionReceipt = {
+          orderId,
+          paymentMethod: body.paymentMethod,
+          storeVisitDate: body.storeVisitDate ?? null,
+          notificationStatus: body.notificationStatus,
+          receiptToken,
+        };
+        const receiptPersisted = saveOrderCompletionReceipt(verifiedReceipt);
+        if (receiptTokenFromHash && receiptPersisted) {
+          window.history.replaceState(
+            null,
+            "",
+            `${window.location.pathname}${window.location.search}`,
+          );
+        }
+        setReceipt(verifiedReceipt);
+        setReceiptState("loaded");
+      })
+      .catch((error: unknown) => {
+        if (cancelled || (error instanceof DOMException && error.name === "AbortError")) return;
+        setReceipt(null);
+        setReceiptState("error");
+      });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [orderId]);
 
   const messages = {
@@ -71,12 +145,16 @@ function OrderCompleteContent() {
             className={`font-semibold text-[#2f1b0f] ${headingFont.className}`}
             style={{ fontSize: "clamp(2rem, 4vw, 5rem)" }}
           >
-            {isReady && message ? message.title : "ご注文完了情報を確認できません"}
+            {receiptState === "loaded" && message
+              ? message.title
+              : receiptState === "loading"
+                ? "ご注文完了情報を確認しています"
+                : "ご注文完了情報を確認できません"}
           </h1>
         </header>
 
         <div className={`${bodySerif.className} mb-12 space-y-6`}>
-          {isReady && message && receipt ? (
+          {receiptState === "loaded" && message && receipt ? (
             <>
               <p className="text-lg leading-relaxed text-[#4a3121]">{message.description}</p>
 
@@ -110,18 +188,20 @@ function OrderCompleteContent() {
             </>
           ) : (
             <div className="rounded-lg border border-[#cfa96d]/60 bg-white/60 p-6 text-left text-sm leading-7 text-[#4a3121]">
-              {isReady
-                ? "この画面だけでは注文完了を確認できません。注文ID付きの確認情報が見つからないため、カートから手続きをやり直してください。"
-                : "注文完了情報を確認しています..."}
+              {receiptState === "loading"
+                ? "注文完了情報をサーバーへ照会しています..."
+                : receiptState === "missing"
+                  ? "注文完了情報の照会tokenが見つかりません。注文を再実行する必要はありません。確認メールまたは店舗へのお問い合わせで注文状況をご確認ください。"
+                  : "注文完了情報を照会できませんでした。重複注文は不要です。確認メールまたは店舗へのお問い合わせで注文状況をご確認ください。"}
             </div>
           )}
         </div>
 
         <Link
-          href={isReady && message ? "/on-line-store" : "/on-line-store/cart"}
+          href="/on-line-store"
           className="inline-block py-4 px-8 bg-[#2f1b0f] text-white font-semibold rounded-full hover:brightness-110 transition"
         >
-          {isReady && message ? "商品一覧へ戻る" : "カートへ戻る"}
+          商品一覧へ戻る
         </Link>
       </div>
     </section>
@@ -140,7 +220,9 @@ export default function OrderCompletePage() {
             minHeight: "100vh",
           }}
         >
-          <div className="mx-auto">読み込み中...</div>
+          <div role="status" aria-live="polite" className="mx-auto">
+            読み込み中...
+          </div>
         </section>
       }
     >

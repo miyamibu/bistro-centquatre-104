@@ -8,6 +8,8 @@
  * - lineIdToken failure → 401
  * - Schema-not-ready → 503
  * - Rate limit → 429
+ * - Legacy date/phone/name lookup → rejected before reservation search
+ * - Reservation state race → safe 409
  * - Immediate reminder triggered for tomorrow's reservation
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -17,6 +19,7 @@ const VALID_UID = "U" + "0".repeat(32);
 const DIFFERENT_UID = "U" + "1".repeat(32);
 const TOMORROW_JST = "2026-06-16";
 const FUTURE_EXPIRY = new Date(Date.now() + 48 * 60 * 60 * 1000);
+const rateLimitMocks = vi.hoisted(() => ({ enforceScopedRateLimit: vi.fn() }));
 
 // ── Mocks ───────────────────────────────────────────────────────────────────────
 
@@ -44,6 +47,10 @@ vi.mock("@/lib/prisma", () => ({
       update: vi.fn().mockResolvedValue({}),
     },
   },
+}));
+
+vi.mock("@/lib/reservation-rate-limit", () => ({
+  enforceScopedRateLimit: rateLimitMocks.enforceScopedRateLimit,
 }));
 
 vi.mock("@/lib/line", async (importOriginal) => {
@@ -92,6 +99,7 @@ beforeEach(async () => {
 
   // resetAllMocks clears call counts AND implementations, so we re-apply defaults below.
   vi.resetAllMocks();
+  rateLimitMocks.enforceScopedRateLimit.mockResolvedValue(true);
 
   const { prisma } = await import("@/lib/prisma");
   type TestMock = ReturnType<typeof vi.fn<(...args: unknown[]) => unknown>>;
@@ -187,15 +195,6 @@ const LOOKUP_BODY = {
   nameFragment: "田中",
   lineIdToken: "id.tok",
 };
-const MATCHING_RES = {
-  id: "res-1",
-  phone: "09012345678",
-  name: "田中 太郎",
-  lineUserId: null as string | null,
-  status: "CONFIRMED" as const,
-  reservationType: "NORMAL" as const,
-};
-
 async function loadRoute() {
   return import("@/app/api/line/link-reservation/route");
 }
@@ -328,9 +327,7 @@ describe("token flow", () => {
   });
 
   it("returns 429 when rate limit is exceeded", async () => {
-    const { prisma } = await import("@/lib/prisma");
-    const p = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
-    p.reservationRateLimitEvent.count.mockResolvedValue(10);
+    rateLimitMocks.enforceScopedRateLimit.mockResolvedValue(false);
 
     const { POST } = await loadRoute();
     expect((await POST(post(validBody))).status).toBe(429);
@@ -357,88 +354,53 @@ describe("token flow", () => {
     expect(body.lineNotification.immediateReminderSent).toBe(true);
     expect(claimAndSendLineReminder).toHaveBeenCalledOnce();
   });
-});
 
-// ── Lookup flow ──────────────────────────────────────────────────────────────────
-
-describe("lookup flow", () => {
-  it("is disabled by default", async () => {
-    const { POST } = await loadRoute();
-    const res = await POST(post(LOOKUP_BODY));
-    const body = await res.json();
-
-    expect(res.status).toBe(404);
-    expect(body.code).toBe("LINE_LOOKUP_LINK_DISABLED");
-  });
-
-  it("returns 400 LINK_VALIDATION_FAILED when nameFragment is only one character", async () => {
-    process.env.LINE_RESERVATION_LOOKUP_LINK_ENABLED = "true";
-    const { POST } = await loadRoute();
-    const res = await POST(post({ ...LOOKUP_BODY, nameFragment: "田" }));
-    const body = await res.json();
-
-    expect(res.status).toBe(400);
-    expect(body.code).toBe("LINK_VALIDATION_FAILED");
-  });
-
-  it("links when exactly one reservation matches", async () => {
-    process.env.LINE_RESERVATION_LOOKUP_LINK_ENABLED = "true";
+  it("returns 409 when cancellation wins the reservation state race", async () => {
     const { prisma } = await import("@/lib/prisma");
     const p = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
-    p.reservation.findMany.mockResolvedValue([MATCHING_RES]);
-    p.reservation.updateMany.mockResolvedValue({ count: 1 });
-    p.reservation.findUnique.mockResolvedValue({ id: "res-1", lineUserId: null });
+    p.reservationLineLinkToken.findUnique.mockResolvedValue({ ...BASE_TOKEN_RECORD });
+    p.reservationLineLinkToken.updateMany.mockResolvedValue({ count: 1 });
+    p.reservation.updateMany.mockResolvedValue({ count: 0 });
+    p.reservation.findUnique.mockResolvedValue({
+      id: "res-1",
+      lineUserId: null,
+      status: "CANCELLED",
+      reservationType: "NORMAL",
+    });
 
     const { POST } = await loadRoute();
-    const res = await POST(post(LOOKUP_BODY));
-    expect(res.status).toBe(200);
-    expect((await res.json()).ok).toBe(true);
-  });
-
-  it("returns 400 LINK_VALIDATION_FAILED for zero matches — not NO_UNIQUE_MATCH", async () => {
-    process.env.LINE_RESERVATION_LOOKUP_LINK_ENABLED = "true";
-    const { prisma } = await import("@/lib/prisma");
-    const p = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
-    p.reservation.findMany.mockResolvedValue([]);
-
-    const { POST } = await loadRoute();
-    const res = await POST(post(LOOKUP_BODY));
-    const body = await res.json();
-
-    expect(res.status).toBe(400);
-    expect(body.code).toBe("LINK_VALIDATION_FAILED");
-    expect(body.code).not.toMatch(/UNIQUE|MATCH|FOUND/i);
-  });
-
-  it("returns 400 LINK_VALIDATION_FAILED for multiple matches — same code as zero matches", async () => {
-    process.env.LINE_RESERVATION_LOOKUP_LINK_ENABLED = "true";
-    const { prisma } = await import("@/lib/prisma");
-    const p = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
-    p.reservation.findMany.mockResolvedValue([
-      MATCHING_RES,
-      { ...MATCHING_RES, id: "res-2", name: "田中 花子" },
-    ]);
-
-    const { POST } = await loadRoute();
-    const body = await (await POST(post(LOOKUP_BODY))).json();
-    expect(body.code).toBe("LINK_VALIDATION_FAILED");
-  });
-
-  it("returns 409 and does NOT update when a different lineUserId is already set", async () => {
-    process.env.LINE_RESERVATION_LOOKUP_LINK_ENABLED = "true";
-    const { prisma } = await import("@/lib/prisma");
-    const p = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
-    p.reservation.findMany.mockResolvedValue([
-      { ...MATCHING_RES, lineUserId: DIFFERENT_UID },
-    ]);
-
-    const { POST } = await loadRoute();
-    const res = await POST(post(LOOKUP_BODY));
-    const body = await res.json();
+    const res = await POST(post(validBody));
 
     expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe("LINK_VALIDATION_FAILED");
+    expect(p.reservation.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: "CONFIRMED",
+          reservationType: "NORMAL",
+        }),
+      })
+    );
+  });
+});
+
+// ── Legacy lookup flow ───────────────────────────────────────────────────────────
+
+describe("legacy lookup flow", () => {
+  it("is rejected even when the old feature flag is true, without searching reservations", async () => {
+    process.env.LINE_RESERVATION_LOOKUP_LINK_ENABLED = "true";
+    const { prisma } = await import("@/lib/prisma");
+    const p = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
+
+    const { POST } = await loadRoute();
+    const res = await POST(post(LOOKUP_BODY));
+    const body = await res.json();
+
+    expect(res.status).toBe(410);
+    expect(body.code).toBe("LINE_LOOKUP_LINK_REQUIRES_RESERVATION_TOKEN");
+    expect(p.reservation.findMany).not.toHaveBeenCalled();
     expect(p.reservation.updateMany).not.toHaveBeenCalled();
-    expect(body.code).toBe("LINK_VALIDATION_FAILED");
+    expect(p.reservationRateLimitEvent.count).not.toHaveBeenCalled();
   });
 });
 
@@ -448,9 +410,7 @@ describe("rate limit fail-closed (P9)", () => {
   const tokenBody = { token: "valid-token", phoneLast4: "5678", lineIdToken: "id.tok" };
 
   it("returns 503 when rate limit DB check throws (fail-closed, not fail-open)", async () => {
-    const { prisma } = await import("@/lib/prisma");
-    const p = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
-    p.reservationRateLimitEvent.count.mockRejectedValue(new Error("DB connection lost"));
+    rateLimitMocks.enforceScopedRateLimit.mockRejectedValue(new Error("DB connection lost"));
 
     const { POST } = await loadRoute();
     const res = await POST(post(tokenBody));

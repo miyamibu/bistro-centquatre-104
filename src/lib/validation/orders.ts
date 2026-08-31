@@ -21,6 +21,11 @@ export const ORDER_CUSTOMER_INFO_LIMITS = {
   building: 120,
 } as const;
 
+export const ORDER_ITEM_LIMITS = {
+  maxDistinctItems: 20,
+  maxTotalQuantity: 99,
+} as const;
+
 export const orderItemInputSchema = z.object({
   id: z.string().min(1),
   quantity: z.coerce.number().int().min(1).max(99),
@@ -39,13 +44,22 @@ export const customerInfoSchema = z.object({
 
 export const createOrderSchema = z
   .object({
-    items: z.array(orderItemInputSchema).min(1),
+    items: z.array(orderItemInputSchema).min(1).max(ORDER_ITEM_LIMITS.maxDistinctItems),
     customerInfo: customerInfoSchema,
     paymentMethod: orderPaymentMethodSchema.optional(),
     total: z.coerce.number().int().nonnegative(),
     storeVisitDate: dateStringSchema.optional(),
   })
   .superRefine((value, ctx) => {
+    const totalQuantity = value.items.reduce((sum, item) => sum + item.quantity, 0);
+    if (totalQuantity > ORDER_ITEM_LIMITS.maxTotalQuantity) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["items"],
+        message: `商品の合計数量は${ORDER_ITEM_LIMITS.maxTotalQuantity}個以内で指定してください`,
+      });
+    }
+
     if (value.paymentMethod === "PAY_IN_STORE" && !value.storeVisitDate) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

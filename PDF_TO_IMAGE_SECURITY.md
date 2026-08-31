@@ -64,8 +64,8 @@ export async function POST(request: NextRequest) {
 **After:**
 ```typescript
 export async function POST(request: NextRequest) {
-  // ✅ SECURE: Require Basic Auth
-  if (!isAuthorized(request)) {
+  // ✅ SECURE: Require an individual Supabase Auth user, role, and MFA
+  if (!(await getStaffAuth("STAFF"))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const { filePath } = await request.json();
@@ -99,7 +99,7 @@ await page.goto(fileUrl, {
 
 | Layer | Mechanism | Protection |
 |-------|-----------|-----------|
-| **Authentication** | Basic Auth (isAuthorized) | Only admin users |
+| **Authentication** | Individual Supabase Auth user + role + MFA | Only enrolled staff users |
 | **Path Validation** | `path.resolve()` + startsWith check | No traversal |
 | **Symlink Check** | `isSymbolicLink()` check | No symlink traversal |
 | **File Type** | Must be `.pdf` + `isFile()` | Only PDFs |
@@ -114,7 +114,7 @@ await page.goto(fileUrl, {
 ### Correct Request
 ```bash
 curl -X POST http://localhost:3000/api/pdf-to-image \
-  -H "Authorization: Basic $(echo -n 'admin:changeme' | base64)" \
+  -H "Cookie: sb-<project-ref>-auth-token=<authenticated-staff-session>" \
   -H "Content-Type: application/json" \
   -H "Origin: http://localhost:3000" \
   -H "X-Requested-With: XMLHttpRequest" \
@@ -146,7 +146,7 @@ curl -X POST http://localhost:3000/api/pdf-to-image \
 `src/app/api/pdf-to-image/route.ts`
 
 ### Key Changes
-1. Added `import { isAuthorized } from "@/lib/basic-auth"`
+1. Added `import { getStaffAuth } from "@/lib/staff-auth"` and required an individual MFA session
 2. Path traversal prevention using `path.resolve()` and boundary check
 3. Symlink detection using `fs.statSync().isSymbolicLink()`
 4. File size validation (50 MB max)
@@ -157,7 +157,7 @@ curl -X POST http://localhost:3000/api/pdf-to-image \
 - **Allowed Directory**: `{cwd}/public/photos`
 - **Max File Size**: 50 MB
 - **Navigation Timeout**: 30 seconds
-- **Auth Method**: Basic Auth (same as admin dashboard)
+- **Auth Method**: Supabase Auth individual user with role and TOTP MFA (same as admin dashboard)
 
 ## Related Security Documents
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma, ReservationStatus, ReservationType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { isAuthorized } from "@/lib/basic-auth";
+import { getStaffAuth } from "@/lib/staff-auth";
 import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
 import { getRequestId, logError, logInfo } from "@/lib/logger";
 import { createPrivateBlockAuditLog } from "@/lib/private-block-audit";
@@ -17,6 +17,7 @@ import {
   RESERVATION_SCHEMA_NOT_READY_CODE,
 } from "@/lib/reservation-compat";
 import { createAdminPrivateBlockSchema, zodFields } from "@/lib/validation";
+import { acquireReservationAdvisoryLock } from "@/lib/reservation-advisory-lock";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,8 @@ export async function POST(request: NextRequest) {
   const requestId = getRequestId(request);
   const route = "/api/admin/private-block";
 
-  if (!isAuthorized(request)) {
+  const staffAuth = await getStaffAuth("ADMIN");
+  if (!staffAuth) {
     return apiError(401, { error: "Unauthorized", code: "UNAUTHORIZED", requestId });
   }
 
@@ -83,6 +85,8 @@ export async function POST(request: NextRequest) {
     const savePrivateBlock = () =>
       prisma.$transaction(
       async (tx) => {
+        await acquireReservationAdvisoryLock(tx, date, servicePeriod);
+
         const confirmed = await findReservationsCompat(tx, {
           where: {
             date,
@@ -112,7 +116,11 @@ export async function POST(request: NextRequest) {
             date,
             servicePeriod,
             result: "NO_OP",
-            source: "ADMIN_SHARED_BASIC",
+            source: "ADMIN_USER",
+            actorName: staffAuth.email ?? staffAuth.userId,
+            actorUserId: staffAuth.userId,
+            actorEmail: staffAuth.email,
+            actorRole: staffAuth.role,
             requestId,
             note: normalizedNote ?? null,
           });
@@ -141,7 +149,11 @@ export async function POST(request: NextRequest) {
           date,
           servicePeriod,
           result: "CREATED",
-          source: "ADMIN_SHARED_BASIC",
+          source: "ADMIN_USER",
+          actorName: staffAuth.email ?? staffAuth.userId,
+          actorUserId: staffAuth.userId,
+          actorEmail: staffAuth.email,
+          actorRole: staffAuth.role,
           requestId,
           note: normalizedNote ?? null,
         });

@@ -155,7 +155,7 @@ export async function canPushToLineUser(lineUserId: string): Promise<CanPushResu
   }
 }
 
-// ── Token / phone utilities ──────────────────────────────────────────────────
+// ── Token / legacy phone utilities ───────────────────────────────────────────
 
 /**
  * Generate a cryptographically secure, URL-safe one-time link token (256 bits).
@@ -198,7 +198,8 @@ export function getPhoneLast4(phone: string): string {
 }
 
 /**
- * Hash a normalized phone for LineCustomerLink storage (uses same pepper).
+ * Legacy storage helper for LineCustomerLink rows. A phone hash is not an
+ * ownership proof and is not used by the active reservation-linking paths.
  * Never log the input.
  */
 export function hashNormalizedPhone(normalizedPhone: string): string {
@@ -362,7 +363,8 @@ export type ReplyLineTextArgs = {
 /**
  * Send a reply message via LINE Messaging Reply API.
  * Reply tokens expire in ~30 seconds — call promptly after receiving the event.
- * Delivery errors are logged without the reply token; webhook handlers must return 200 regardless.
+ * Delivery errors are logged without the reply token; durable webhook event
+ * processing is handled separately by the webhook inbox.
  */
 export async function replyLineTextMessage(args: ReplyLineTextArgs): Promise<void> {
   if (!hasLineMessagingEnv()) return;

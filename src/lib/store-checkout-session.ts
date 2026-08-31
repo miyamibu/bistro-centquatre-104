@@ -11,6 +11,7 @@ export type PendingOrderPaymentSetup = {
   orderId: string;
   expectedVersion: number;
   humanToken: string;
+  receiptToken: string;
   paymentMethod: "BANK_TRANSFER" | "PAY_IN_STORE";
   storeVisitDate: string | null;
   holdExpiresAt: string;
@@ -23,6 +24,7 @@ export type OrderCompletionReceipt = {
   paymentMethod: "BANK_TRANSFER" | "PAY_IN_STORE";
   storeVisitDate: string | null;
   notificationStatus: "SENT" | "PENDING_RETRY";
+  receiptToken?: string;
 };
 
 export type PendingOrderCartRestoreResult =
@@ -114,6 +116,9 @@ export function loadPendingOrderPaymentSetup(orderId?: string | null): PendingOr
       parsed.expectedVersion < 0 ||
       typeof parsed.humanToken !== "string" ||
       !parsed.humanToken.trim() ||
+      typeof parsed.receiptToken !== "string" ||
+      parsed.receiptToken.length < 1 ||
+      parsed.receiptToken.length > 256 ||
       (paymentMethod !== "BANK_TRANSFER" && paymentMethod !== "PAY_IN_STORE") ||
       (storeVisitDate !== null &&
         (typeof storeVisitDate !== "string" || !isStrictDateString(storeVisitDate))) ||
@@ -136,6 +141,7 @@ export function loadPendingOrderPaymentSetup(orderId?: string | null): PendingOr
       orderId: parsed.orderId,
       expectedVersion: parsed.expectedVersion,
       humanToken: parsed.humanToken,
+      receiptToken: parsed.receiptToken,
       paymentMethod,
       storeVisitDate,
       holdExpiresAt: parsed.holdExpiresAt,
@@ -242,7 +248,11 @@ export function loadOrderCompletionReceipt(orderId: string | null): OrderComplet
       parsed.orderId !== orderId ||
       (parsed.paymentMethod !== "BANK_TRANSFER" && parsed.paymentMethod !== "PAY_IN_STORE") ||
       (parsed.storeVisitDate !== null && typeof parsed.storeVisitDate !== "string") ||
-      (notificationStatus !== "SENT" && notificationStatus !== "PENDING_RETRY")
+      (notificationStatus !== "SENT" && notificationStatus !== "PENDING_RETRY") ||
+      (parsed.receiptToken !== undefined &&
+        (typeof parsed.receiptToken !== "string" ||
+          parsed.receiptToken.length < 1 ||
+          parsed.receiptToken.length > 256))
     ) {
       return null;
     }

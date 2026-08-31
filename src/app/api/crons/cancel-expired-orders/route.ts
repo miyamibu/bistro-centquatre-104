@@ -2,9 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { env } from "@/lib/env";
 import { apiError } from "@/lib/api-security";
-import { archiveOrderHistoryByOrderId } from "@/lib/order-history";
-import { executeCancelOrderAction, OrderActionError } from "@/lib/order-actions";
+import { isBearerSecretAuthorized } from "@/lib/bearer-auth";
+import {
+  buildIdempotencyHash,
+  executeAtomicTerminalOrderAction,
+  OrderActionError,
+} from "@/lib/order-actions";
 import { getRequestId, logError, logInfo } from "@/lib/logger";
+import {
+  markSchedulerFailed,
+  markSchedulerStarted,
+  markSchedulerSucceeded,
+  readSchedulerContext,
+} from "@/lib/scheduler-heartbeat";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -12,8 +22,7 @@ const STATUS_FETCH_LIMIT = 50;
 const MAX_ORDERS_PER_RUN = 200;
 
 function isAuthorizedCron(req: NextRequest) {
-  const authHeader = req.headers.get("authorization");
-  return !!env.CRON_SECRET && authHeader === `Bearer ${env.CRON_SECRET}`;
+  return isBearerSecretAuthorized(req.headers.get("authorization"), env.CRON_SECRET);
 }
 
 async function executeCancelExpired(req: NextRequest) {
@@ -24,7 +33,9 @@ async function executeCancelExpired(req: NextRequest) {
     return apiError(401, { error: "Unauthorized", code: "UNAUTHORIZED", requestId });
   }
 
+  const scheduler = readSchedulerContext(req);
   try {
+    await markSchedulerStarted("ORDER_EXPIRY", scheduler);
     const nowIso = new Date().toISOString();
     let cancelledCount = 0;
     let skippedCount = 0;
@@ -70,6 +81,7 @@ async function executeCancelExpired(req: NextRequest) {
             scannedCount,
           },
         });
+        await markSchedulerFailed("ORDER_EXPIRY", scheduler, "CRON_SELECT_FAILED");
         return apiError(500, {
           error: "Database error",
           code: "CRON_SELECT_FAILED",
@@ -95,26 +107,60 @@ async function executeCancelExpired(req: NextRequest) {
           new Date(String(order.hold_expires_at)).getTime() < Date.now();
 
         const reasonCode = isExpiredHold ? "EXPIRED_HOLD" : "EXPIRED_PAYMENT";
+        const orderId = String(order.id);
+        const expectedVersion = Number(order.version ?? 0);
+        const idempotencyKey = `cron:${requestId}:${orderId}:${reasonCode}`;
 
         try {
-          await executeCancelOrderAction({
-            orderId: String(order.id),
-            expectedVersion: Number(order.version ?? 0),
+          const result = await executeAtomicTerminalOrderAction({
+            scope: "POST:/api/crons/cancel-expired-orders:CANCEL",
+            actorKey: "cron",
+            requestHash: buildIdempotencyHash({
+              action: "CANCEL",
+              orderId,
+              expectedVersion,
+              payload: { reasonCode, adminNote: "cancel-expired-orders cron" },
+            }),
+            orderId,
+            expectedVersion,
+            action: "CANCEL",
             reasonCode,
             actorType: "cron",
             actorId: "cron",
             requestId,
-            idempotencyKey: `cron:${requestId}:${order.id}:${reasonCode}`,
+            idempotencyKey,
             adminNote: "cancel-expired-orders cron",
           });
 
-          await archiveOrderHistoryByOrderId({
-            orderId: String(order.id),
-            source: "cron",
-            requestId,
-          });
+          if (result.status >= 200 && result.status < 300) {
+            cancelledCount += 1;
+            continue;
+          }
 
-          cancelledCount += 1;
+          const resultCode =
+            typeof result.body.code === "string" ? result.body.code : "UNKNOWN_ACTION_FAILURE";
+          if (
+            result.status === 409 &&
+            (resultCode === "VERSION_CONFLICT" ||
+              resultCode === "ALREADY_CANCELLED" ||
+              resultCode === "ALREADY_COMPLETED" ||
+              resultCode === "IDEMPOTENCY_IN_PROGRESS")
+          ) {
+            skippedCount += 1;
+            continue;
+          }
+
+          failedCount += 1;
+          logError("crons.cancel_expired.cancel_failed", {
+            requestId,
+            route,
+            errorCode: resultCode,
+            context: {
+              orderId,
+              reasonCode,
+              status: result.status,
+            },
+          });
         } catch (error) {
           if (
             error instanceof OrderActionError &&
@@ -132,7 +178,7 @@ async function executeCancelExpired(req: NextRequest) {
             route,
             errorCode: "CRON_CANCEL_FAILED",
             context: {
-              orderId: String(order.id),
+              orderId,
               reasonCode,
               message: error instanceof Error ? error.message : String(error),
             },
@@ -144,6 +190,7 @@ async function executeCancelExpired(req: NextRequest) {
     const hasMore = scannedCount >= MAX_ORDERS_PER_RUN;
 
     if (failedCount > 0) {
+      await markSchedulerFailed("ORDER_EXPIRY", scheduler, "CRON_PARTIAL_FAILURE");
       return apiError(500, {
         error: "Cron partially failed",
         code: "CRON_PARTIAL_FAILURE",
@@ -161,8 +208,16 @@ async function executeCancelExpired(req: NextRequest) {
       route,
       context: { cancelledCount, skippedCount, scannedCount, hasMore },
     });
+    await markSchedulerSucceeded("ORDER_EXPIRY", scheduler, {
+      processed: cancelledCount,
+      retry: skippedCount,
+      deadLetter: 0,
+      backlog: hasMore ? 1 : 0,
+      oldestBacklogAt: null,
+    });
 
     return NextResponse.json({
+      ok: true,
       message:
         scannedCount === 0
           ? "No orders to cancel"
@@ -176,6 +231,9 @@ async function executeCancelExpired(req: NextRequest) {
       requestId,
     });
   } catch (error) {
+    await markSchedulerFailed("ORDER_EXPIRY", scheduler, "INTERNAL_SERVER_ERROR").catch(
+      () => undefined
+    );
     logError("crons.cancel_expired.unexpected", {
       requestId,
       route,

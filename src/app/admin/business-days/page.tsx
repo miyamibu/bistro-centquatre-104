@@ -1,7 +1,7 @@
 "use client";
 
 import { addDays, addMonths, format, getDay, getDaysInMonth, subDays } from "date-fns";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { getDayOperatingStatus } from "@/lib/admin-operating-status";
 
@@ -28,6 +28,9 @@ type DayStatusResponse = {
   date: string;
   isClosed: boolean;
   note: string | null;
+  permissions?: {
+    canManageBusinessDays: boolean;
+  };
   lunch: DayStatusPeriod;
   dinner: DayStatusPeriod;
 };
@@ -47,9 +50,20 @@ type MonthDaySummary = {
 type MonthStatusResponse = {
   month: string;
   days: Record<string, MonthDaySummary>;
+  permissions?: {
+    canManageBusinessDays: boolean;
+  };
 };
 
-type BusinessConfirmMode = "CLOSE_WITH_PRIVATE_BLOCK" | "OPEN_WITH_PRIVATE_BLOCK";
+type BusinessConfirmMode =
+  | "CLOSE_WITH_PRIVATE_BLOCK"
+  | "OPEN_WITH_PRIVATE_BLOCK"
+  | "CLOSE_WITH_RESERVATIONS";
+
+type LatestRequestState = {
+  generation: number;
+  controller: AbortController | null;
+};
 
 const dayLabels = ["日", "月", "火", "水", "木", "金", "土"] as const;
 
@@ -124,6 +138,8 @@ export default function BusinessDaysPage() {
   const [noteDraft, setNoteDraft] = useState("");
   const [businessSaving, setBusinessSaving] = useState(false);
   const [businessConfirmMode, setBusinessConfirmMode] = useState<BusinessConfirmMode | null>(null);
+  const [businessConflictCount, setBusinessConflictCount] = useState(0);
+  const [canManageBusinessDays, setCanManageBusinessDays] = useState(false);
 
   const [releasePeriod, setReleasePeriod] = useState<ServicePeriodKey | null>(null);
   const [operatorName, setOperatorName] = useState("");
@@ -135,30 +151,50 @@ export default function BusinessDaysPage() {
 
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const monthRequestRef = useRef<LatestRequestState>({ generation: 0, controller: null });
+  const dayRequestRef = useRef<LatestRequestState>({ generation: 0, controller: null });
 
   const monthKey = useMemo(() => toMonthKey(calendarMonth), [calendarMonth]);
 
   const fetchMonthStatus = useCallback(async (targetMonth: string) => {
+    monthRequestRef.current.controller?.abort();
+    const requestGeneration = monthRequestRef.current.generation + 1;
+    const controller = new AbortController();
+    monthRequestRef.current = { generation: requestGeneration, controller };
     setMonthLoading(true);
     setMonthError(null);
 
     try {
-      const res = await fetch(`/api/admin/day-status?month=${targetMonth}`);
+      const res = await fetch(`/api/admin/day-status?month=${targetMonth}`, {
+        signal: controller.signal,
+      });
       const data = (await res.json().catch(() => null)) as MonthStatusResponse | { error?: string } | null;
+      if (monthRequestRef.current.generation !== requestGeneration) return;
       if (!res.ok || !data || !("days" in data)) {
         setMonthError((data && "error" in data && typeof data.error === "string" ? data.error : null) ?? "月次状態の取得に失敗しました。");
         return;
       }
 
       setMonthDays(data.days ?? {});
+      if (data.permissions) {
+        setCanManageBusinessDays(data.permissions.canManageBusinessDays);
+      }
     } catch {
+      if (controller.signal.aborted || monthRequestRef.current.generation !== requestGeneration) return;
       setMonthError("月次状態の取得に失敗しました。");
     } finally {
-      setMonthLoading(false);
+      if (monthRequestRef.current.generation === requestGeneration) {
+        monthRequestRef.current.controller = null;
+        setMonthLoading(false);
+      }
     }
   }, []);
 
   const fetchDayStatus = useCallback(async (date: string) => {
+    dayRequestRef.current.controller?.abort();
+    const requestGeneration = dayRequestRef.current.generation + 1;
+    const controller = new AbortController();
+    dayRequestRef.current = { generation: requestGeneration, controller };
     setDayLoading(true);
     setDayError(null);
     setBusinessConfirmMode(null);
@@ -167,8 +203,11 @@ export default function BusinessDaysPage() {
     setDetailOpenByPeriod({ LUNCH: false, DINNER: false });
 
     try {
-      const res = await fetch(`/api/admin/day-status?date=${date}`);
+      const res = await fetch(`/api/admin/day-status?date=${date}`, {
+        signal: controller.signal,
+      });
       const data = (await res.json().catch(() => null)) as DayStatusResponse | { error?: string } | null;
+      if (dayRequestRef.current.generation !== requestGeneration) return;
       if (!res.ok || !data || !("lunch" in data)) {
         setDayError((data && "error" in data && typeof data.error === "string" ? data.error : null) ?? "日次状態の取得に失敗しました。");
         setDayStatus(null);
@@ -176,13 +215,20 @@ export default function BusinessDaysPage() {
       }
 
       setDayStatus(data);
+      if (data.permissions) {
+        setCanManageBusinessDays(data.permissions.canManageBusinessDays);
+      }
       setIsClosedDraft(data.isClosed);
       setNoteDraft(data.note ?? "");
     } catch {
+      if (controller.signal.aborted || dayRequestRef.current.generation !== requestGeneration) return;
       setDayError("日次状態の取得に失敗しました。");
       setDayStatus(null);
     } finally {
-      setDayLoading(false);
+      if (dayRequestRef.current.generation === requestGeneration) {
+        dayRequestRef.current.controller = null;
+        setDayLoading(false);
+      }
     }
   }, []);
 
@@ -205,6 +251,15 @@ export default function BusinessDaysPage() {
     }
     fetchDayStatus(selectedDate);
   }, [fetchDayStatus, selectedDate]);
+
+  useEffect(() => {
+    return () => {
+      monthRequestRef.current.generation += 1;
+      monthRequestRef.current.controller?.abort();
+      dayRequestRef.current.generation += 1;
+      dayRequestRef.current.controller?.abort();
+    };
+  }, []);
 
   const calendarCells = useMemo(() => {
     const firstDay = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
@@ -250,7 +305,7 @@ export default function BusinessDaysPage() {
   const badgeStatus = dayStatus ? getDayOperatingStatus(dayStatus) : null;
 
   async function createPrivateBlock(servicePeriod: ServicePeriodKey) {
-    if (!selectedDate) return;
+    if (!selectedDate || !canManageBusinessDays) return;
     setPeriodLoading(servicePeriod);
     setError(null);
     setMessage(null);
@@ -283,7 +338,7 @@ export default function BusinessDaysPage() {
   }
 
   async function releasePrivateBlock(servicePeriod: ServicePeriodKey) {
-    if (!selectedDate || !dayStatus) return;
+    if (!selectedDate || !dayStatus || !canManageBusinessDays) return;
     const reservationId =
       servicePeriod === "LUNCH" ? dayStatus.lunch.privateBlock.id : dayStatus.dinner.privateBlock.id;
     if (!reservationId) return;
@@ -291,6 +346,11 @@ export default function BusinessDaysPage() {
     const trimmedOperatorName = operatorName.trim();
     if (!trimmedOperatorName) {
       setError("担当者名を入力してください。");
+      return;
+    }
+    const reason = window.prompt("貸切解除の理由を入力してください")?.trim();
+    if (!reason) {
+      setError("解除理由を入力してください。");
       return;
     }
 
@@ -308,6 +368,10 @@ export default function BusinessDaysPage() {
         body: JSON.stringify({
           status: "CANCELLED",
           operatorName: trimmedOperatorName,
+          reason,
+          expectedDate: selectedDate,
+          expectedServicePeriod: servicePeriod,
+          expectedReservationType: "PRIVATE_BLOCK",
         }),
       });
       const data = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -328,7 +392,7 @@ export default function BusinessDaysPage() {
   }
 
   async function saveBusinessDay(force = false) {
-    if (!selectedDate) return;
+    if (!selectedDate || !canManageBusinessDays) return;
 
     if (!force && businessConfirmCandidate) {
       setBusinessConfirmMode(businessConfirmCandidate);
@@ -350,10 +414,20 @@ export default function BusinessDaysPage() {
           date: selectedDate,
           isClosed: isClosedDraft,
           note: noteDraft.trim() ? noteDraft.trim() : null,
+          force,
+          reason: force && isClosedDraft ? noteDraft.trim() || null : null,
         }),
       });
-      const data = (await res.json().catch(() => null)) as { error?: string } | null;
+      const data = (await res.json().catch(() => null)) as {
+        error?: string;
+        code?: string;
+        reservationCount?: number;
+      } | null;
       if (!res.ok) {
+        if (data?.code === "BUSINESS_DAY_CONFIRMED_RESERVATIONS") {
+          setBusinessConflictCount(data.reservationCount ?? 0);
+          setBusinessConfirmMode("CLOSE_WITH_RESERVATIONS");
+        }
         setError(data?.error ?? "営業状態の保存に失敗しました。");
         return;
       }
@@ -415,7 +489,7 @@ export default function BusinessDaysPage() {
               type="button"
               size="sm"
               variant="outline"
-              disabled={isBusy}
+              disabled={isBusy || !canManageBusinessDays}
               onClick={() => {
                 setReleasePeriod((current) => (current === servicePeriod ? null : servicePeriod));
                 setOperatorName("");
@@ -455,7 +529,7 @@ export default function BusinessDaysPage() {
               type="button"
               size="sm"
               variant="outline"
-              disabled={isBusy}
+              disabled={isBusy || !canManageBusinessDays}
               onClick={() => createPrivateBlock(servicePeriod)}
             >
               {isBusy ? "処理中..." : "貸切設定する"}
@@ -481,7 +555,7 @@ export default function BusinessDaysPage() {
               <Button type="button" size="sm" variant="outline" onClick={() => setReleasePeriod(null)}>
                 キャンセル
               </Button>
-              <Button type="button" size="sm" disabled={isBusy} onClick={() => releasePrivateBlock(servicePeriod)}>
+              <Button type="button" size="sm" disabled={isBusy || !canManageBusinessDays} onClick={() => releasePrivateBlock(servicePeriod)}>
                 {isBusy ? "処理中..." : "解除する"}
               </Button>
             </div>
@@ -622,8 +696,16 @@ export default function BusinessDaysPage() {
             </div>
           </div>
 
-          {monthLoading ? <p className="mt-3 text-xs text-gray-600">月次状態を読み込み中です...</p> : null}
-          {monthError ? <p className="mt-3 text-xs text-red-700">{monthError}</p> : null}
+          {monthLoading ? (
+            <p role="status" aria-live="polite" aria-busy="true" className="mt-3 text-xs text-gray-600">
+              月次状態を読み込み中です...
+            </p>
+          ) : null}
+          {monthError ? (
+            <p role="alert" aria-live="assertive" className="mt-3 text-xs text-red-700">
+              {monthError}
+            </p>
+          ) : null}
         </section>
 
         <section className="rounded-lg border border-gray-200 bg-[#fdfbf8] p-4">
@@ -645,9 +727,13 @@ export default function BusinessDaysPage() {
               <p className="mt-1">カレンダーから日付をクリックすると、その日の営業状態を確認・変更できます。</p>
             </div>
           ) : dayLoading ? (
-            <p className="text-sm text-gray-600">日次状態を読み込み中です...</p>
+            <p role="status" aria-live="polite" aria-busy="true" className="text-sm text-gray-600">
+              日次状態を読み込み中です...
+            </p>
           ) : dayError ? (
-            <p className="text-sm text-red-700">{dayError}</p>
+            <p role="alert" aria-live="assertive" className="text-sm text-red-700">
+              {dayError}
+            </p>
           ) : dayStatus ? (
             <div className="space-y-4">
               <div className="space-y-1">
@@ -681,6 +767,7 @@ export default function BusinessDaysPage() {
                   <input
                     type="checkbox"
                     checked={isClosedDraft}
+                    disabled={!canManageBusinessDays}
                     onChange={(event) => {
                       setIsClosedDraft(event.target.checked);
                       setBusinessConfirmMode(null);
@@ -688,6 +775,12 @@ export default function BusinessDaysPage() {
                   />
                   この日は全日休業にする
                 </label>
+
+                {!canManageBusinessDays ? (
+                  <p className="rounded-md bg-gray-100 px-3 py-2 text-xs text-gray-700">
+                    営業状態・貸切の変更はADMIN権限が必要です。現在の状態は確認できます。
+                  </p>
+                ) : null}
 
                 <label htmlFor="business-day-note" className="grid gap-1 text-sm text-gray-800">
                   営業メモ（スタッフ内部用）
@@ -712,7 +805,7 @@ export default function BusinessDaysPage() {
                       <Button type="button" size="sm" variant="outline" onClick={() => setBusinessConfirmMode(null)}>
                         キャンセル
                       </Button>
-                      <Button type="button" size="sm" disabled={businessSaving} onClick={() => saveBusinessDay(true)}>
+                      <Button type="button" size="sm" disabled={businessSaving || !canManageBusinessDays} onClick={() => saveBusinessDay(true)}>
                         {businessSaving ? "処理中..." : "このまま休業設定する"}
                       </Button>
                     </div>
@@ -730,8 +823,30 @@ export default function BusinessDaysPage() {
                       <Button type="button" size="sm" variant="outline" onClick={() => setBusinessConfirmMode(null)}>
                         キャンセル
                       </Button>
-                      <Button type="button" size="sm" disabled={businessSaving} onClick={() => saveBusinessDay(true)}>
+                      <Button type="button" size="sm" disabled={businessSaving || !canManageBusinessDays} onClick={() => saveBusinessDay(true)}>
                         {businessSaving ? "処理中..." : "休業のみ解除する"}
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {businessConfirmMode === "CLOSE_WITH_RESERVATIONS" ? (
+                  <div className="rounded-md border border-red-300 bg-red-50 p-3 text-xs text-red-900 space-y-2">
+                    <p>
+                      確定済み予約が{businessConflictCount}件あります。強制休業しても予約は自動取消されず、既存予約として残ります。
+                    </p>
+                    <p>強制休業する場合は、上の営業メモに理由を入力してください。</p>
+                    <div className="flex gap-2">
+                      <Button type="button" size="sm" variant="outline" onClick={() => setBusinessConfirmMode(null)}>
+                        キャンセル
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={businessSaving || !canManageBusinessDays || !noteDraft.trim()}
+                        onClick={() => saveBusinessDay(true)}
+                      >
+                        {businessSaving ? "処理中..." : "理由を記録して強制休業"}
                       </Button>
                     </div>
                   </div>
@@ -740,7 +855,7 @@ export default function BusinessDaysPage() {
                 <div className="flex justify-end">
                   <Button
                     type="button"
-                    disabled={businessSaving}
+                    disabled={businessSaving || !canManageBusinessDays}
                     onClick={() => saveBusinessDay(false)}
                   >
                     {businessSaving ? "保存中..." : "保存する"}

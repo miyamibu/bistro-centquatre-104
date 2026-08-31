@@ -51,7 +51,7 @@
 
 - 予約日が今日や過去だと cron 対象外（`targetDate` と一致しない）→ `totalCandidates: 0`。
 - 予約日が翌日でも status が `CANCELLED` / `DONE` / `NOSHOW` だと対象外。
-- 予約日が翌日でも `lineUserId` が null（LIFF 連携または電話番号によるLINE通知登録がない予約）は対象外。
+- 予約日が翌日でも `lineUserId` が null（予約完了後のtoken連携がない予約）は対象外。
 - 同じ予約に対して二重送信しない仕様（`lineReminderSentAt IS NULL` のみ抽出）。再テストする場合は**新しいテスト予約を別途作成する**のが原則。
 
 ---
@@ -83,27 +83,23 @@ LIFF は LINE アプリ内ブラウザでの動作を前提としている。デ
 
 ---
 
-## 3.5 事前LINE通知登録テスト（LINE追加済み・予約時ボタン未完了）
+## 3.5 旧電話番号・検索導線の拒否確認
 
-LINE公式アカウントを先に友だち追加している人が、予約フォーム上のLINE連携ボタンを完了しなくても前日通知対象になるかを確認する。
+電話番号だけのLINE自動紐付けと、予約日・電話番号・名前の一部による検索連携は、電話所有証明がないため使用しない。旧URLや旧クライアントが残っていても、サーバー側で予約情報を検索せずtoken経路へ誘導することを確認する。
 
 ```text
-1. スマホのLINEで公式アカウントを友だち追加する
-2. follow返信または LIFF URL で https://liff.line.me/<LIFF_LINK_ID>?mode=customer を開く
-3. LINEログイン / 友だち確認後、予約時に使う電話番号を入力して登録する
-4. 登録完了表示を確認する
-5. /booking で通常予約を作る。このとき予約フォームのLINEボタンは押さない
-6. 予約完了後、当該予約の `Reservation.lineUserId` が null でないことを read-only で確認する
+1. `https://<本番ドメイン>/line/link?mode=customer` を開く
+2. 予約発行tokenが必要である旨が表示され、電話番号入力・LINEログイン・予約検索へ進まないことを確認する
+3. `/api/line/customer-link` へ電話番号とLINE ID tokenだけを送ると 410 になることを確認する
+4. `/api/line/link-reservation` へ予約日・電話番号・名前の一部だけを送ると 410 になり、予約検索が実行されないことを確認する
+5. 正規の `/line/link?t=<予約発行token>` は下4桁確認のtoken flowへ進むことを確認する
 ```
 
 期待値:
 
-- 電話番号ハッシュに紐づく 180 日以内の `LineCustomerLink(status = ACTIVE)` が 1 人だけなら、予約作成時に `Reservation.lineUserId` が自動保存される。
-- 同じ電話番号に複数のLINEユーザーが登録されている場合は、誤通知防止のため自動保存しない。
-- `LineFriend.friendshipStatus = BLOCKED` の場合は自動保存しない。
-- 予約フォームから送られるのは電話番号であり、LINE userId をクライアントから直接保存する仕様にはしない。
-- 登録画面には、電話番号ハッシュ保存・共有電話番号の通知リスク・解除方法を明記する。
-- 同じ登録画面で同じ電話番号を入力して解除すると、`LineCustomerLink.status = REVOKED` になり、以後の通常予約では自動保存されない。
+- 電話番号だけの連携は常に拒否され、`Reservation.lineUserId` や `LineCustomerLink` は更新されない。
+- lookup形式のリクエストは予約の存在・件数を返さず、`LINE_LOOKUP_LINK_REQUIRES_RESERVATION_TOKEN` で拒否される。
+- 既存の `LineCustomerLink` 行は削除・変換せず、現行の予約作成・連携処理では参照しない。
 
 ---
 
@@ -332,7 +328,7 @@ Webhook URL を LINE Developers Console に登録した場合のみ実施。任�
 - 401: 署名不一致 → `LINE_CHANNEL_SECRET` が Vercel env と LINE Developers Console で食い違っている
 - 503: `LINE_CHANNEL_SECRET` が Vercel env に未投入
 
-follow/unfollow のイベントは `LineFriend` に保存する。follow 時は `NEXT_PUBLIC_LIFF_LINK_ID` が設定済みなら `https://liff.line.me/<LIFF_LINK_ID>?mode=customer` を返信し、電話番号によるLINE通知登録へ誘導する。
+follow/unfollow のイベントは、各イベントを `LineWebhookInbox` に保存してから冪等処理し、`LineFriend` に保存する。follow 返信から電話番号登録URLは案内せず、予約完了画面に表示される予約発行token付き連携リンクへ誘導する。処理失敗時は 503 として再試行可能にする。
 
 ---
 
@@ -403,12 +399,11 @@ follow/unfollow のイベントは `LineFriend` に保存する。follow 時は 
 4. LIFF ログイン → 友だち追加確認 → 下4桁入力 → 「LINE通知を設定する」を押す
 5. 「LINE前日通知を設定しました。」が表示されること
 
-### テスト B: LINE 側からの連携 (lookup flow)
+### テスト B: 旧 lookup flow の拒否
 
-1. LINE 公式アカウントのリッチメニューなどから `/line/link` を開く (t= なし)
-2. 予約日 / 電話番号 / 名前の一部を入力
-3. 成功メッセージが表示されること
-4. ゼロ件 or 複数件ヒットの場合にサーバーから「予約情報を確認できませんでした。」が返ること
+1. LINE 公式アカウントの旧リッチメニューなどから `/line/link` を開く (t= なし)
+2. 予約発行tokenが必要である旨が表示され、予約日 / 電話番号 / 名前の入力欄が表示されないことを確認する
+3. 旧形式の lookup リクエストを `/api/line/link-reservation` に送ると 410 が返り、予約検索が実行されないことを確認する
 
 ### テスト C: 重複送信防止
 

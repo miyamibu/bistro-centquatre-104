@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Route } from "next";
+import { redirect } from "next/navigation";
 import { addDays, addMonths, format, getDay, getDaysInMonth, startOfMonth, subMonths } from "date-fns";
 import { Prisma, ReservationStatus } from "@prisma/client";
 import AdminReservationsTable, {
@@ -11,10 +12,12 @@ import {
 } from "@/lib/admin-operating-status";
 import { formatJst } from "@/lib/dates";
 import { parseReservationNote } from "@/lib/reservation-note";
+import { getReservationStatusLabel } from "@/lib/reservation-labels";
 import {
   isReservationSchemaNotReadyError,
 } from "@/lib/reservation-compat";
 import { RESERVATION_CONFIG } from "@/lib/reservation-config";
+import { getStaffAuth } from "@/lib/staff-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -70,6 +73,10 @@ export default async function AdminReservations({
 }: {
   searchParams: Promise<{ date?: string }>;
 }) {
+  if (!(await getStaffAuth())) {
+    redirect("/admin/login?error=staff_role_required&next=/admin/reservations");
+  }
+
   const resolvedSearchParams = await searchParams;
   const defaultDate = formatJst(new Date());
   const date = normalizeAdminReservationDateInput(resolvedSearchParams.date, defaultDate);
@@ -186,15 +193,8 @@ export default async function AdminReservations({
       name: reservation.name,
       phone: reservation.phone,
       note,
-      isCancelled: reservation.status === ReservationStatus.CANCELLED,
-      statusLabel:
-        reservation.status === ReservationStatus.DONE
-          ? "来店済み"
-          : reservation.status === ReservationStatus.NOSHOW
-          ? "無断キャンセル"
-          : reservation.status === ReservationStatus.CANCELLED
-          ? "キャンセル"
-          : "確定",
+      canCancel: reservation.status === ReservationStatus.CONFIRMED,
+      statusLabel: getReservationStatusLabel(reservation.status),
       lineStatus: buildLineStatus(reservation),
       lineReminderError: reservation.lineReminderError ?? null,
     };
@@ -233,7 +233,7 @@ export default async function AdminReservations({
         </div>
       </header>
 
-      <p className="text-sm text-gray-600">※キャンセル済みは一覧から除外しています。</p>
+      <p className="text-sm text-gray-600">※通常は有効予約のみ表示しています。キャンセル済みは一覧上部から確認できます。</p>
 
       <AdminReservationsTable
         selectedDate={date}

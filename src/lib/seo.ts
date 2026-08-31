@@ -1,6 +1,25 @@
 import type { Metadata } from "next";
 
-export const SITE_URL = "https://bistro-centquatre-104.vercel.app";
+const LEGACY_SITE_URL = "https://bistro-centquatre-104.vercel.app";
+
+function resolveSiteUrl(): string {
+  const configuredUrl =
+    process.env.NEXT_PUBLIC_APP_URL?.trim() || process.env.URL?.trim();
+
+  if (!configuredUrl) return LEGACY_SITE_URL;
+
+  try {
+    const url = new URL(configuredUrl);
+    url.pathname = "";
+    url.search = "";
+    url.hash = "";
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return LEGACY_SITE_URL;
+  }
+}
+
+export const SITE_URL = resolveSiteUrl();
 export const SITE_TITLE = "ビストロ　サンキャトル　１０４";
 export const SITE_DESCRIPTION =
   "川越のフレンチレストラン bistro centquatre 104 の予約・店舗情報・オンラインストア";

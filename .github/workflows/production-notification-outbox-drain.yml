@@ -1,0 +1,102 @@
+name: Production notification outbox drain
+
+on:
+  schedule:
+    - cron: "2-57/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-notification-outbox-drain
+  cancel-in-progress: false
+
+jobs:
+  drain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    env:
+      PRODUCTION_BASE_URL: ${{ secrets.PRODUCTION_BASE_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+    steps:
+      - name: Drain both durable notification lanes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if [[ ! "${PRODUCTION_BASE_URL:-}" =~ ^https://[^/]+(/.*)?$ ]]; then
+            echo "PRODUCTION_BASE_URL must be an HTTPS URL" >&2
+            exit 1
+          fi
+          if [[ -z "${CRON_SECRET:-}" ]]; then
+            echo "CRON_SECRET is not configured" >&2
+            exit 1
+          fi
+
+          base_url="${PRODUCTION_BASE_URL%/}"
+          reservation_response="$(mktemp)"
+          order_response="$(mktemp)"
+          trap 'rm -f "$reservation_response" "$order_response"' EXIT
+
+          call_lane() {
+            local endpoint="$1"
+            local output_file="$2"
+            curl \
+              --silent \
+              --show-error \
+              --fail-with-body \
+              --connect-timeout 10 \
+              --max-time 30 \
+              --retry 1 \
+              --retry-all-errors \
+              --header "Authorization: Bearer ${CRON_SECRET}" \
+              --header "X-Scheduler-Kind: github-actions" \
+              --header "X-Scheduler-Run-Id: ${GITHUB_RUN_ID}" \
+              --output "$output_file" \
+              "${base_url}${endpoint}"
+          }
+
+          reservation_ok=0
+          order_ok=0
+          if call_lane "/api/crons/process-reservation-emails?batchSize=10&deadlineMs=8000" "$reservation_response" &&
+            jq -e '
+              .ok == true and
+              (.scanned | type == "number") and
+              (.sent | type == "number") and
+              (.failed | type == "number") and
+              (.deadLetter | type == "number") and
+              (.backlog | type == "number")
+            ' "$reservation_response" >/dev/null; then
+            reservation_ok=1
+          fi
+
+          if call_lane "/api/crons/process-order-notifications?limit=10&deadlineMs=8000" "$order_response" &&
+            jq -e '
+              .ok == true and
+              (.scanned | type == "number") and
+              (.sent | type == "number") and
+              (.failed | type == "number") and
+              (.deadLetter | type == "number") and
+              (.backlog | type == "number")
+            ' "$order_response" >/dev/null; then
+            order_ok=1
+          fi
+
+          {
+            echo "## Production notification outbox"
+            if [[ "$reservation_ok" == "1" ]]; then
+              jq -r '"- reservation: PASS; scanned=\(.scanned), sent=\(.sent), retry=\(.failed), dead-letter=\(.deadLetter), backlog=\(.backlog)"' "$reservation_response"
+            else
+              echo "- reservation: FAIL"
+            fi
+            if [[ "$order_ok" == "1" ]]; then
+              jq -r '"- order: PASS; scanned=\(.scanned), sent=\(.sent), retry=\(.failed), dead-letter=\(.deadLetter), backlog=\(.backlog)"' "$order_response"
+            else
+              echo "- order: FAIL"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$reservation_ok" != "1" || "$order_ok" != "1" ]]; then
+            exit 1
+          fi

@@ -22,8 +22,22 @@ const contentSecurityPolicy = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  poweredByHeader: false,
   typedRoutes: true,
   outputFileTracingRoot: __dirname,
+  outputFileTracingExcludes: {
+    // This route is intentionally disabled in production before its dynamic
+    // Puppeteer import. Its local-only filesystem conversion would otherwise
+    // cause Next.js to trace every large asset under public/photos into the
+    // Netlify SSR function in addition to the CDN copy.
+    "/api/pdf-to-image": [
+      "public/**",
+      "node_modules/puppeteer/**",
+      "node_modules/puppeteer-core/**",
+      "node_modules/@puppeteer/**",
+      "node_modules/chromium-bidi/**",
+    ],
+  },
   async headers() {
     return [
       {

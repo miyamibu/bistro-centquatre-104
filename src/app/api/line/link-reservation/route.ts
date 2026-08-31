@@ -1,9 +1,8 @@
 /**
  * POST /api/line/link-reservation
  *
- * Two flows:
- *   Token flow  — { token, phoneLast4, lineIdToken }
- *   Lookup flow — { date, phone, nameFragment, lineIdToken }
+ * Supported flow:
+ *   Token flow — { token, phoneLast4, lineIdToken }
  *
  * Security guarantees
  * -------------------
@@ -26,7 +25,6 @@ import { getRequestId, logError, logInfo, logWarn } from "@/lib/logger";
 import {
   canPushToLineUser,
   hashLineLinkToken,
-  normalizeReservationPhone,
   getPhoneLast4,
   verifyLineIdToken,
 } from "@/lib/line";
@@ -37,7 +35,7 @@ import {
   RESERVATION_SCHEMA_NOT_READY_CODE,
 } from "@/lib/reservation-compat";
 import { formatJst, todayJst } from "@/lib/dates";
-import { isLineReservationLookupLinkEnabled } from "@/lib/env";
+import { enforceScopedRateLimit } from "@/lib/reservation-rate-limit";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -47,6 +45,9 @@ const SAFE_ERROR = "予約情報を確認できませんでした。入力内容
 
 /** Non-enumerating code for all input-level failures (phone, date, name, token). */
 const LINK_VALIDATION_FAILED = "LINK_VALIDATION_FAILED";
+const LOOKUP_REQUIRES_TOKEN = "LINE_LOOKUP_LINK_REQUIRES_RESERVATION_TOKEN";
+const LOOKUP_REQUIRES_TOKEN_MESSAGE =
+  "予約日・電話番号・お名前だけの連携は利用できません。予約発行tokenを含むリンクから設定してください。";
 
 const tokenFlowSchema = z.object({
   token: z.string().min(1).max(256),
@@ -54,38 +55,24 @@ const tokenFlowSchema = z.object({
   lineIdToken: z.string().min(1).max(4096),
 });
 
-const lookupFlowSchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  phone: z.string().min(6).max(32),
-  nameFragment: z.string().trim().min(2).max(40),
-  lineIdToken: z.string().min(1).max(4096),
-});
-
-type LinkFlow = "token" | "lookup";
+type LinkFlow = "token" | "legacy-lookup";
 
 function detectFlow(body: unknown): LinkFlow | null {
   if (typeof body !== "object" || body === null) return null;
   const b = body as Record<string, unknown>;
   if (typeof b.token === "string") return "token";
-  if (typeof b.date === "string") return "lookup";
+  if (typeof b.date === "string") return "legacy-lookup";
   return null;
 }
 
 async function enforceRateLimit(ipHash: string, flow: LinkFlow): Promise<boolean> {
   const scope = `line-link-${flow}`;
-  const windowMs = 15 * 60 * 1000;
-  const limit = 10;
-  const windowStart = new Date(Date.now() - windowMs);
-
-  const count = await prisma.reservationRateLimitEvent.count({
-    where: { keyHash: ipHash, scope, createdAt: { gte: windowStart } },
+  return enforceScopedRateLimit(prisma, {
+    keyHash: ipHash,
+    scope,
+    windowMs: 15 * 60 * 1000,
+    limit: 10,
   });
-  if (count >= limit) return false;
-
-  await prisma.reservationRateLimitEvent.create({
-    data: { keyHash: ipHash, scope },
-  });
-  return true;
 }
 
 async function maybeSendImmediateReminder(
@@ -131,90 +118,11 @@ async function maybeSendImmediateReminder(
   return false;
 }
 
-/**
- * Atomically link a reservation to a LINE user using a database transaction.
- *
- * The conditional updateMany (WHERE lineUserId IS NULL) is the key safety
- * mechanism: even if two concurrent requests both pass the initial validation
- * check, only one can set lineUserId on a reservation row.
- *
- * Returns:
- *   { linked: true, reservationId }  — successfully linked
- *   { linked: false, alreadyLinked } — idempotent: same user was already linked
- *   { linked: false, conflict: true } — different lineUserId already on reservation
- *   { linked: false, invalid: true }  — reservation status/type not eligible
- */
-type LinkOutcome =
-  | { linked: true; reservationId: string }
-  | { linked: false; alreadyLinked: true }
-  | { linked: false; conflict: true }
-  | { linked: false; invalid: true };
-
-async function atomicLinkReservation(
-  reservationId: string,
-  lineUserId: string,
-  linkSource: string,
-  existingLineUserId: string | null,
-  phone: string,
-  status: ReservationStatus,
-  reservationType: ReservationType
-): Promise<LinkOutcome> {
-  if (
-    status !== ReservationStatus.CONFIRMED ||
-    reservationType !== ReservationType.NORMAL
-  ) {
-    return { linked: false, invalid: true };
+class ReservationLinkConflictError extends Error {
+  constructor() {
+    super("reservation link conflict");
+    this.name = "ReservationLinkConflictError";
   }
-
-  // Idempotent: already linked to same user.
-  if (existingLineUserId === lineUserId) {
-    return { linked: false, alreadyLinked: true };
-  }
-
-  // Conflict: already linked to different user.
-  if (existingLineUserId !== null) {
-    return { linked: false, conflict: true };
-  }
-
-  // canPushToLineUser makes an HTTP call — do it OUTSIDE the DB transaction.
-  const pushResult = await canPushToLineUser(lineUserId);
-  if (pushResult.status !== "ACTIVE") {
-    return { linked: false, invalid: true };
-  }
-  const now = new Date();
-
-  // Conditional update: only applies if lineUserId is still null.
-  // This is the TOCTOU guard — two concurrent requests for the same reservation
-  // will both see lineUserId=null in the read, but only one updateMany succeeds.
-  const updated = await prisma.reservation.updateMany({
-    where: { id: reservationId, lineUserId: null },
-    data: {
-      lineUserId,
-      lineLinkedAt: now,
-      lineLinkSource: linkSource,
-      linePushStatus: pushResult.status,
-      linePushCheckedAt: now,
-      lineReminderError: null,
-    },
-  });
-
-  if (updated.count > 0) {
-    logInfo("line.link.success", {
-      route: "/api/line/link-reservation",
-      context: { reservationId, linkSource, pushStatus: pushResult.status },
-    });
-    return { linked: true, reservationId };
-  }
-
-  // updateMany returned 0: another request won the race.
-  const current = await prisma.reservation.findUnique({
-    where: { id: reservationId },
-    select: { lineUserId: true },
-  });
-  if (current?.lineUserId === lineUserId) {
-    return { linked: false, alreadyLinked: true };
-  }
-  return { linked: false, conflict: true };
 }
 
 export async function POST(request: NextRequest) {
@@ -225,6 +133,27 @@ export async function POST(request: NextRequest) {
     requireRequestedWith: false,
   });
   if (securityError) return securityError;
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return apiError(400, { error: "リクエスト形式が不正です", code: "INVALID_JSON", requestId });
+  }
+
+  const flow = detectFlow(body);
+  if (!flow) {
+    return apiError(400, { error: "リクエスト形式が不正です", code: "INVALID_FLOW", requestId });
+  }
+  if (flow === "legacy-lookup") {
+    // Do not verify the token or query reservations for the legacy search
+    // payload. A date/phone/name match is not ownership proof.
+    return apiError(410, {
+      error: LOOKUP_REQUIRES_TOKEN_MESSAGE,
+      code: LOOKUP_REQUIRES_TOKEN,
+      requestId,
+    });
+  }
 
   const ipAddress = getClientIp(request);
   const ipHash = hashClientIp(ipAddress);
@@ -249,18 +178,6 @@ export async function POST(request: NextRequest) {
     return apiError(500, { error: SAFE_ERROR, code: "LINK_FAILED", requestId });
   }
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return apiError(400, { error: "リクエスト形式が不正です", code: "INVALID_JSON", requestId });
-  }
-
-  const flow = detectFlow(body);
-  if (!flow) {
-    return apiError(400, { error: "リクエスト形式が不正です", code: "INVALID_FLOW", requestId });
-  }
-
   try {
     const allowed = await enforceRateLimit(ipHash, flow);
     if (!allowed) {
@@ -279,8 +196,7 @@ export async function POST(request: NextRequest) {
         message: rateLimitError instanceof Error ? rateLimitError.message : String(rateLimitError),
       },
     });
-    // Fail-closed: rate limit DB failure must not be treated as "allowed".
-    // The lookup flow uses date/phone/name — fail-open here would be a security gap.
+    // Fail-closed: a rate-limit database failure must not be treated as allowed.
     return apiError(503, {
       error: "一時的なエラーが発生しました。しばらく経ってから再度お試しください。",
       code: "RATE_LIMIT_CHECK_FAILED",
@@ -402,10 +318,15 @@ export async function POST(request: NextRequest) {
         }
 
         // Conditionally set lineUserId (WHERE lineUserId IS NULL).
-        // This guards against a concurrent lookup-flow or second-token linking
-        // the same reservation between the reservation read above and now.
+        // Keep status/type in the CAS predicate so a concurrent cancellation or
+        // private-block transition cannot be linked after the initial read.
         const resUpdated = await tx.reservation.updateMany({
-          where: { id: res.id, lineUserId: null },
+          where: {
+            id: res.id,
+            lineUserId: null,
+            status: ReservationStatus.CONFIRMED,
+            reservationType: ReservationType.NORMAL,
+          },
           data: {
             lineUserId,
             lineLinkedAt: new Date(),
@@ -418,17 +339,27 @@ export async function POST(request: NextRequest) {
         if (resUpdated.count === 0) {
           const recheck = await tx.reservation.findUnique({
             where: { id: res.id },
-            select: { lineUserId: true },
+            select: { lineUserId: true, status: true, reservationType: true },
           });
-          if (recheck?.lineUserId === lineUserId) {
+          if (
+            recheck?.lineUserId === lineUserId &&
+            recheck.status === ReservationStatus.CONFIRMED &&
+            recheck.reservationType === ReservationType.NORMAL
+          ) {
             return { ok: true, reservationId: res.id, alreadyLinked: true };
           }
-          return { ok: false, reason: "CONFLICT" };
+          // Roll back token consumption as well as the link attempt. A
+          // cancellation/type transition winning this race must not leave a
+          // token irreversibly consumed without a successful link.
+          throw new ReservationLinkConflictError();
         }
 
         return { ok: true, reservationId: res.id, alreadyLinked: false };
       });
     } catch (txErr) {
+      if (txErr instanceof ReservationLinkConflictError) {
+        return apiError(409, { error: SAFE_ERROR, code: LINK_VALIDATION_FAILED, requestId });
+      }
       if (
         txErr instanceof Prisma.PrismaClientKnownRequestError &&
         txErr.code === "P2034"
@@ -492,87 +423,9 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // ── Lookup flow ─────────────────────────────────────────────────────────────
-  if (!isLineReservationLookupLinkEnabled()) {
-    return apiError(404, { error: SAFE_ERROR, code: "LINE_LOOKUP_LINK_DISABLED", requestId });
-  }
-
-  const parsed = lookupFlowSchema.safeParse(body);
-  if (!parsed.success) {
-    return apiError(400, { error: SAFE_ERROR, code: LINK_VALIDATION_FAILED, requestId });
-  }
-  const { date, phone, nameFragment, lineIdToken } = parsed.data;
-
-  const lineUserId = await verifyLineIdToken(lineIdToken);
-  if (!lineUserId) {
-    return apiError(401, { error: SAFE_ERROR, code: "LINE_ID_TOKEN_INVALID", requestId });
-  }
-
-  const normalizedPhone = normalizeReservationPhone(phone);
-  if (normalizedPhone.length < 6) {
-    return apiError(400, { error: SAFE_ERROR, code: LINK_VALIDATION_FAILED, requestId });
-  }
-
-  const candidates = await prisma.reservation.findMany({
-    where: {
-      date,
-      status: ReservationStatus.CONFIRMED,
-      reservationType: ReservationType.NORMAL,
-    },
-    select: { id: true, phone: true, name: true, lineUserId: true, status: true, reservationType: true },
-  });
-
-  const normalizedFragment = nameFragment.trim();
-  const matched = candidates.filter(
-    (r) =>
-      normalizeReservationPhone(r.phone) === normalizedPhone &&
-      r.name.includes(normalizedFragment)
-  );
-
-  if (matched.length !== 1) {
-    logInfo("line.link.lookup_no_unique_match", {
-      requestId,
-      route: "/api/line/link-reservation",
-      context: { matchCount: matched.length },
-    });
-    // Use same generic code — do not reveal 0 vs multiple matches.
-    return apiError(400, { error: SAFE_ERROR, code: LINK_VALIDATION_FAILED, requestId });
-  }
-
-  const reservation = matched[0];
-
-  const outcome = await atomicLinkReservation(
-    reservation.id,
-    lineUserId,
-    "LINE_ACCOUNT_LOOKUP",
-    reservation.lineUserId,
-    reservation.phone,
-    reservation.status,
-    reservation.reservationType
-  );
-
-  if ("invalid" in outcome) {
-    return apiError(400, { error: SAFE_ERROR, code: LINK_VALIDATION_FAILED, requestId });
-  }
-  if ("conflict" in outcome) {
-    logWarn("line.link.conflict", {
-      requestId,
-      route: "/api/line/link-reservation",
-      context: { reservationId: reservation.id },
-    });
-    return apiError(409, { error: SAFE_ERROR, code: LINK_VALIDATION_FAILED, requestId });
-  }
-
-  const resolvedReservationId = "reservationId" in outcome ? outcome.reservationId : reservation.id;
-
-  const immediateReminderSent = await maybeSendImmediateReminder(
-    resolvedReservationId,
-    lineUserId,
-    requestId
-  );
-
-  return NextResponse.json({
-    ok: true,
-    lineNotification: { enabled: true, immediateReminderSent },
+  return apiError(410, {
+    error: LOOKUP_REQUIRES_TOKEN_MESSAGE,
+    code: LOOKUP_REQUIRES_TOKEN,
+    requestId,
   });
 }

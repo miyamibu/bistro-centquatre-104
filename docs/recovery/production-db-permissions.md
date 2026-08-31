@@ -2,7 +2,7 @@
 
 ## Goal
 
-本番運用中の予約本体、予約監査、通知台帳、LINE連携token、rate-limit記録を、アプリ実行ユーザーや誤操作からhard deleteされにくい最小権限構成にする。
+本番運用中の予約本体、予約監査、通知台帳、LINE連携、日誌、rate-limit記録を、アプリ実行ユーザーや誤操作からhard deleteされにくい最小権限構成にする。
 
 ## Context
 
@@ -19,7 +19,7 @@
 ## Done when
 
 - runtimeユーザーは、各テーブルの実処理に必要な `SELECT` / `INSERT` / `UPDATE` だけを持つ。
-- runtimeユーザーは、下記の保護対象8テーブルへの `DELETE` / `TRUNCATE` を持たない。
+- runtimeユーザーは、下記の保護対象14テーブルへの `DELETE` / `TRUNCATE` を持たない。
 - 追記型の監査・rate-limitテーブルは `UPDATE` も持たない。
 - rollback 手順と確認クエリが用意されている。
 
@@ -45,9 +45,17 @@
 | `PrivateBlockAuditLog` | `SELECT`, `INSERT` | 追記型の貸切監査 |
 | `ReservationStatusAuditLog` | `SELECT`, `INSERT` | 追記型のstatus監査 |
 | `ReservationEmailOutbox` | `SELECT`, `INSERT`, `UPDATE` | enqueue、claim、再試行、送信完了 |
-| `ReservationLineLinkToken` | `SELECT`, `INSERT`, `UPDATE` | token発行と使用済み更新 |
+| `ReservationIdempotency` | `SELECT`, `INSERT`, `UPDATE` | 同一keyのclaimと保存済みresponse再生 |
+| `ReservationLineLinkToken` | `SELECT`, `INSERT`, `UPDATE` | LINE token発行と使用済み更新 |
+| `ReservationManagementToken` | `SELECT`, `INSERT`, `UPDATE` | 顧客予約管理token発行と失効 |
 | `NotificationEvent` | `SELECT`, `INSERT`, `UPDATE` | 通知claimと結果更新 |
+| `LineWebhookInbox` | `SELECT`, `INSERT`, `UPDATE` | Webhook eventの保存、claim、再試行結果更新。処理済み行の期限削除は直接DELETE権限ではなく、制約付き関数だけを使う |
 | `ReservationRateLimitEvent` | `SELECT`, `INSERT` | rate-limit試行の追記と集計 |
+| `LineFriend` | `SELECT`, `INSERT`, `UPDATE` | LINE友だち状態の更新 |
+| `LineCustomerLink` | `SELECT`, `INSERT`, `UPDATE` | 同意済みLINE顧客リンクの更新 |
+| `DailyJournalEntry` | `SELECT`, `INSERT`, `UPDATE` | 日誌の作成・編集・公開 |
+| `SchedulerHeartbeat` | `SELECT`, `INSERT`, `UPDATE` | scheduler開始・成功・失敗・backlog観測 |
+| `OutboxDrainAuditLog` | `SELECT`, `INSERT`, `UPDATE` | 管理者drainの追記と処理結果確定 |
 
 ```sql
 SELECT rolname
@@ -61,9 +69,17 @@ ON TABLE
   "PrivateBlockAuditLog",
   "ReservationStatusAuditLog",
   "ReservationEmailOutbox",
+  "ReservationIdempotency",
   "ReservationLineLinkToken",
+  "ReservationManagementToken",
   "NotificationEvent",
-  "ReservationRateLimitEvent"
+  "LineWebhookInbox",
+  "ReservationRateLimitEvent",
+  "LineFriend",
+  "LineCustomerLink",
+  "DailyJournalEntry",
+  "SchedulerHeartbeat",
+  "OutboxDrainAuditLog"
 FROM bistro_app_runtime;
 
 GRANT SELECT, INSERT, UPDATE
@@ -71,8 +87,19 @@ ON TABLE
   "Reservation",
   "BusinessDay",
   "ReservationEmailOutbox",
+  "ReservationIdempotency",
   "ReservationLineLinkToken",
-  "NotificationEvent"
+  "ReservationManagementToken",
+  "NotificationEvent",
+  "LineWebhookInbox",
+  "LineFriend",
+  "LineCustomerLink",
+  "DailyJournalEntry",
+  "SchedulerHeartbeat",
+  "OutboxDrainAuditLog"
+TO bistro_app_runtime;
+
+GRANT EXECUTE ON FUNCTION public.cleanup_processed_line_webhook_inbox(timestamptz, integer)
 TO bistro_app_runtime;
 
 REVOKE UPDATE
@@ -90,7 +117,7 @@ ON TABLE
 TO bistro_app_runtime;
 ```
 
-対象のPrisma modelはアプリ側でtext IDを生成するため、この8テーブルだけを目的とした `ON ALL SEQUENCES` の一括grantは不要です。他の業務テーブルへ権限を広げる場合も、必要なテーブルと操作を個別にレビューしてください。
+対象のPrisma modelはアプリ側でtext IDを生成するため、この14テーブルだけを目的とした `ON ALL SEQUENCES` の一括grantは不要です。他の業務テーブルへ権限を広げる場合も、必要なテーブルと操作を個別にレビューしてください。
 
 > `GRANT` はRLSを迂回しません。接続roleがtable ownerでも `BYPASSRLS` roleでもない場合、切替前にそのruntime role向けの最小RLS policyを別migrationとしてレビュー・検証してください。権限SQLだけを先に適用して `DATABASE_URL` を切り替えないでください。
 
@@ -113,9 +140,15 @@ WHERE n.nspname = 'public'
     'PrivateBlockAuditLog',
     'ReservationStatusAuditLog',
     'ReservationEmailOutbox',
+    'ReservationIdempotency',
     'ReservationLineLinkToken',
+    'ReservationManagementToken',
     'NotificationEvent',
-    'ReservationRateLimitEvent'
+    'LineWebhookInbox',
+    'ReservationRateLimitEvent',
+    'LineFriend',
+    'LineCustomerLink',
+    'DailyJournalEntry'
   )
 ORDER BY c.relname;
 ```
@@ -123,8 +156,8 @@ ORDER BY c.relname;
 期待値:
 
 1. 上表で定義した `SELECT`, `INSERT`, `UPDATE` だけが `true`
-2. 全8テーブルで `can_delete = false`
-3. 全8テーブルで `can_truncate = false`
+2. 全14テーブルで `can_delete = false`
+3. 全14テーブルで `can_truncate = false`
 4. 追記型3テーブルで `can_update = false`
 
 `supabase/verify.sql` は、この期待値を読み取りだけでassertできます。repo rootから `psql` を使う場合は、エラーを終了コードへ反映させ、roleを明示してください。
@@ -159,5 +192,5 @@ ROLLBACK;
 4. 予約キャンセルは削除ではなく `Reservation.status = CANCELLED`
 5. No-show は削除ではなく `Reservation.status = NOSHOW`
 6. 来店済みは削除ではなく `Reservation.status = DONE`
-7. `ReservationEmailOutbox`、監査、LINE token、通知台帳、rate-limit記録を通常のcleanup対象にしない
+7. `ReservationEmailOutbox`、監査、LINE token、予約管理token、Webhook inbox、通知台帳、日誌、rate-limit記録を通常のcleanup対象にしない
 8. migration・grant・RLS適用後は `supabase/verify.sql` が例外なしで完了するまでreleaseを進めない

@@ -17,19 +17,23 @@ See also `docs/recovery/production-db-permissions.md` for the DB role split and 
 
 ## What has been verified locally
 
-As of 2026-03-03, the following checks passed from the repo root:
+Run the following checks from the repo root for a release candidate:
 
-1. `npm run lint`
-2. `npm run test`
-3. `npm run build`
-4. Production smoke tests against `next start`
+1. `npm run check:release:production` (`PRODUCTION_HOST_PROVIDER=netlify`; Vercel remains Hobby and carries no production cron)
+2. `npm run lint`
+3. `npm run typecheck`
+4. `npm run security:env`
+5. `npm run security:destructive-reservations`
+6. `npm run test`
+7. `npm run build`
+8. Production smoke tests against `next start`
 
 The production smoke checks confirmed:
 
 1. `GET /ai` returns `308` and redirects to `/agents`
 2. `GET /?ai=1` returns `307` and redirects to `/agents`
 3. `GET /` returns `200` and includes `Link` headers for `/agents`, `/llms.txt`, and `/api/agent`
-4. `GET /admin/reservations` returns `401` without Basic auth
+4. `GET /admin/reservations` redirects to `/admin/login` without a valid staff session
 5. `GET /api/agent?pretty=1` returns `200`
 
 ## Required production environment
@@ -39,15 +43,16 @@ Set these values in your hosting provider before the production deploy:
 1. `DATABASE_URL`
 2. `DIRECT_URL`（Prisma migration用の直接接続。`DATABASE_URL`と同じDBを指す）
 3. `BASE_URL`
-4. `ADMIN_BASIC_USER`
-5. `ADMIN_BASIC_PASS`
-6. `NEXT_PUBLIC_SUPABASE_URL`
-7. `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-8. `SUPABASE_SERVICE_ROLE_KEY`
-9. `CRON_SECRET`
-10. `BACKUP_EXPORT_SECRET`
-11. `RATE_LIMIT_HASH_SECRET`
-12. `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY`
+4. `NEXT_PUBLIC_SUPABASE_URL`
+5. `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+6. `SUPABASE_SERVICE_ROLE_KEY`
+7. `STAFF_SESSION_MAX_AGE_SECONDS`
+8. `CRON_SECRET`
+9. `BACKUP_EXPORT_SECRET`
+10. `RATE_LIMIT_HASH_SECRET`
+11. `RESERVATION_TOKEN_KEYS_JSON` + `RESERVATION_TOKEN_ACTIVE_KEY_ID`（または移行用 `RESERVATION_TOKEN_SECRET`）
+12. `BACKUP_ENCRYPTION_KEYS_JSON` + `BACKUP_ENCRYPTION_ACTIVE_KEY_ID`（または移行用 `BACKUP_ENCRYPTION_KEY`）
+13. `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY`
 
 Recommended operational values:
 
@@ -82,12 +87,26 @@ Email provider notes:
 5. Apply `20260728090000_add_reservation_email_outbox` and the following
    `20260728093000_restrict_reservation_related_deletes` Prisma migrations before deploying
    code that creates reservations.
-6. Apply `supabase/migrations/20260728230000_harden_order_notification_outbox.sql`
+6. Apply `20260803090000_customer_contact_policy_token_keyring` before enabling customer email,
+   24-hour cancellation cutoff, or token-key rotation. This migration adds customer contact,
+   cancellation audit, and token key-id columns.
+7. Apply `20260803100000_rename_private_block_audit_staff_source` immediately after the
+   customer-contact migration so existing private-block audit rows use the current
+   `ADMIN_USER` source name.
+8. Apply `supabase/migrations/20260728230000_harden_order_notification_outbox.sql`
    after the existing order outbox migration and before deploying the order worker.
-7. Apply `supabase/rls-policies.sql`, then run `supabase/verify.sql` with
+9. Apply `supabase/rls-policies.sql`, then run `supabase/verify.sql` with
    `psql -v ON_ERROR_STOP=1` in a read-only transaction. Do not proceed until
    the assertions pass.
-8. See `docs/reservation-email-outbox.md` for retry, dead-letter, and safe rollout behavior.
+10. See `docs/reservation-email-outbox.md` for retry, dead-letter, and safe rollout behavior.
+
+Customer reservation policy:
+
+1. Reservation creation requires a customer email, unless a verified LINE identity is attached.
+2. The customer confirmation email is enqueued transactionally and contains a 180-day management link.
+3. Self-service cancellation is free until 24 hours before the stored arrival time (JST); the current system has no cancellation-fee setting or automatic charge.
+4. After the cutoff, the API returns `CANCELLATION_CUTOFF_PASSED` and directs the customer to phone support.
+5. Every cancellation stores `cancelledAt`, `cancelSource`, `cancellationReason`, and a status audit row.
 
 Bank account history note:
 
@@ -99,31 +118,35 @@ Supabase notes:
 1. The Supabase project must be resumed and reachable before launch.
 2. `NEXT_PUBLIC_SUPABASE_URL` must be the real project URL, not a placeholder.
 3. `SUPABASE_SERVICE_ROLE_KEY` must be the real service role key.
+4. When `DATABASE_URL` uses the Supabase transaction pooler on port `6543`, append `pgbouncer=true&connection_limit=1`. Without both parameters, serverless concurrency can fail with PostgreSQL `42P05` prepared-statement collisions.
+5. Keep `DIRECT_URL` on the direct/session port (normally `5432`); never run Prisma migrations through transaction-pooler port `6543`.
 
 ## Preview environment
 
 Preview smoke and runtime verification need the same required key structure as `Production`, even when the values point at staging resources instead of live ones.
 
-Set these keys in Vercel Preview before relying on preview deploys:
+Set these keys in the isolated Netlify Deploy Preview context before relying on preview deploys:
 
 1. `DATABASE_URL`
 2. `DIRECT_URL`（Preview/staging DBへの直接接続）
 3. `BASE_URL`
-4. `ADMIN_BASIC_USER`
-5. `ADMIN_BASIC_PASS`
-6. `NEXT_PUBLIC_SUPABASE_URL`
-7. `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-8. `SUPABASE_SERVICE_ROLE_KEY`
-9. `CRON_SECRET`
-10. `BACKUP_EXPORT_SECRET`
-11. `RATE_LIMIT_HASH_SECRET`
-12. `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY`
+4. `NEXT_PUBLIC_SUPABASE_URL`
+5. `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+6. `SUPABASE_SERVICE_ROLE_KEY`
+7. `STAFF_SESSION_MAX_AGE_SECONDS`
+8. `CRON_SECRET`
+9. `BACKUP_EXPORT_SECRET`
+10. `RATE_LIMIT_HASH_SECRET`
+11. `RESERVATION_TOKEN_KEYS_JSON` + `RESERVATION_TOKEN_ACTIVE_KEY_ID`（または `RESERVATION_TOKEN_SECRET`）
+12. `BACKUP_ENCRYPTION_KEYS_JSON` + `BACKUP_ENCRYPTION_ACTIVE_KEY_ID`（または `BACKUP_ENCRYPTION_KEY`）
+13. `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY`
 
 Safe default:
 
 1. Use a preview or staging database instead of the live production database
 2. Use preview/staging Supabase credentials instead of the production service role key
 3. Keep Preview verification read-only when possible
+4. If a branch-specific Netlify environment value exists, update it together with the shared `deploy-preview` value because the branch value takes precedence.
 
 ## One-time database preparation
 
@@ -173,8 +196,8 @@ This script validates:
 5. `npm run test`
 6. `npm run build`
 7. `npm run security:destructive-reservations`
-8. `next start` smoke checks for `/agents`, `/ai`, `/?ai=1`, `/api/agent`, and Basic auth
-9. `POST /api/reservations` accepts `Content-Type: application/json` without requiring `X-Requested-With`
+8. `next start` smoke checks for `/agents`, `/ai`, `/?ai=1`, `/api/agent`, and the Supabase staff login redirect
+9. `POST /api/reservations` requires same-origin `Origin`, `X-Requested-With: XMLHttpRequest`, and `Idempotency-Key`
 
 For a faster cross-platform env check before the full preflight, run:
 
@@ -188,45 +211,39 @@ For preview-specific reminders:
 npm run check:release:preview
 ```
 
-## Vercel deployment
+## Netlify Free production deployment
 
-This repo already includes `vercel.json` cron definitions.
-
-For the exact production env paste order, use `docs/vercel-production-env.md`.
-To check which local values are present without printing secrets, run `.\scripts\print-vercel-env.ps1`.
+Netlify is the selected production host. Vercel remains on Hobby for non-commercial compatibility checks only; `vercel.json` intentionally contains no cron definitions or production redirects.
 
 Use these production settings:
 
 1. Framework preset: `Next.js`
-2. Root directory: `bistro-reservation`
+2. Base directory: repository root (`bistro-reservation`)
 3. Install command: `npm install`
 4. Build command: `npm run build`
-5. Output directory: `.next`
+5. Publish directory: `.next` (managed by `@netlify/plugin-nextjs`)
 
 Deploy sequence:
 
 1. Push the release commit to the production branch
-2. Open the Vercel project
+2. Open the Netlify project
 3. Confirm all production env vars are set
 4. Confirm the production domain is the same value used in `BASE_URL`
 5. Trigger a production deployment
-6. Wait for build completion
-
-CLI note:
-
-1. `vercel deploy` on a team project can be rejected when the local Git author email is not recognized by that Vercel team
-2. Before relying on CLI preview deploys, confirm `git config user.email` is your Vercel team email, not a local machine address such as `name@host.local`
-3. If CLI preview is blocked by author enforcement, use the Git-integrated deploy flow or correct the Git author before retrying
+6. Wait for the deploy to reach `ready`
+7. Confirm the deployed commit SHA is the reviewed release SHA and Netlify's secret scan reports zero matches
 
 Cron notes:
 
-1. Vercel will call the paths declared in `vercel.json`
-2. Cron endpoints still require the correct `CRON_SECRET` logic inside the route handlers
-3. Do not remove `CRON_SECRET` after deploy
-4. `cancel-expired-orders` is bounded to 200 orders per run and can be safely rerun
-5. `delete-old-histories` deletes up to 1000 rows per run in 200-row batches
-6. `process-reservation-emails` claims at most 10 due rows per run and retries failed delivery up to 5 attempts.
-7. Its 5-minute schedule requires a Vercel plan that supports more-than-daily Cron execution.
+1. GitHub Actions is the primary free scheduler. `.github/workflows/production-notification-outbox-drain.yml` drains both outbox lanes every five minutes.
+2. `.github/workflows/production-daily-maintenance.yml` runs cancellation, reminder, and retention maintenance in bounded daily windows.
+3. Netlify's scheduled `outbox-failsafe` function runs once daily as provider-side recovery coverage; it is not the five-minute primary scheduler.
+4. Every cron endpoint still requires constant-time comparison of the correct `CRON_SECRET` bearer token. Do not remove the secret after deploy.
+5. `cancel-expired-orders` is bounded to 200 orders per run and can be safely rerun.
+6. `delete-old-histories` deletes up to 1000 old order-history rows in 200-row batches; protected Prisma tables are cleaned only through bounded privileged functions.
+7. `process-reservation-emails` claims at most 10 due rows per run and retries failed delivery up to 5 attempts.
+8. `process-order-notifications` and `process-reservation-emails` are invoked every five minutes by the public-repository GitHub scheduler.
+9. Run `npm run check:release:production` before promotion. The check fails closed unless the production host, canonical origins, email provider, secrets, and required keys match the Netlify production policy.
 
 ## Post-deploy smoke checks
 
@@ -246,7 +263,7 @@ Expected results:
 1. `/ai` -> `308` to `/agents`
 2. `/?ai=1` -> `307` to `/agents`
 3. `/` -> `200` with `Link` headers
-4. `/admin/reservations` -> `401` without Basic auth
+4. `/admin/reservations` -> redirect to `/admin/login` without a staff session
 5. `/api/agent?pretty=1` -> `200`
 6. `/llms.txt` -> `200`
 
@@ -255,10 +272,15 @@ Reservation API probe:
 ```powershell
 curl.exe -s -X POST "https://your-domain.example/api/reservations" ^
   -H "Content-Type: application/json" ^
+  -H "Origin: https://your-domain.example" ^
+  -H "X-Requested-With: XMLHttpRequest" ^
+  -H "Idempotency-Key: prelaunch-validation-probe" ^
   -d "{}"
 ```
 
-The probe should return `400` with `code=VALIDATION_ERROR`. It must not fail with `MISSING_REQUEST_HEADER`.
+The probe should return `400` with `code=VALIDATION_ERROR`. The explicit same-origin
+`Origin`, `X-Requested-With`, and `Idempotency-Key` headers are intentional; without them the request may
+be rejected by the API security boundary before body validation.
 
 ## Human QA after deploy
 
@@ -269,13 +291,13 @@ Confirm these manually in a browser:
 3. `/on-line-store`
 4. `/on-line-store/apron?mode=agent&qty=2`
 5. `/on-line-store/cart?mode=agent`
-6. `/dashboard/orders` prompts for Basic auth
-7. `/admin/reservations` prompts for Basic auth
+6. `/admin/login` -> sign in with an individual Supabase Auth user, complete TOTP MFA, then open `/dashboard/orders`
+7. `/admin/reservations` -> staff user sees reservations; a user without `app_metadata.role` is denied
 
 ## Rollback
 
 If the deploy is bad:
 
-1. Re-deploy the previous successful production deployment in Vercel
+1. Publish the previous successful production deploy from Netlify's deploy history
 2. Keep the same production env vars unless the failure came from env changes
 3. If the failure came from a Prisma migration, restore from database backup instead of editing production tables by hand

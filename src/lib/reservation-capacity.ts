@@ -43,8 +43,14 @@ export type ReservationAvailabilityInput = {
     reservationType?: "NORMAL" | "PRIVATE_BLOCK";
   }>;
   businessDayClosed?: boolean;
+  /** Administrative corrections may bypass public cutoff/same-day rules. */
+  skipPublicBookingWindow?: boolean;
   now?: Date;
 };
+
+export function isCapacityBlockingReservation(reservation: { status: string }): boolean {
+  return reservation.status === "CONFIRMED";
+}
 
 type Pattern = Omit<SlotCounts, "hasPhoneOnly">;
 
@@ -124,7 +130,7 @@ export function aggregateSlotCounts(
   }>
 ): SlotCounts {
   return reservations.reduce<SlotCounts>((counts, reservation) => {
-    if (reservation.status === "CANCELLED") {
+    if (!isCapacityBlockingReservation(reservation)) {
       return counts;
     }
 
@@ -192,14 +198,14 @@ export function evaluateReservationAvailability(
     };
   }
 
-  if (isSameOrBeforeToday(parsedDate)) {
+  if (!input.skipPublicBookingWindow && isSameOrBeforeToday(parsedDate)) {
     return {
       reason: "SAME_DAY_BLOCKED",
       webBookable: false,
     };
   }
 
-  if (isReservationCutoffPassed(parsedDate, input.now ?? nowJst())) {
+  if (!input.skipPublicBookingWindow && isReservationCutoffPassed(parsedDate, input.now ?? nowJst())) {
     return {
       reason: "CUTOFF_PASSED",
       webBookable: false,
@@ -209,7 +215,7 @@ export function evaluateReservationAvailability(
   const hasPrivateBlock = input.existingReservations.some(
     (reservation) =>
       reservation.servicePeriod === input.servicePeriod &&
-      reservation.status !== "CANCELLED" &&
+      isCapacityBlockingReservation(reservation) &&
       reservation.reservationType === "PRIVATE_BLOCK"
   );
 

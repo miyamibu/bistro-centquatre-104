@@ -2,6 +2,13 @@ import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const processReservationEmailOutboxMock = vi.hoisted(() => vi.fn());
+const getReservationEmailOutboxBacklogMock = vi.hoisted(() => vi.fn());
+const heartbeatMocks = vi.hoisted(() => ({
+  markSchedulerStarted: vi.fn(),
+  markSchedulerSucceeded: vi.fn(),
+  markSchedulerFailed: vi.fn(),
+  readSchedulerContext: vi.fn(() => ({ schedulerKind: "GITHUB_ACTIONS", runId: "123" })),
+}));
 
 vi.mock("@/lib/env", () => ({
   env: { CRON_SECRET: "cron-secret" },
@@ -9,16 +16,19 @@ vi.mock("@/lib/env", () => ({
 
 vi.mock("@/lib/reservation-email-outbox", () => ({
   processReservationEmailOutbox: processReservationEmailOutboxMock,
+  getReservationEmailOutboxBacklog: getReservationEmailOutboxBacklogMock,
 }));
+
+vi.mock("@/lib/scheduler-heartbeat", () => heartbeatMocks);
 
 vi.mock("@/lib/logger", () => ({
   getRequestId: vi.fn(() => "request-cron-test"),
   logError: vi.fn(),
 }));
 
-function request(method: "GET" | "POST", token?: string) {
+function request(method: "GET" | "POST", token?: string, query = "") {
   return new NextRequest(
-    "http://localhost:3000/api/crons/process-reservation-emails",
+    `http://localhost:3000/api/crons/process-reservation-emails${query}`,
     {
       method,
       headers: token ? { authorization: `Bearer ${token}` } : {},
@@ -28,6 +38,14 @@ function request(method: "GET" | "POST", token?: string) {
 
 beforeEach(() => {
   processReservationEmailOutboxMock.mockReset();
+  getReservationEmailOutboxBacklogMock.mockReset();
+  getReservationEmailOutboxBacklogMock.mockResolvedValue({
+    backlog: 0,
+    oldestBacklogAt: null,
+  });
+  heartbeatMocks.markSchedulerStarted.mockReset().mockResolvedValue(undefined);
+  heartbeatMocks.markSchedulerSucceeded.mockReset().mockResolvedValue(undefined);
+  heartbeatMocks.markSchedulerFailed.mockReset().mockResolvedValue(undefined);
   processReservationEmailOutboxMock.mockResolvedValue({
     scanned: 0,
     sent: 0,
@@ -35,6 +53,8 @@ beforeEach(() => {
     deadLetter: 0,
     skipped: 0,
     unsafe: 0,
+    deadlineReached: false,
+    nextCursor: null,
   });
 });
 
@@ -68,6 +88,8 @@ describe("reservation email outbox cron route", () => {
       failed: 0,
       deadLetter: 0,
       unsafe: 0,
+      deadlineReached: false,
+      nextCursor: null,
     });
   });
 
@@ -81,6 +103,28 @@ describe("reservation email outbox cron route", () => {
     expect(response.status).toBe(200);
   });
 
+  it("forwards bounded batch, deadline, and cursor query parameters", async () => {
+    const { GET } = await import(
+      "@/app/api/crons/process-reservation-emails/route"
+    );
+
+    const response = await GET(
+      request(
+        "GET",
+        "cron-secret",
+        "?batchSize=7&deadlineMs=900&cursor=cursor-token"
+      )
+    );
+
+    expect(response.status).toBe(200);
+    expect(processReservationEmailOutboxMock).toHaveBeenCalledWith({
+      requestId: "request-cron-test",
+      batchSize: 7,
+      deadlineMs: 900,
+      cursor: "cursor-token",
+    });
+  });
+
   it("returns 500 when retry or dead-letter work needs operator attention", async () => {
     processReservationEmailOutboxMock.mockResolvedValue({
       scanned: 2,
@@ -89,6 +133,7 @@ describe("reservation email outbox cron route", () => {
       deadLetter: 0,
       skipped: 0,
       unsafe: 0,
+      backlog: 0,
     });
     const { GET } = await import(
       "@/app/api/crons/process-reservation-emails/route"

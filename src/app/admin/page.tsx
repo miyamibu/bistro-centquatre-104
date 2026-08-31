@@ -7,9 +7,11 @@ import {
   ExternalLink,
   FilePenLine,
   LayoutDashboard,
+  RefreshCcw,
   Store,
   Utensils,
 } from "lucide-react";
+import { StaffLogoutButton } from "@/components/staff-logout-button";
 
 export const metadata: Metadata = {
   title: "管理画面一覧 | ビストロ サンキャトル 104",
@@ -26,6 +28,14 @@ type ManagementLink = {
 };
 
 const managementLinks: ManagementLink[] = [
+  {
+    title: "通知Outbox",
+    href: "/admin/outbox" as Route,
+    label: "通知運用",
+    description: "scheduler heartbeat、滞留件数、手動再処理を確認します。",
+    icon: RefreshCcw,
+    primary: true,
+  },
   {
     title: "日々の出来事を書く",
     href: "/admin/daily-journal",
@@ -84,8 +94,13 @@ export default function AdminIndexPage() {
     <section className="min-h-screen bg-white pb-12 pt-8 text-[#2f1b0f]">
       <div className="mx-auto max-w-7xl space-y-8 px-4">
         <header className="border-b border-[#eadfce] pb-6">
-          <p className="text-sm text-[#6b5644]">お店側 管理メニュー</p>
-          <h1 className="mt-2 text-2xl font-semibold md:text-3xl">管理画面一覧</h1>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-sm text-[#6b5644]">お店側 管理メニュー</p>
+              <h1 className="mt-2 text-2xl font-semibold md:text-3xl">管理画面一覧</h1>
+            </div>
+            <StaffLogoutButton />
+          </div>
           <p className="mt-3 max-w-2xl text-sm leading-7 text-[#6b5644]">
             予約、営業日、日々の出来事、注文管理など、お店側で使う画面をここにまとめています。
           </p>

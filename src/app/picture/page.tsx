@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { Socket } from "node:net";
 import { Tangerine } from "next/font/google";
 import { prisma } from "@/lib/prisma";
 import { GalleryViewer } from "@/components/gallery-viewer";
+import { logWarn } from "@/lib/logger";
 import { createPageMetadata } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
@@ -114,48 +114,44 @@ function sortGalleryPhotos(a: GalleryPhoto, b: GalleryPhoto) {
   return a.caption.localeCompare(b.caption, "ja");
 }
 
-async function canReachDatabase(databaseUrl: string | undefined) {
-  if (!databaseUrl || !/^(postgres|postgresql):\/\//.test(databaseUrl)) {
-    return false;
-  }
+const PHOTO_QUERY_TIMEOUT_MS = 750;
+
+async function loadPublishedPhotos() {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const query = prisma.photo
+    .findMany({
+      where: { isPublished: true },
+      orderBy: { sortOrder: "asc" },
+    })
+    .catch((error) => {
+      logWarn("picture.photos.query_failed", {
+        route: "/picture",
+        context: { errorName: error instanceof Error ? error.name : "UnknownError" },
+      });
+      return [];
+    });
+
+  const boundedFallback = new Promise<Awaited<typeof query>>((resolve) => {
+    timeout = setTimeout(() => {
+      logWarn("picture.photos.query_timeout", {
+        route: "/picture",
+        context: { timeoutMs: PHOTO_QUERY_TIMEOUT_MS },
+      });
+      resolve([]);
+    }, PHOTO_QUERY_TIMEOUT_MS);
+  });
 
   try {
-    const { hostname, port } = new URL(databaseUrl);
-    const socket = new Socket();
-
-    return await new Promise((resolve) => {
-      const finish = (result: boolean) => {
-        socket.removeAllListeners();
-        socket.destroy();
-        resolve(result);
-      };
-
-      socket.setTimeout(400);
-      socket.once("connect", () => finish(true));
-      socket.once("timeout", () => finish(false));
-      socket.once("error", () => finish(false));
-      socket.connect(Number(port || "5432"), hostname);
-    });
-  } catch {
-    return false;
+    return await Promise.race([query, boundedFallback]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
   }
 }
 
 export default async function PhotosPage() {
   const photosTopPaddingMobile = "56px";
   const photosTopPaddingDesktop = "124px";
-  const canQueryDatabase = await canReachDatabase(process.env.DATABASE_URL);
-  const dbPhotos = canQueryDatabase
-    ? await prisma.photo
-        .findMany({
-          where: { isPublished: true },
-          orderBy: { sortOrder: "asc" },
-        })
-        .catch((error) => {
-          console.error("Failed to load photos", error);
-          return [];
-        })
-    : [];
+  const dbPhotos = await loadPublishedPhotos();
 
   const normalizedDbPhotos: GalleryPhoto[] = dbPhotos.map((photo) => ({
     id: photo.id,

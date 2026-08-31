@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { createBrowserClient } from '@supabase/ssr'
 import { publicEnv } from "@/lib/env-public";
 
 /**
@@ -8,4 +8,4 @@ import { publicEnv } from "@/lib/env-public";
 const supabaseUrl = publicEnv.NEXT_PUBLIC_SUPABASE_URL || ''
 const supabaseAnonKey = publicEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey)

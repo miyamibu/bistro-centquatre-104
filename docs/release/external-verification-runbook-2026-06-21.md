@@ -1,4 +1,11 @@
-# External Verification Runbook - 2026-06-21
+# External Verification Runbook - 2026-06-21 (historical, superseded)
+
+> **Do not execute the Vercel deployment/cron steps in this historical record.**
+> Commercial Production moved to Netlify Free; GitHub Actions is the primary
+> scheduler and Netlify supplies the daily provider failsafe. Use
+> `DEPLOYMENT_SETUP.md`, `docs/release/free-tier-production-go.md`, and
+> `docs/recovery/RECOVERY_RUNBOOK.md` for the current release. Vercel Hobby is
+> retained only as historical evidence and must not carry commercial traffic.
 
 ## Goal
 
@@ -51,7 +58,7 @@ Allowed evidence:
 | Project | Confirm project is `bistro-centquatre-104` or approved successor | Project settings screenshot with org/project visible only | Wrong project or ambiguous project |
 | Production env presence | Vercel dashboard or `vercel env ls production`; values hidden | Key names and environments only | Required key missing or wrong environment |
 | Preview env presence | Vercel dashboard or `vercel env ls preview`; values hidden | Key names and environments only | Preview uses production DB/secrets without explicit approval |
-| Required runtime keys | `DATABASE_URL`, `DIRECT_URL`, `BASE_URL`, `ADMIN_BASIC_USER`, `ADMIN_BASIC_PASS`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`, `BACKUP_EXPORT_SECRET`, `RATE_LIMIT_HASH_SECRET`, `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY` | Presence only | Any required key missing |
+| Required runtime keys | `DATABASE_URL`, `DIRECT_URL`, `BASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `STAFF_SESSION_MAX_AGE_SECONDS`, `CRON_SECRET`, `BACKUP_EXPORT_SECRET`, `RATE_LIMIT_HASH_SECRET`, token keyring (`RESERVATION_TOKEN_KEYS_JSON` + active ID or migration secret), backup keyring (`BACKUP_ENCRYPTION_KEYS_JSON` + active ID or migration key), `BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY` | Presence only | Any required key missing |
 | LINE keys | `NEXT_PUBLIC_LIFF_BOOKING_ID`, `NEXT_PUBLIC_LIFF_LINK_ID`, `LINE_LOGIN_CHANNEL_ID`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET`, `LINE_LINK_TOKEN_PEPPER` | Presence only | Missing when LINE is in launch scope |
 | Mail keys | `EMAIL_PROVIDER`, provider API key, `EMAIL_FROM`, `ADMIN_EMAIL` | Presence only | Sender not verified or API key missing |
 | Preview/Production separation | Compare env targets without showing values | Checklist signed by operator | Preview points to live production DB unintentionally |
@@ -131,10 +138,10 @@ Do not include customer paths or query strings in DNS/TLS evidence.
 | Route | Browser | Checks | NG condition |
 |---|---|---|---|
 | `/booking` | Chrome + LINE in-app browser | LIFF/init fallback, form input, validation, submit guard | Blank, overlap, blocked submit, wrong LINE state |
-| `/line/link` | Chrome + LINE in-app browser | token/lookup flow UI, invalid token, already-linked state | Trusts client `lineUserId`; leaks match details |
+| `/line/link` | Chrome + LINE in-app browser | reservation-issued token flow UI, invalid/expired token, already-linked state, legacy lookup rejection | Trusts client `lineUserId`; accepts phone-only or lookup linkage; leaks match details |
 | `/on-line-store` | Chrome | product list, cart add/remove, payment selection entry | Layout break, price mismatch |
 | `/staff` | Chrome | access behavior, no sensitive public data | Unexpected public access |
-| `/admin/reservations` | Chrome | Basic auth challenge, mobile table usability | Admin data visible without auth |
+| `/admin/reservations` | Chrome | Supabase individual login, TOTP MFA, role check, mobile table usability | Admin data visible without staff session, MFA, or role |
 
 ### Interaction checklist
 

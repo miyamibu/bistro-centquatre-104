@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "crypto";
-import { apiError, enforceWriteRequestSecurity } from "@/lib/api-security";
+import {
+  apiError,
+  ORDER_JSON_BODY_LIMIT_BYTES,
+  readLimitedJson,
+} from "@/lib/api-security";
 import { createOrderSchema, zodFields } from "@/lib/validation";
 import {
   buildIdempotencyHash,
@@ -10,12 +14,20 @@ import {
   normalizeOrderPaymentMethod,
   runIdempotentMutation,
 } from "@/lib/order-actions";
+import { createOrderReceiptToken, hashOrderReceiptToken } from "@/lib/order-receipt";
 import { buildOrderActorKey } from "@/lib/order-identity";
 import { validatePayInStoreVisitDate } from "@/lib/order-rules";
 import { getPublishedStoreProduct } from "@/lib/store-products";
 import { getRequestId, logError, logInfo, logWarn } from "@/lib/logger";
+import { prisma } from "@/lib/prisma";
+import { enforceScopedRateLimit } from "@/lib/reservation-rate-limit";
+import { getClientIp, hashClientIp } from "@/lib/request-meta";
 
 export const dynamic = "force-dynamic";
+
+const ORDER_CREATE_RATE_LIMIT_SCOPE = "ORDER_CREATE";
+const ORDER_CREATE_RATE_LIMIT_WINDOW_SECONDS = 10 * 60;
+const ORDER_CREATE_RATE_LIMIT_MAX = 20;
 
 function getIdempotencyKey(request: NextRequest) {
   return request.headers.get("idempotency-key")?.trim() ?? "";
@@ -24,9 +36,6 @@ function getIdempotencyKey(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const requestId = getRequestId(request);
   const route = "/api/orders";
-
-  const securityError = enforceWriteRequestSecurity(request, { requestId });
-  if (securityError) return securityError;
 
   const idempotencyKey = getIdempotencyKey(request);
   if (!idempotencyKey) {
@@ -37,10 +46,23 @@ export async function POST(request: NextRequest) {
       requestId,
     });
   }
+  if (idempotencyKey.length > 256) {
+    return apiError(400, {
+      ok: false,
+      error: "Idempotency-Key は256文字以内で指定してください",
+      code: "IDEMPOTENCY_KEY_TOO_LONG",
+      requestId,
+    });
+  }
 
   try {
-    const body = await request.json().catch(() => null);
-    const parsed = createOrderSchema.safeParse(body);
+    const json = await readLimitedJson(request, {
+      requestId,
+      maxBytes: ORDER_JSON_BODY_LIMIT_BYTES,
+    });
+    if (!json.ok) return json.response;
+
+    const parsed = createOrderSchema.safeParse(json.body);
     if (!parsed.success) {
       return apiError(400, {
         ok: false,
@@ -49,6 +71,49 @@ export async function POST(request: NextRequest) {
         fields: zodFields(parsed.error),
         requestId,
       });
+    }
+
+    try {
+      const allowed = await enforceScopedRateLimit(prisma, {
+        keyHash: hashClientIp(getClientIp(request)),
+        scope: ORDER_CREATE_RATE_LIMIT_SCOPE,
+        windowMs: ORDER_CREATE_RATE_LIMIT_WINDOW_SECONDS * 1_000,
+        limit: ORDER_CREATE_RATE_LIMIT_MAX,
+      });
+      if (!allowed) {
+        return apiError(
+          429,
+          {
+            ok: false,
+            error: "注文リクエストが集中しています。時間をおいて再試行してください。",
+            code: "RATE_LIMITED",
+            requestId,
+          },
+          {
+            headers: {
+              "Cache-Control": "private, no-store",
+              "Retry-After": String(ORDER_CREATE_RATE_LIMIT_WINDOW_SECONDS),
+            },
+          },
+        );
+      }
+    } catch (error) {
+      logError("orders.rate_limit.failed", {
+        requestId,
+        route,
+        errorCode: "RATE_LIMIT_CHECK_FAILED",
+        context: { message: error instanceof Error ? error.message : String(error) },
+      });
+      return apiError(
+        503,
+        {
+          ok: false,
+          error: "注文受付を一時停止しています。時間をおいて再試行してください。",
+          code: "RATE_LIMIT_CHECK_FAILED",
+          requestId,
+        },
+        { headers: { "Cache-Control": "private, no-store" } },
+      );
     }
 
     const input = parsed.data;
@@ -120,12 +185,14 @@ export async function POST(request: NextRequest) {
         const holdExpiresAt = createQuotedHoldExpiry();
 
         const humanToken = randomBytes(24).toString("base64url");
+        const receiptToken = createOrderReceiptToken();
         const actionResult = await executeCreateOrderQuoteAction({
           customerInfo: input.customerInfo,
           items: validatedItems,
           total: calculatedTotal,
           holdExpiresAt,
           humanTokenHash: hashHumanToken(humanToken),
+          receiptTokenHash: hashOrderReceiptToken(receiptToken),
           actorId: actorKey,
           requestId,
           idempotencyKey,
@@ -160,6 +227,7 @@ export async function POST(request: NextRequest) {
             orderId: String(order.id),
             expectedVersion: Number(order.version ?? 0),
             humanToken,
+            receiptToken,
             paymentMethod: normalizedPaymentMethod,
             storeVisitDate: input.storeVisitDate ?? null,
             holdExpiresAt,

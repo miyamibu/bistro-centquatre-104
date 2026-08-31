@@ -53,7 +53,7 @@ async function loadRouteWithBackupRows() {
             date: "2026-04-21",
             servicePeriod: "DINNER",
             result: "CREATED",
-            source: "ADMIN_SHARED_BASIC",
+            source: "ADMIN_USER",
             actorName: "admin",
             requestId: "audit-request-id",
             ipAddress: null,
@@ -63,6 +63,113 @@ async function loadRouteWithBackupRows() {
           },
         ]),
       },
+      businessDayAuditLog: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      reservationStatusAuditLog: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "status-audit-1",
+            reservationId: "reservation-1",
+            actorName: "admin",
+            requestId: "status-request-id",
+            ipAddress: null,
+            userAgent: null,
+            previousStatus: "CONFIRMED",
+            nextStatus: "CANCELLED",
+            reason: "test",
+            createdAt: new Date("2026-04-02T00:00:00.000Z"),
+          },
+        ]),
+      },
+      reservationEmailOutbox: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "email-outbox-1",
+            reservationId: "reservation-1",
+            notificationType: "RESERVATION_CONFIRMATION",
+            status: "PENDING",
+            attempts: 0,
+            maxAttempts: 5,
+            nextAttemptAt: new Date("2026-04-01T00:00:00.000Z"),
+            claimedAt: null,
+            lockedUntil: null,
+            claimToken: "must-not-be-exported",
+            sentAt: null,
+            lastError: null,
+            createdAt: new Date("2026-04-01T00:00:00.000Z"),
+            updatedAt: new Date("2026-04-01T00:00:00.000Z"),
+          },
+        ]),
+      },
+      reservationLineLinkToken: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "link-token-1",
+            reservationId: "reservation-1",
+            tokenHash: "hash-only",
+            expiresAt: new Date("2026-04-30T00:00:00.000Z"),
+            usedAt: null,
+            createdAt: new Date("2026-04-01T00:00:00.000Z"),
+          },
+        ]),
+      },
+      reservationManagementToken: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "management-token-1",
+            reservationId: "reservation-1",
+            tokenHash: "management-hash-only",
+            keyId: "v1",
+            expiresAt: new Date("2026-05-21T00:00:00.000Z"),
+            revokedAt: null,
+            createdAt: new Date("2026-04-01T00:00:00.000Z"),
+          },
+        ]),
+      },
+      reservationIdempotency: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "idempotency-1",
+            idempotencyKey: "public-idempotency-key",
+            requestHash: "request-hash",
+            responseStatus: 200,
+            responseBody: { reservationId: "reservation-1", managementTokenIssued: true },
+            reservationId: "reservation-1",
+            tokenKeyId: "v1",
+            createdAt: new Date("2026-04-01T00:00:00.000Z"),
+            updatedAt: new Date("2026-04-01T00:00:00.000Z"),
+          },
+        ]),
+      },
+      notificationEvent: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "notification-event-1",
+            reservationId: "reservation-1",
+            channel: "LINE",
+            type: "DAY_BEFORE_REMINDER",
+            targetDate: "2026-04-21",
+            status: "SENT",
+            retryKey: "retry-key-1",
+            claimedAt: new Date("2026-04-20T00:00:00.000Z"),
+            sentAt: new Date("2026-04-20T00:00:01.000Z"),
+            error: null,
+            createdAt: new Date("2026-04-19T00:00:00.000Z"),
+            updatedAt: new Date("2026-04-20T00:00:01.000Z"),
+          },
+        ]),
+      },
+      reservationCorrectionAuditLog: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      $transaction: vi.fn().mockImplementation(async (callback) =>
+        callback({
+          $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
+          $queryRaw: vi.fn().mockResolvedValue([{ count: 0 }]),
+          $executeRaw: vi.fn().mockResolvedValue(undefined),
+        }),
+      ),
     },
   }));
   vi.doMock("@/lib/reservation-compat", async () => {
@@ -116,14 +223,21 @@ async function loadRouteWithDataAccessSpies() {
     logInfo: vi.fn(),
   }));
   vi.doMock("@/lib/prisma", () => ({
-    prisma: {
+      prisma: {
       businessDay: {
         findMany: businessDayFindMany,
       },
-      privateBlockAuditLog: {
-        findMany: privateBlockAuditFindMany,
+        privateBlockAuditLog: {
+          findMany: privateBlockAuditFindMany,
+        },
+        $transaction: vi.fn().mockImplementation(async (callback) =>
+          callback({
+            $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
+            $queryRaw: vi.fn().mockResolvedValue([{ count: 0 }]),
+            $executeRaw: vi.fn().mockResolvedValue(undefined),
+          }),
+        ),
       },
-    },
   }));
   vi.doMock("@/lib/reservation-compat", async () => {
     const actual = await vi.importActual<typeof import("@/lib/reservation-compat")>(
@@ -196,7 +310,7 @@ describe("backup export auth boundary", () => {
     await expect(response.json()).resolves.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
-  it("rejects Basic auth at the route before any backup data access", async () => {
+  it("rejects legacy Basic auth at the route before any backup data access", async () => {
     const {
       GET,
       businessDayFindMany,
@@ -257,8 +371,9 @@ describe("backup export auth boundary", () => {
     const response = await GET(request);
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store");
-    await expect(response.json()).resolves.toMatchObject({
-      schemaVersion: 1,
+    const body = await response.json();
+    expect(body).toMatchObject({
+      schemaVersion: 4,
       range: {
         from: "2026-04-21",
         to: "2026-04-21",
@@ -275,8 +390,20 @@ describe("backup export auth boundary", () => {
           lineUserId: null,
         },
       ],
+      reservationStatusAuditLogs: [{ id: "status-audit-1" }],
+      reservationEmailOutbox: [{ id: "email-outbox-1" }],
+      reservationLineLinkTokens: [{ id: "link-token-1", tokenHash: "hash-only" }],
+      reservationManagementTokens: [
+        { id: "management-token-1", tokenHash: "management-hash-only" },
+      ],
+      reservationIdempotencyRecords: [
+        { id: "idempotency-1", reservationId: "reservation-1" },
+      ],
+      notificationEvents: [{ id: "notification-event-1" }],
       checksumSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
       requestId: "test-request-id",
     });
+
+    expect(body.reservationEmailOutbox[0]).not.toHaveProperty("claimToken");
   });
 });

@@ -11,13 +11,15 @@ const originalEnv = { ...process.env };
 const BASE_PROD_ENV = {
   NODE_ENV: "production" as const,
   DATABASE_URL: "postgresql://user:pass@localhost:5432/app",
-  ADMIN_BASIC_USER: "admin",
-  ADMIN_BASIC_PASS: "pass",
   NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon-key",
   SUPABASE_SERVICE_ROLE_KEY: "service-role",
+  STAFF_SESSION_MAX_AGE_SECONDS: "28800",
   CRON_SECRET: "cron-secret",
   BACKUP_EXPORT_SECRET: "backup-export-secret",
   RATE_LIMIT_HASH_SECRET: "rate-limit-hash-secret-32chars-min",
+  RESERVATION_TOKEN_SECRET: "reservation-token-secret-32chars-min",
+  BACKUP_ENCRYPTION_KEY: "backup-encryption-key-32-characters",
   BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY: "enc-key",
 };
 
@@ -33,6 +35,23 @@ const LINE_FULL_ENV = {
 afterEach(() => {
   vi.resetModules();
   process.env = { ...originalEnv };
+});
+
+describe("reservation token env production validation", () => {
+  it("fails closed when RESERVATION_TOKEN_SECRET is missing", async () => {
+    process.env = { ...BASE_PROD_ENV };
+    delete process.env.RESERVATION_TOKEN_SECRET;
+
+    await expect(import("@/lib/env")).rejects.toThrow(/RESERVATION_TOKEN_SECRET/);
+  });
+
+  it("fails when RESERVATION_TOKEN_SECRET is too short", async () => {
+    process.env = { ...BASE_PROD_ENV, RESERVATION_TOKEN_SECRET: "too-short" };
+
+    await expect(import("@/lib/env")).rejects.toThrow(
+      /RESERVATION_TOKEN_SECRET.*32.*characters/,
+    );
+  });
 });
 
 describe("LINE env production validation", () => {
@@ -99,10 +118,28 @@ describe("LINE env production validation", () => {
     expect(isLinePhoneAutoAttachEnabled()).toBe(false);
   });
 
+  it("keeps phone auto attach disabled when the legacy flag is true", async () => {
+    process.env = {
+      ...BASE_PROD_ENV,
+      LINE_PHONE_AUTO_ATTACH_ENABLED: "true",
+    };
+    const { isLinePhoneAutoAttachEnabled } = await import("@/lib/env");
+    expect(isLinePhoneAutoAttachEnabled()).toBe(false);
+  });
+
   it("parses LINE_RESERVATION_LOOKUP_LINK_ENABLED=false as false", async () => {
     process.env = {
       ...BASE_PROD_ENV,
       LINE_RESERVATION_LOOKUP_LINK_ENABLED: "false",
+    };
+    const { isLineReservationLookupLinkEnabled } = await import("@/lib/env");
+    expect(isLineReservationLookupLinkEnabled()).toBe(false);
+  });
+
+  it("keeps date/phone/name lookup disabled when the legacy flag is true", async () => {
+    process.env = {
+      ...BASE_PROD_ENV,
+      LINE_RESERVATION_LOOKUP_LINK_ENABLED: "true",
     };
     const { isLineReservationLookupLinkEnabled } = await import("@/lib/env");
     expect(isLineReservationLookupLinkEnabled()).toBe(false);

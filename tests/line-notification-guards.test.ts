@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const VALID_UID = "U" + "0".repeat(32);
 const TARGET_DATE = "2026-06-15";
+const pushLineTextMessageMock = vi.hoisted(() => vi.fn());
 
 const BASE_RESERVATION = {
   id: "res-1",
@@ -30,6 +31,7 @@ const BASE_EVENT = {
 };
 
 let prismaMock: {
+  $transaction: ReturnType<typeof vi.fn>;
   notificationEvent: Record<string, ReturnType<typeof vi.fn>>;
   reservation: Record<string, ReturnType<typeof vi.fn>>;
   lineFriend: Record<string, ReturnType<typeof vi.fn>>;
@@ -47,7 +49,7 @@ vi.mock("@/lib/line", async (importOriginal) => {
     ...orig,
     buildReminderRetryKey: vi.fn().mockReturnValue("00000000-0000-0000-0000-000000000000"),
     buildReminderText: vi.fn().mockReturnValue("reminder text"),
-    pushLineTextMessage: vi.fn().mockResolvedValue({ ok: true }),
+    pushLineTextMessage: pushLineTextMessageMock,
     summarizeLineError: vi.fn((e: unknown) => String(e)),
   };
 });
@@ -56,19 +58,36 @@ const originalEnv = { ...process.env };
 
 beforeEach(() => {
   prismaMock = {
+    $transaction: vi.fn(),
     notificationEvent: {
       upsert: vi.fn().mockResolvedValue({ ...BASE_EVENT }),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-      update: vi.fn().mockResolvedValue({}),
+      count: vi.fn().mockResolvedValue(0),
     },
     reservation: {
       findUnique: vi.fn().mockResolvedValue({ ...BASE_RESERVATION }),
       update: vi.fn().mockResolvedValue({}),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     lineFriend: {
       findUnique: vi.fn().mockResolvedValue(null),
     },
   };
+  prismaMock.$transaction.mockImplementation(
+    async (callback: (tx: unknown) => unknown) =>
+      callback({
+        $executeRaw: vi.fn().mockResolvedValue(0),
+        notificationEvent: {
+          count: prismaMock.notificationEvent.count,
+          updateMany: prismaMock.notificationEvent.updateMany,
+        },
+        reservation: {
+          updateMany: prismaMock.reservation.updateMany,
+        },
+      })
+  );
+  pushLineTextMessageMock.mockReset();
+  pushLineTextMessageMock.mockResolvedValue({ ok: true });
   process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
   process.env.SUPABASE_SERVICE_ROLE_KEY = "svc";
   process.env.LINE_CHANNEL_ACCESS_TOKEN = "token";
@@ -144,7 +163,7 @@ describe("claimAndSendLineReminder pre-send guards", () => {
     const result = await claimAndSendLineReminder("res-1", VALID_UID, TARGET_DATE, "TEST");
     expect(result).toBe("skipped");
     // Notification event should be updated to SKIPPED_BLOCKED.
-    const calls = prismaMock.notificationEvent.update.mock.calls;
+    const calls = prismaMock.notificationEvent.updateMany.mock.calls;
     const blockCall = calls.find((c) => c[0]?.data?.status === "SKIPPED_BLOCKED");
     expect(blockCall).toBeDefined();
   });
@@ -154,6 +173,64 @@ describe("claimAndSendLineReminder pre-send guards", () => {
     const { claimAndSendLineReminder } = await load();
     const result = await claimAndSendLineReminder("res-1", VALID_UID, TARGET_DATE, "TEST");
     expect(result).toBe("sent");
+  });
+
+  it("returns 'quota' and durably skips at the atomic monthly quota boundary", async () => {
+    prismaMock.notificationEvent.count.mockResolvedValue(200);
+    const { claimAndSendLineReminder } = await load();
+
+    const result = await claimAndSendLineReminder(
+      "res-1",
+      VALID_UID,
+      TARGET_DATE,
+      "CRON",
+      { monthlyQuota: 200 }
+    );
+
+    expect(result).toBe("quota");
+    expect(pushLineTextMessageMock).not.toHaveBeenCalled();
+    expect(prismaMock.notificationEvent.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "SKIPPED",
+          error: "SKIPPED_QUOTA",
+          claimToken: null,
+        }),
+      })
+    );
+    expect(prismaMock.reservation.updateMany).toHaveBeenCalledWith({
+      where: { id: "res-1" },
+      data: {
+        lineReminderStatus: "SKIPPED_QUOTA",
+        lineReminderError: "LINE monthly quota guard reached",
+      },
+    });
+  });
+
+  it("does not let a stale worker update SENT after the claim fence is lost", async () => {
+    prismaMock.notificationEvent.upsert.mockResolvedValueOnce({
+      ...BASE_EVENT,
+      status: "SENDING",
+      claimedAt: new Date(Date.now() - 31 * 60 * 1000),
+    });
+    prismaMock.notificationEvent.updateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+
+    const { claimAndSendLineReminder } = await load();
+    const result = await claimAndSendLineReminder("res-1", VALID_UID, TARGET_DATE, "CRON");
+
+    expect(result).toBe("failed");
+    expect(pushLineTextMessageMock).toHaveBeenCalledOnce();
+    expect(prismaMock.notificationEvent.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: "evt-1",
+          status: "SENDING",
+          claimToken: expect.any(String),
+        }),
+      })
+    );
   });
 });
 

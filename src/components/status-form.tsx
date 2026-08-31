@@ -4,19 +4,13 @@ import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ReservationStatus } from "@prisma/client";
 import { Button } from "@/components/ui/button";
+import { getReservationStatusLabel } from "@/lib/reservation-labels";
 
 const terminalStatuses = new Set<ReservationStatus>([
   ReservationStatus.CANCELLED,
   ReservationStatus.DONE,
   ReservationStatus.NOSHOW,
 ]);
-
-const reservationStatusLabels: Record<ReservationStatus, string> = {
-  [ReservationStatus.CONFIRMED]: "確定",
-  [ReservationStatus.CANCELLED]: "キャンセル済み",
-  [ReservationStatus.DONE]: "来店済み",
-  [ReservationStatus.NOSHOW]: "無断キャンセル",
-};
 
 type StatusMessage = {
   type: "success" | "error" | "info";
@@ -29,10 +23,16 @@ export function StatusForm({
   id,
   current,
   isPrivateBlock = false,
+  expectedDate,
+  expectedServicePeriod,
+  expectedReservationType,
 }: {
   id: string;
   current: ReservationStatus;
   isPrivateBlock?: boolean;
+  expectedDate?: string;
+  expectedServicePeriod?: "LUNCH" | "DINNER";
+  expectedReservationType?: "NORMAL" | "PRIVATE_BLOCK";
 }) {
   const router = useRouter();
   const selectId = useId();
@@ -44,6 +44,8 @@ export function StatusForm({
   const isTerminal = terminalStatuses.has(currentStatus);
   const allowedStatuses = isTerminal
     ? [currentStatus]
+    : isPrivateBlock
+    ? [ReservationStatus.CONFIRMED, ReservationStatus.CANCELLED]
     : [
         ReservationStatus.CONFIRMED,
         ReservationStatus.CANCELLED,
@@ -52,9 +54,19 @@ export function StatusForm({
       ];
 
   async function submitStatus(nextStatus: ReservationStatus) {
+    if (
+      isPrivateBlock &&
+      nextStatus !== ReservationStatus.CONFIRMED &&
+      nextStatus !== ReservationStatus.CANCELLED
+    ) {
+      setStatus(currentStatus);
+      setMessage({ type: "error", text: "貸切はキャンセル以外の終端状態へ変更できません" });
+      return;
+    }
+
     if (!isTerminal && terminalStatuses.has(nextStatus)) {
       const confirmed = window.confirm(
-        `この予約を「${reservationStatusLabels[nextStatus]}」へ変更します。以後は通常の予約操作で復帰できません。よろしいですか？`,
+        `この予約を「${getReservationStatusLabel(nextStatus)}」へ変更します。以後は通常の予約操作で復帰できません。よろしいですか？`,
       );
       if (!confirmed) {
         setStatus(currentStatus);
@@ -64,6 +76,7 @@ export function StatusForm({
     }
 
     let operatorName: string | undefined;
+    let reason: string | undefined;
     if (isPrivateBlock && nextStatus === ReservationStatus.CANCELLED) {
       const input = window.prompt("貸切解除の担当者名を入力してください");
       if (input == null) {
@@ -82,6 +95,23 @@ export function StatusForm({
       operatorName = trimmed;
     }
 
+    if (terminalStatuses.has(nextStatus) && nextStatus !== currentStatus) {
+      const input = window.prompt("ステータス変更の理由を入力してください");
+      if (input == null) {
+        setStatus(currentStatus);
+        setMessage({ type: "info", text: "ステータス変更をキャンセルしました" });
+        return;
+      }
+
+      const trimmed = input.trim();
+      if (!trimmed) {
+        setStatus(currentStatus);
+        setMessage({ type: "error", text: "変更理由は必須です" });
+        return;
+      }
+      reason = trimmed;
+    }
+
     setLoading(true);
     setMessage(null);
     const previousStatus = currentStatus;
@@ -96,14 +126,25 @@ export function StatusForm({
           "Content-Type": "application/json",
           "X-Requested-With": "XMLHttpRequest",
         },
-        body: JSON.stringify({ status: nextStatus, operatorName }),
+        body: JSON.stringify({
+          status: nextStatus,
+          operatorName,
+          reason,
+          ...(isPrivateBlock && nextStatus === ReservationStatus.CANCELLED
+            ? {
+                expectedDate,
+                expectedServicePeriod,
+                expectedReservationType,
+              }
+            : {}),
+        }),
         signal: controller.signal,
       });
       if (res.ok) {
         setCurrentStatus(nextStatus);
         setMessage({
           type: "success",
-          text: `ステータスを「${reservationStatusLabels[nextStatus]}」に更新しました`,
+          text: `ステータスを「${getReservationStatusLabel(nextStatus)}」に更新しました`,
         });
         router.refresh();
       } else {
@@ -144,7 +185,7 @@ export function StatusForm({
       >
         {allowedStatuses.map((s) => (
           <option key={s} value={s}>
-            {s}
+            {getReservationStatusLabel(s)}
           </option>
         ))}
       </select>
@@ -161,14 +202,16 @@ export function StatusForm({
           >
             キャンセルにする
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={loading || statusUncertain}
-            onClick={() => submitStatus(ReservationStatus.DONE)}
-          >
-            来店済みにする
-          </Button>
+          {!isPrivateBlock ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={loading || statusUncertain}
+              onClick={() => submitStatus(ReservationStatus.DONE)}
+            >
+              来店済みにする
+            </Button>
+          ) : null}
         </div>
       )}
       {message && (

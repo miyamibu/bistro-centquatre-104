@@ -211,9 +211,9 @@ Commit 1: bc9d7b6 - Initial repository setup
 
 ### 🔐 Authentication Layer (4/4 Protected)
 ```
-✅ /admin                    → Basic Auth via middleware
-✅ /dashboard                → Basic Auth via middleware  
-✅ /api/admin/*              → Basic Auth via middleware
+✅ /admin                    → Supabase Auth user + role + MFA + session TTL via middleware
+✅ /dashboard                → Supabase Auth user + role + MFA + session TTL via middleware
+✅ /api/admin/*              → Supabase Auth user + role + MFA + session TTL via middleware
 ✅ /api/cron/*               → CRON_SECRET verification
 ```
 
@@ -256,7 +256,7 @@ Commit 1: bc9d7b6 - Initial repository setup
 | A04 | Insecure Design | ✅ FIXED - Defense-in-depth architecture |
 | A05 | Security Misconfiguration | ✅ FIXED - Environment variables secured |
 | A06 | Vulnerable Components | 🟡 Requires `npm audit` (dependencies managed) |
-| A07 | authentication Failure | ✅ FIXED - Basic Auth + middleware |
+| A07 | authentication Failure | ✅ FIXED - Supabase Auth + role/MFA/session middleware |
 | A08 | Software Data Integrity | ✅ FIXED - Price validation, auth checks |
 | A09 | Logging & Monitoring | 🟡 Documented, requires implementation |
 | A10 | SSRF | ✅ Protected - Limited file scope |

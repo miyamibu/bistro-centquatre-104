@@ -6,7 +6,9 @@ alter table if exists public.order_history enable row level security;
 alter table if exists public.bank_account enable row level security;
 alter table if exists public.order_actions enable row level security;
 alter table if exists public.human_tokens enable row level security;
+alter table if exists public.order_receipt_tokens enable row level security;
 alter table if exists public.api_idempotency enable row level security;
+alter table if exists public.contact_rate_limit_buckets enable row level security;
 alter table if exists public.order_notification_outbox enable row level security;
 alter table if exists public.bank_account_history enable row level security;
 alter table if exists public."Reservation" enable row level security;
@@ -14,11 +16,21 @@ alter table if exists public."PrivateBlockAuditLog" enable row level security;
 alter table if exists public."ReservationStatusAuditLog" enable row level security;
 alter table if exists public."ReservationEmailOutbox" enable row level security;
 alter table if exists public."ReservationLineLinkToken" enable row level security;
+alter table if exists public."ReservationManagementToken" enable row level security;
 alter table if exists public."NotificationEvent" enable row level security;
+alter table if exists public."LineWebhookInbox" enable row level security;
 alter table if exists public."ReservationRateLimitEvent" enable row level security;
+alter table if exists public."ReservationIdempotency" enable row level security;
 alter table if exists public."BusinessDay" enable row level security;
+alter table if exists public."BusinessDayAuditLog" enable row level security;
+alter table if exists public."ReservationCorrectionAuditLog" enable row level security;
 alter table if exists public."MenuItem" enable row level security;
 alter table if exists public."Photo" enable row level security;
+alter table if exists public."LineFriend" enable row level security;
+alter table if exists public."LineCustomerLink" enable row level security;
+alter table if exists public."DailyJournalEntry" enable row level security;
+alter table if exists public."SchedulerHeartbeat" enable row level security;
+alter table if exists public."OutboxDrainAuditLog" enable row level security;
 
 drop policy if exists "orders_deny_anon_all" on public.orders;
 drop policy if exists "orders_deny_authenticated_all" on public.orders;
@@ -40,9 +52,17 @@ drop policy if exists "human_tokens_deny_anon_all" on public.human_tokens;
 drop policy if exists "human_tokens_deny_authenticated_all" on public.human_tokens;
 drop policy if exists "human_tokens_service_role_all" on public.human_tokens;
 
+drop policy if exists "order_receipt_tokens_deny_anon_all" on public.order_receipt_tokens;
+drop policy if exists "order_receipt_tokens_deny_authenticated_all" on public.order_receipt_tokens;
+drop policy if exists "order_receipt_tokens_service_role_all" on public.order_receipt_tokens;
+
 drop policy if exists "api_idempotency_deny_anon_all" on public.api_idempotency;
 drop policy if exists "api_idempotency_deny_authenticated_all" on public.api_idempotency;
 drop policy if exists "api_idempotency_service_role_all" on public.api_idempotency;
+
+drop policy if exists "contact_rate_limit_buckets_deny_anon_all" on public.contact_rate_limit_buckets;
+drop policy if exists "contact_rate_limit_buckets_deny_authenticated_all" on public.contact_rate_limit_buckets;
+drop policy if exists "contact_rate_limit_buckets_service_role_all" on public.contact_rate_limit_buckets;
 
 drop policy if exists "order_notification_outbox_deny_anon_all" on public.order_notification_outbox;
 drop policy if exists "order_notification_outbox_deny_authenticated_all" on public.order_notification_outbox;
@@ -72,17 +92,37 @@ drop policy if exists "reservation_line_link_token_deny_anon_all" on public."Res
 drop policy if exists "reservation_line_link_token_deny_authenticated_all" on public."ReservationLineLinkToken";
 drop policy if exists "reservation_line_link_token_service_role_all" on public."ReservationLineLinkToken";
 
+drop policy if exists "reservation_management_token_deny_anon_all" on public."ReservationManagementToken";
+drop policy if exists "reservation_management_token_deny_authenticated_all" on public."ReservationManagementToken";
+drop policy if exists "reservation_management_token_service_role_all" on public."ReservationManagementToken";
+
 drop policy if exists "notification_event_deny_anon_all" on public."NotificationEvent";
 drop policy if exists "notification_event_deny_authenticated_all" on public."NotificationEvent";
 drop policy if exists "notification_event_service_role_all" on public."NotificationEvent";
+
+drop policy if exists "line_webhook_inbox_deny_anon_all" on public."LineWebhookInbox";
+drop policy if exists "line_webhook_inbox_deny_authenticated_all" on public."LineWebhookInbox";
+drop policy if exists "line_webhook_inbox_service_role_all" on public."LineWebhookInbox";
 
 drop policy if exists "reservation_rate_limit_deny_anon_all" on public."ReservationRateLimitEvent";
 drop policy if exists "reservation_rate_limit_deny_authenticated_all" on public."ReservationRateLimitEvent";
 drop policy if exists "reservation_rate_limit_service_role_all" on public."ReservationRateLimitEvent";
 
+drop policy if exists "reservation_idempotency_deny_anon_all" on public."ReservationIdempotency";
+drop policy if exists "reservation_idempotency_deny_authenticated_all" on public."ReservationIdempotency";
+drop policy if exists "reservation_idempotency_service_role_all" on public."ReservationIdempotency";
+
 drop policy if exists "business_day_deny_anon_all" on public."BusinessDay";
 drop policy if exists "business_day_deny_authenticated_all" on public."BusinessDay";
 drop policy if exists "business_day_service_role_all" on public."BusinessDay";
+
+drop policy if exists "business_day_audit_deny_anon_all" on public."BusinessDayAuditLog";
+drop policy if exists "business_day_audit_deny_authenticated_all" on public."BusinessDayAuditLog";
+drop policy if exists "business_day_audit_service_role_all" on public."BusinessDayAuditLog";
+
+drop policy if exists "reservation_correction_audit_deny_anon_all" on public."ReservationCorrectionAuditLog";
+drop policy if exists "reservation_correction_audit_deny_authenticated_all" on public."ReservationCorrectionAuditLog";
+drop policy if exists "reservation_correction_audit_service_role_all" on public."ReservationCorrectionAuditLog";
 
 drop policy if exists "menu_item_deny_anon_all" on public."MenuItem";
 drop policy if exists "menu_item_deny_authenticated_all" on public."MenuItem";
@@ -91,6 +131,26 @@ drop policy if exists "menu_item_service_role_all" on public."MenuItem";
 drop policy if exists "photo_deny_anon_all" on public."Photo";
 drop policy if exists "photo_deny_authenticated_all" on public."Photo";
 drop policy if exists "photo_service_role_all" on public."Photo";
+
+drop policy if exists "line_friend_deny_anon_all" on public."LineFriend";
+drop policy if exists "line_friend_deny_authenticated_all" on public."LineFriend";
+drop policy if exists "line_friend_service_role_all" on public."LineFriend";
+
+drop policy if exists "line_customer_link_deny_anon_all" on public."LineCustomerLink";
+drop policy if exists "line_customer_link_deny_authenticated_all" on public."LineCustomerLink";
+drop policy if exists "line_customer_link_service_role_all" on public."LineCustomerLink";
+
+drop policy if exists "daily_journal_entry_deny_anon_all" on public."DailyJournalEntry";
+drop policy if exists "daily_journal_entry_deny_authenticated_all" on public."DailyJournalEntry";
+drop policy if exists "daily_journal_entry_service_role_all" on public."DailyJournalEntry";
+
+drop policy if exists "scheduler_heartbeat_deny_anon_all" on public."SchedulerHeartbeat";
+drop policy if exists "scheduler_heartbeat_deny_authenticated_all" on public."SchedulerHeartbeat";
+drop policy if exists "scheduler_heartbeat_service_role_all" on public."SchedulerHeartbeat";
+
+drop policy if exists "outbox_drain_audit_deny_anon_all" on public."OutboxDrainAuditLog";
+drop policy if exists "outbox_drain_audit_deny_authenticated_all" on public."OutboxDrainAuditLog";
+drop policy if exists "outbox_drain_audit_service_role_all" on public."OutboxDrainAuditLog";
 
 create policy "orders_deny_anon_all"
 on public.orders
@@ -197,6 +257,27 @@ to service_role
 using (true)
 with check (true);
 
+create policy "order_receipt_tokens_deny_anon_all"
+on public.order_receipt_tokens
+for all
+to anon
+using (false)
+with check (false);
+
+create policy "order_receipt_tokens_deny_authenticated_all"
+on public.order_receipt_tokens
+for all
+to authenticated
+using (false)
+with check (false);
+
+create policy "order_receipt_tokens_service_role_all"
+on public.order_receipt_tokens
+for all
+to service_role
+using (true)
+with check (true);
+
 create policy "api_idempotency_deny_anon_all"
 on public.api_idempotency
 for all
@@ -213,6 +294,27 @@ with check (false);
 
 create policy "api_idempotency_service_role_all"
 on public.api_idempotency
+for all
+to service_role
+using (true)
+with check (true);
+
+create policy "contact_rate_limit_buckets_deny_anon_all"
+on public.contact_rate_limit_buckets
+for all
+to anon
+using (false)
+with check (false);
+
+create policy "contact_rate_limit_buckets_deny_authenticated_all"
+on public.contact_rate_limit_buckets
+for all
+to authenticated
+using (false)
+with check (false);
+
+create policy "contact_rate_limit_buckets_service_role_all"
+on public.contact_rate_limit_buckets
 for all
 to service_role
 using (true)
@@ -280,17 +382,37 @@ create policy "reservation_line_link_token_deny_anon_all" on public."Reservation
 create policy "reservation_line_link_token_deny_authenticated_all" on public."ReservationLineLinkToken" for all to authenticated using (false) with check (false);
 create policy "reservation_line_link_token_service_role_all" on public."ReservationLineLinkToken" for all to service_role using (true) with check (true);
 
+create policy "reservation_management_token_deny_anon_all" on public."ReservationManagementToken" for all to anon using (false) with check (false);
+create policy "reservation_management_token_deny_authenticated_all" on public."ReservationManagementToken" for all to authenticated using (false) with check (false);
+create policy "reservation_management_token_service_role_all" on public."ReservationManagementToken" for all to service_role using (true) with check (true);
+
 create policy "notification_event_deny_anon_all" on public."NotificationEvent" for all to anon using (false) with check (false);
 create policy "notification_event_deny_authenticated_all" on public."NotificationEvent" for all to authenticated using (false) with check (false);
 create policy "notification_event_service_role_all" on public."NotificationEvent" for all to service_role using (true) with check (true);
+
+create policy "line_webhook_inbox_deny_anon_all" on public."LineWebhookInbox" for all to anon using (false) with check (false);
+create policy "line_webhook_inbox_deny_authenticated_all" on public."LineWebhookInbox" for all to authenticated using (false) with check (false);
+create policy "line_webhook_inbox_service_role_all" on public."LineWebhookInbox" for all to service_role using (true) with check (true);
 
 create policy "reservation_rate_limit_deny_anon_all" on public."ReservationRateLimitEvent" for all to anon using (false) with check (false);
 create policy "reservation_rate_limit_deny_authenticated_all" on public."ReservationRateLimitEvent" for all to authenticated using (false) with check (false);
 create policy "reservation_rate_limit_service_role_all" on public."ReservationRateLimitEvent" for all to service_role using (true) with check (true);
 
+create policy "reservation_idempotency_deny_anon_all" on public."ReservationIdempotency" for all to anon using (false) with check (false);
+create policy "reservation_idempotency_deny_authenticated_all" on public."ReservationIdempotency" for all to authenticated using (false) with check (false);
+create policy "reservation_idempotency_service_role_all" on public."ReservationIdempotency" for all to service_role using (true) with check (true);
+
 create policy "business_day_deny_anon_all" on public."BusinessDay" for all to anon using (false) with check (false);
 create policy "business_day_deny_authenticated_all" on public."BusinessDay" for all to authenticated using (false) with check (false);
 create policy "business_day_service_role_all" on public."BusinessDay" for all to service_role using (true) with check (true);
+
+create policy "business_day_audit_deny_anon_all" on public."BusinessDayAuditLog" for all to anon using (false) with check (false);
+create policy "business_day_audit_deny_authenticated_all" on public."BusinessDayAuditLog" for all to authenticated using (false) with check (false);
+create policy "business_day_audit_service_role_all" on public."BusinessDayAuditLog" for all to service_role using (true) with check (true);
+
+create policy "reservation_correction_audit_deny_anon_all" on public."ReservationCorrectionAuditLog" for all to anon using (false) with check (false);
+create policy "reservation_correction_audit_deny_authenticated_all" on public."ReservationCorrectionAuditLog" for all to authenticated using (false) with check (false);
+create policy "reservation_correction_audit_service_role_all" on public."ReservationCorrectionAuditLog" for all to service_role using (true) with check (true);
 
 create policy "menu_item_deny_anon_all" on public."MenuItem" for all to anon using (false) with check (false);
 create policy "menu_item_deny_authenticated_all" on public."MenuItem" for all to authenticated using (false) with check (false);
@@ -299,3 +421,23 @@ create policy "menu_item_service_role_all" on public."MenuItem" for all to servi
 create policy "photo_deny_anon_all" on public."Photo" for all to anon using (false) with check (false);
 create policy "photo_deny_authenticated_all" on public."Photo" for all to authenticated using (false) with check (false);
 create policy "photo_service_role_all" on public."Photo" for all to service_role using (true) with check (true);
+
+create policy "line_friend_deny_anon_all" on public."LineFriend" for all to anon using (false) with check (false);
+create policy "line_friend_deny_authenticated_all" on public."LineFriend" for all to authenticated using (false) with check (false);
+create policy "line_friend_service_role_all" on public."LineFriend" for all to service_role using (true) with check (true);
+
+create policy "line_customer_link_deny_anon_all" on public."LineCustomerLink" for all to anon using (false) with check (false);
+create policy "line_customer_link_deny_authenticated_all" on public."LineCustomerLink" for all to authenticated using (false) with check (false);
+create policy "line_customer_link_service_role_all" on public."LineCustomerLink" for all to service_role using (true) with check (true);
+
+create policy "daily_journal_entry_deny_anon_all" on public."DailyJournalEntry" for all to anon using (false) with check (false);
+create policy "daily_journal_entry_deny_authenticated_all" on public."DailyJournalEntry" for all to authenticated using (false) with check (false);
+create policy "daily_journal_entry_service_role_all" on public."DailyJournalEntry" for all to service_role using (true) with check (true);
+
+create policy "scheduler_heartbeat_deny_anon_all" on public."SchedulerHeartbeat" for all to anon using (false) with check (false);
+create policy "scheduler_heartbeat_deny_authenticated_all" on public."SchedulerHeartbeat" for all to authenticated using (false) with check (false);
+create policy "scheduler_heartbeat_service_role_all" on public."SchedulerHeartbeat" for all to service_role using (true) with check (true);
+
+create policy "outbox_drain_audit_deny_anon_all" on public."OutboxDrainAuditLog" for all to anon using (false) with check (false);
+create policy "outbox_drain_audit_deny_authenticated_all" on public."OutboxDrainAuditLog" for all to authenticated using (false) with check (false);
+create policy "outbox_drain_audit_service_role_all" on public."OutboxDrainAuditLog" for all to service_role using (true) with check (true);

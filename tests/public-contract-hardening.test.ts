@@ -57,7 +57,6 @@ describe("public discovery metadata", () => {
       expect.arrayContaining([
         "/admin",
         "/api",
-        "/booking",
         "/dashboard",
         "/line",
         "/staff",
@@ -65,6 +64,7 @@ describe("public discovery metadata", () => {
         "/on-line-store/pay",
       ])
     );
+    expect(disallowed).not.toContain("/booking");
   });
 
   it("lists only canonical public pages in sitemap.xml", () => {
@@ -136,5 +136,51 @@ describe("deployment and documentation contracts", () => {
     expect(page).toContain(".range(0, ORDER_LIST_LIMIT - 1)");
     expect(orderQuery(route)).not.toContain('select("*")');
     expect(orderQuery(page)).not.toContain('select("*")');
+    expect(page).toContain("getStaffAuth");
+    expect(page).toContain("redirect(\"/admin/login");
+  });
+
+  it("bounds admin reservation reads and keeps the PII projection explicit", () => {
+    const route = readSource("src/app/api/admin/reservations/route.ts");
+    const page = readSource("src/app/admin/reservations/page.tsx");
+
+    expect(route).toContain("const MAX_PAGE_SIZE = 100");
+    expect(route).toContain("const MAX_PAGE = 1_000");
+    expect(route).toContain("select: ADMIN_RESERVATION_LIST_SELECT");
+    expect(route).toContain("skip: (page - 1) * pageSize");
+    expect(route).toContain("take: pageSize");
+    expect(page).toContain("getStaffAuth");
+    expect(page).toContain("redirect(\"/admin/login");
+  });
+
+  it("uses the bounded JSON reader across both order write APIs", () => {
+    const createRoute = readSource("src/app/api/orders/route.ts");
+    const actionRoute = readSource("src/app/api/orders/[id]/actions/route.ts");
+
+    for (const route of [createRoute, actionRoute]) {
+      expect(route).toContain("ORDER_JSON_BODY_LIMIT_BYTES");
+      expect(route).toContain("readLimitedJson");
+      expect(route).toContain("IDEMPOTENCY_KEY_TOO_LONG");
+      expect(route).not.toContain("request.json()");
+    }
+
+    expect(createRoute).toContain("ORDER_CREATE_RATE_LIMIT_SCOPE");
+    expect(createRoute).toContain("enforceScopedRateLimit");
+    expect(createRoute).toContain('code: "RATE_LIMIT_CHECK_FAILED"');
+  });
+
+  it("keeps completion navigation server-backed without putting its bearer token in a query", () => {
+    const paymentPage = readSource("src/app/on-line-store/pay/page.tsx");
+    const completionPage = readSource("src/app/on-line-store/order-complete/page.tsx");
+
+    expect(paymentPage).toContain("#receipt_token=");
+    expect(paymentPage).not.toContain("&receipt_token=");
+    expect(paymentPage).toContain("The server-backed receipt is authoritative");
+    expect(paymentPage).not.toContain("注文完了情報を安全に保存できません");
+    expect(completionPage).toContain("/api/orders/${encodeURIComponent(orderId)}/receipt");
+    expect(completionPage).toContain('"X-Order-Receipt-Token": receiptToken');
+    expect(completionPage).toContain("window.history.replaceState");
+    expect(completionPage).toContain('referrerPolicy: "no-referrer"');
+    expect(completionPage).toContain("重複注文は不要です");
   });
 });

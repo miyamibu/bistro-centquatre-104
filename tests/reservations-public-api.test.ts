@@ -3,17 +3,28 @@
  * P4:  linkUrl in lineNotification uses https://liff.line.me/<LIFF_LINK_ID>?t=...
  *      when NEXT_PUBLIC_LIFF_LINK_ID is set.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const originalEnv = { ...process.env };
 const PUBLIC_BASE_URL = "https://bistro-centquatre-104.vercel.app";
+const TEST_NOW = new Date("2026-08-01T03:00:00.000Z");
 
 const routeMocks = vi.hoisted(() => ({
+  scheduleAfterResponse: vi.fn(),
   lineLinkTokenCreate: vi.fn(),
   txReservationFindMany: vi.fn(),
   reservationEmailOutboxUpsert: vi.fn(),
   sendReservationEmail: vi.fn(),
+  reservationIdempotencyFindUnique: vi.fn(),
+  reservationIdempotencyCreateMany: vi.fn(),
+  reservationIdempotencyUpdate: vi.fn(),
+  reservationManagementTokenCreate: vi.fn(),
+  idempotencyRows: new Map<string, Record<string, unknown>>(),
+}));
+
+vi.mock("@/lib/after-response", () => ({
+  scheduleAfterResponse: routeMocks.scheduleAfterResponse,
 }));
 
 const readySchemaRow = {
@@ -23,13 +34,18 @@ const readySchemaRow = {
   reservationLineColumnsReady: true,
   reservationLineLinkTokenReady: true,
   notificationEventReady: true,
+  notificationEventClaimTokenReady: true,
   lineFriendReady: true,
   lineCustomerLinkReady: true,
   reservationStatusAuditLogReady: true,
   reservationEmailOutboxReady: true,
+  reservationIdempotencyReady: true,
+  reservationManagementTokenReady: true,
+  reservationContactReady: true,
 };
 
 function resetRouteMocks() {
+  routeMocks.idempotencyRows.clear();
   routeMocks.lineLinkTokenCreate.mockResolvedValue({
     id: "tok-1",
     tokenHash: "hash",
@@ -40,15 +56,57 @@ function resetRouteMocks() {
     id: "outbox-1",
     status: "PENDING",
   });
+  routeMocks.reservationManagementTokenCreate.mockResolvedValue({
+    id: "management-token-1",
+    tokenHash: "hashed-management-token",
+    expiresAt: new Date(),
+  });
   routeMocks.sendReservationEmail.mockResolvedValue({
     sent: true,
     provider: "resend",
   });
+  routeMocks.reservationIdempotencyFindUnique.mockImplementation(
+    async ({ where }: { where: { idempotencyKey?: string; id?: string } }) => {
+      if (where.idempotencyKey) return routeMocks.idempotencyRows.get(where.idempotencyKey) ?? null;
+      if (where.id) {
+        return [...routeMocks.idempotencyRows.values()].find((row) => row.id === where.id) ?? null;
+      }
+      return null;
+    }
+  );
+  routeMocks.reservationIdempotencyCreateMany.mockImplementation(
+    async ({ data }: { data: Record<string, unknown>[] }) => {
+      const row = data[0];
+      if (!row || typeof row.idempotencyKey !== "string") return { count: 0 };
+      if (routeMocks.idempotencyRows.has(row.idempotencyKey)) return { count: 0 };
+      routeMocks.idempotencyRows.set(row.idempotencyKey, {
+        ...row,
+        responseStatus: null,
+        responseBody: null,
+        reservationId: null,
+      });
+      return { count: 1 };
+    }
+  );
+  routeMocks.reservationIdempotencyUpdate.mockImplementation(
+    async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+      const row = [...routeMocks.idempotencyRows.values()].find((item) => item.id === where.id);
+      if (!row) throw new Error("idempotency row missing");
+      Object.assign(row, data);
+      return row;
+    }
+  );
 }
 
 resetRouteMocks();
 
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(TEST_NOW);
+});
+
 afterEach(() => {
+  vi.useRealTimers();
   vi.resetModules();
   process.env = { ...originalEnv };
   vi.clearAllMocks();
@@ -65,6 +123,7 @@ const MIN_BODY = {
   arrivalTime: "18:00",
   lastName: "山田",
   phone: "090-0000-1234",
+  customerEmail: "customer@example.com",
 };
 
 vi.mock("@/lib/prisma", () => ({
@@ -90,8 +149,16 @@ vi.mock("@/lib/prisma", () => ({
             arrivalTime: "18:00",
             name: "山田",
             phone: "090-0000-1234",
+            customerEmail: data.customerEmail ?? null,
+            customerEmailVerifiedAt: data.customerEmailVerifiedAt ?? null,
+            contactChannel: data.contactChannel ?? null,
             note: null,
             status: "CONFIRMED",
+            cancellationPolicyVersion: data.cancellationPolicyVersion ?? null,
+            cancellationPolicyAcceptedAt: data.cancellationPolicyAcceptedAt ?? null,
+            cancelledAt: null,
+            cancelSource: null,
+            cancellationReason: null,
             lineUserId: data.lineUserId ?? null,
             lineReminderSentAt: null,
             lineLinkedAt: data.lineLinkedAt ?? null,
@@ -109,6 +176,17 @@ vi.mock("@/lib/prisma", () => ({
         reservationEmailOutbox: {
           upsert: routeMocks.reservationEmailOutboxUpsert,
         },
+        reservationIdempotency: {
+          findUnique: routeMocks.reservationIdempotencyFindUnique,
+          createMany: routeMocks.reservationIdempotencyCreateMany,
+          update: routeMocks.reservationIdempotencyUpdate,
+        },
+        reservationManagementToken: {
+          create: routeMocks.reservationManagementTokenCreate,
+        },
+        reservationLineLinkToken: {
+          create: routeMocks.lineLinkTokenCreate,
+        },
         privateBlock: { findFirst: vi.fn().mockResolvedValue(null) },
       };
       return fn(fakeTx);
@@ -121,6 +199,11 @@ vi.mock("@/lib/prisma", () => ({
     businessDay: { findUnique: vi.fn().mockResolvedValue(null) },
     lineCustomerLink: { findMany: vi.fn().mockResolvedValue([]) },
     lineFriend: { findUnique: vi.fn().mockResolvedValue(null) },
+    reservationIdempotency: {
+      findUnique: routeMocks.reservationIdempotencyFindUnique,
+      createMany: routeMocks.reservationIdempotencyCreateMany,
+      update: routeMocks.reservationIdempotencyUpdate,
+    },
   },
 }));
 
@@ -137,13 +220,14 @@ vi.mock("@/lib/email", () => ({
   sendReservationEmail: routeMocks.sendReservationEmail,
 }));
 
-function post(body: Record<string, unknown>) {
+function post(body: Record<string, unknown>, idempotencyKey = "test-idempotency-key") {
   return new NextRequest(`${PUBLIC_BASE_URL}/api/reservations`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
       origin: PUBLIC_BASE_URL,
       "x-requested-with": "XMLHttpRequest",
+      "idempotency-key": idempotencyKey,
     },
     body: JSON.stringify(body),
   });
@@ -161,9 +245,13 @@ describe("public reservations API — adminLink (P12)", () => {
   it("does not include adminLink in the response body", async () => {
     const { POST } = await loadRoute();
     const res = await POST(post({ ...MIN_BODY, name: "山田" }));
-    if (res.status !== 200) return; // skip if schema not ready in test env
+    expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).not.toHaveProperty("adminLink");
+    expect(body.managementUrl).toMatch(
+      /^https:\/\/bistro-centquatre-104\.vercel\.app\/reservation\/manage#token=/
+    );
+    expect(new URL(body.managementUrl).search).toBe("");
   });
 });
 
@@ -195,6 +283,51 @@ describe("public reservations API — durable email enqueue", () => {
       },
     });
     expect(routeMocks.sendReservationEmail).not.toHaveBeenCalled();
+    expect(routeMocks.scheduleAfterResponse).toHaveBeenCalledOnce();
+    expect(routeMocks.scheduleAfterResponse).toHaveBeenCalledWith(expect.any(Function));
+  });
+});
+
+describe("public reservations API — durable idempotency", () => {
+  it("replays the persisted response for the same key and body", async () => {
+    const { POST } = await loadRoute();
+    const firstResponse = await POST(post({ ...MIN_BODY, name: "山田" }, "replay-key"));
+    const firstBody = await firstResponse.json();
+    const firstTokenCreateCount = routeMocks.lineLinkTokenCreate.mock.calls.length;
+
+    const replayResponse = await POST(post({ ...MIN_BODY, name: "山田" }, "replay-key"));
+    const replayBody = await replayResponse.json();
+
+    expect(firstResponse.status).toBe(200);
+    expect(replayResponse.status).toBe(200);
+    expect(replayBody).toEqual(firstBody);
+    expect(routeMocks.lineLinkTokenCreate).toHaveBeenCalledTimes(firstTokenCreateCount);
+    expect(routeMocks.reservationEmailOutboxUpsert).toHaveBeenCalledTimes(2);
+
+    const persisted = routeMocks.idempotencyRows.get("replay-key")?.responseBody;
+    expect(persisted).toMatchObject({
+      reservationId: "res-abc",
+      lineLinkIssued: true,
+    });
+    expect(persisted).not.toHaveProperty("managementUrl");
+    expect((persisted as { lineNotification?: unknown }).lineNotification).not.toHaveProperty(
+      "linkUrl",
+    );
+    expect(JSON.stringify(persisted)).not.toContain("token=");
+  });
+
+  it("returns 409 for the same key with a different body", async () => {
+    const { POST } = await loadRoute();
+    await expect(POST(post({ ...MIN_BODY, name: "山田" }, "conflict-key"))).resolves.toMatchObject({
+      status: 200,
+    });
+
+    const response = await POST(post({ ...MIN_BODY, name: "佐藤" }, "conflict-key"));
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.code).toBe("IDEMPOTENCY_CONFLICT");
+    expect(routeMocks.reservationEmailOutboxUpsert).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -214,14 +347,14 @@ describe("public reservations API — linkUrl uses liff.line.me (P4)", () => {
 
     const { POST } = await loadRoute();
     const res = await POST(post({ ...MIN_BODY, name: "山田" }));
-    if (res.status !== 200) return;
+    expect(res.status).toBe(200);
     const body = await res.json();
     const linkUrl: string | undefined = body.lineNotification?.linkUrl;
-    if (!linkUrl) return; // token creation may fail in test env — acceptable
+    expect(linkUrl).toBeTruthy();
     expect(linkUrl).toMatch(/^https:\/\/liff\.line\.me\/999-liff-link-id\?t=/);
   });
 
-  it("does not mint a fresh LINE link token for a deduplicated reservation replay", async () => {
+  it("does not mint management or LINE tokens for a semantic duplicate reservation", async () => {
     const createdAt = new Date();
     routeMocks.txReservationFindMany.mockResolvedValue([
       {
@@ -253,45 +386,21 @@ describe("public reservations API — linkUrl uses liff.line.me (P4)", () => {
 
     expect(res.status).toBe(200);
     expect(body.deduplicated).toBe(true);
+    expect(body).not.toHaveProperty("managementUrl");
     expect(body.lineNotification).toEqual({ enabled: false, deduplicated: true });
     expect(routeMocks.lineLinkTokenCreate).not.toHaveBeenCalled();
+    expect(routeMocks.reservationManagementTokenCreate).not.toHaveBeenCalled();
     expect(routeMocks.reservationEmailOutboxUpsert).not.toHaveBeenCalled();
+
+    const replay = await POST(post({ ...MIN_BODY, name: "山田" }));
+    expect(replay.status).toBe(200);
+    await expect(replay.json()).resolves.toEqual(body);
+    expect(routeMocks.reservationManagementTokenCreate).not.toHaveBeenCalled();
   });
 });
 
 describe("public reservations API — LINE customer link auto attach", () => {
-  it("does not auto-attach phone links by default", async () => {
-    const { prisma } = await import("@/lib/prisma");
-    const p = prisma as unknown as {
-      lineCustomerLink: Record<string, ReturnType<typeof vi.fn>>;
-    };
-
-    const { POST } = await loadRoute();
-    const res = await POST(post({ ...MIN_BODY, name: "山田" }));
-    const body = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(body.lineNotification.enabled).toBe(false);
-    expect(p.lineCustomerLink.findMany).not.toHaveBeenCalled();
-  });
-
-  it("does not auto-attach phone links when env string is false", async () => {
-    process.env.LINE_PHONE_AUTO_ATTACH_ENABLED = "false";
-    const { prisma } = await import("@/lib/prisma");
-    const p = prisma as unknown as {
-      lineCustomerLink: Record<string, ReturnType<typeof vi.fn>>;
-    };
-
-    const { POST } = await loadRoute();
-    const res = await POST(post({ ...MIN_BODY, name: "山田" }));
-    const body = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(body.lineNotification.enabled).toBe(false);
-    expect(p.lineCustomerLink.findMany).not.toHaveBeenCalled();
-  });
-
-  it("auto-attaches a unique active phone link when no lineIdToken is submitted", async () => {
+  it("does not auto-attach a phone link even when the legacy flag is true", async () => {
     process.env.LINE_PHONE_AUTO_ATTACH_ENABLED = "true";
     const { prisma } = await import("@/lib/prisma");
     const p = prisma as unknown as {
@@ -300,33 +409,8 @@ describe("public reservations API — LINE customer link auto attach", () => {
     };
     p.lineCustomerLink.findMany.mockResolvedValue([{ lineUserId: "U" + "0".repeat(32) }]);
     p.lineFriend.findUnique.mockResolvedValue({ friendshipStatus: "FRIEND" });
-
-    const { POST } = await loadRoute();
     const { canPushToLineUser } = await import("@/lib/line");
     vi.mocked(canPushToLineUser).mockResolvedValue({ status: "ACTIVE" });
-    const res = await POST(post({ ...MIN_BODY, name: "山田" }));
-    const body = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(body.lineNotification.enabled).toBe(true);
-    expect(body.lineNotification.lineLinked).toBe(true);
-    expect(p.lineCustomerLink.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          status: "ACTIVE",
-          lastLinkedAt: expect.objectContaining({ gte: expect.any(Date) }),
-        }),
-      })
-    );
-  });
-
-  it("does not auto-attach when no recent active phone link matches", async () => {
-    process.env.LINE_PHONE_AUTO_ATTACH_ENABLED = "true";
-    const { prisma } = await import("@/lib/prisma");
-    const p = prisma as unknown as {
-      lineCustomerLink: Record<string, ReturnType<typeof vi.fn>>;
-    };
-    p.lineCustomerLink.findMany.mockResolvedValue([]);
 
     const { POST } = await loadRoute();
     const res = await POST(post({ ...MIN_BODY, name: "山田" }));
@@ -334,42 +418,6 @@ describe("public reservations API — LINE customer link auto attach", () => {
 
     expect(res.status).toBe(200);
     expect(body.lineNotification.enabled).toBe(false);
-  });
-
-  it("does not auto-attach when the same phone hash has multiple LINE users", async () => {
-    process.env.LINE_PHONE_AUTO_ATTACH_ENABLED = "true";
-    const { prisma } = await import("@/lib/prisma");
-    const p = prisma as unknown as {
-      lineCustomerLink: Record<string, ReturnType<typeof vi.fn>>;
-    };
-    p.lineCustomerLink.findMany.mockResolvedValue([
-      { lineUserId: "U" + "0".repeat(32) },
-      { lineUserId: "U" + "1".repeat(32) },
-    ]);
-
-    const { POST } = await loadRoute();
-    const res = await POST(post({ ...MIN_BODY, name: "山田" }));
-    const body = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(body.lineNotification.enabled).toBe(false);
-  });
-
-  it("does not auto-attach a blocked LINE friend", async () => {
-    process.env.LINE_PHONE_AUTO_ATTACH_ENABLED = "true";
-    const { prisma } = await import("@/lib/prisma");
-    const p = prisma as unknown as {
-      lineCustomerLink: Record<string, ReturnType<typeof vi.fn>>;
-      lineFriend: Record<string, ReturnType<typeof vi.fn>>;
-    };
-    p.lineCustomerLink.findMany.mockResolvedValue([{ lineUserId: "U" + "0".repeat(32) }]);
-    p.lineFriend.findUnique.mockResolvedValue({ friendshipStatus: "BLOCKED" });
-
-    const { POST } = await loadRoute();
-    const res = await POST(post({ ...MIN_BODY, name: "山田" }));
-    const body = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(body.lineNotification.enabled).toBe(false);
+    expect(p.lineCustomerLink.findMany).not.toHaveBeenCalled();
   });
 });

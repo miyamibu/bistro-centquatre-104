@@ -1,13 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { supabaseServer } from "@/lib/supabase-server";
 import { prisma } from "@/lib/prisma";
 import { env } from "@/lib/env";
 import { apiError } from "@/lib/api-security";
-import { getRequestId, logError, logInfo } from "@/lib/logger";
+import { isBearerSecretAuthorized } from "@/lib/bearer-auth";
+import { getRequestId, logError, logInfo, logWarn } from "@/lib/logger";
+import {
+  markSchedulerFailed,
+  markSchedulerStarted,
+  markSchedulerSucceeded,
+  readSchedulerContext,
+} from "@/lib/scheduler-heartbeat";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 const ORDER_HISTORY_RETENTION_DAYS = 365;
+const LINE_WEBHOOK_INBOX_RETENTION_DAYS = 30;
+const LINE_WEBHOOK_INBOX_DELETE_BATCH_SIZE = 200;
+const LINE_LINK_TOKEN_RETENTION_DAYS = 7;
+const LINE_LINK_TOKEN_DELETE_BATCH_SIZE = 500;
+const RATE_LIMIT_EVENT_RETENTION_HOURS = 48;
+const IDEMPOTENCY_RETENTION_DAYS = 200;
+const EPHEMERAL_SECURITY_DELETE_BATCH_SIZE = 500;
 const DELETE_BATCH_SIZE = 200;
 const MAX_DELETE_PER_RUN = 1000;
 const ORDER_PII_ANONYMIZE_BATCH_SIZE = 200;
@@ -23,8 +38,7 @@ const REDACTED_ORDER_PII = {
 };
 
 function isAuthorizedCron(req: NextRequest) {
-  const authHeader = req.headers.get("authorization");
-  return !!env.CRON_SECRET && authHeader === `Bearer ${env.CRON_SECRET}`;
+  return isBearerSecretAuthorized(req.headers.get("authorization"), env.CRON_SECRET);
 }
 
 async function executeDeleteOldHistories(req: NextRequest) {
@@ -35,7 +49,9 @@ async function executeDeleteOldHistories(req: NextRequest) {
     return apiError(401, { error: "Unauthorized", code: "UNAUTHORIZED", requestId });
   }
 
+  const scheduler = readSchedulerContext(req);
   try {
+    await markSchedulerStarted("DATA_RETENTION", scheduler);
     const retentionThreshold = new Date();
     retentionThreshold.setDate(retentionThreshold.getDate() - ORDER_HISTORY_RETENTION_DAYS);
     const retentionThresholdString = retentionThreshold.toISOString();
@@ -60,6 +76,7 @@ async function executeDeleteOldHistories(req: NextRequest) {
           errorCode: "CRON_SELECT_FAILED",
           context: { message: selectError.message, deletedCount },
         });
+        await markSchedulerFailed("DATA_RETENTION", scheduler, "CRON_SELECT_FAILED");
         return apiError(500, {
           error: "Database error",
           code: "CRON_SELECT_FAILED",
@@ -84,6 +101,7 @@ async function executeDeleteOldHistories(req: NextRequest) {
           errorCode: "CRON_DELETE_FAILED",
           context: { message: deleteError.message, deletedCount, batchSize: oldIds.length },
         });
+        await markSchedulerFailed("DATA_RETENTION", scheduler, "CRON_DELETE_FAILED");
         return apiError(500, {
           error: "Delete error",
           code: "CRON_DELETE_FAILED",
@@ -111,6 +129,7 @@ async function executeDeleteOldHistories(req: NextRequest) {
         errorCode: "CRON_ORDER_PII_SELECT_FAILED",
         context: { message: shippedSelectError.message, status: "SHIPPED" },
       });
+      await markSchedulerFailed("DATA_RETENTION", scheduler, "CRON_ORDER_PII_SELECT_FAILED");
       return apiError(500, {
         error: "Database error",
         code: "CRON_ORDER_PII_SELECT_FAILED",
@@ -140,6 +159,7 @@ async function executeDeleteOldHistories(req: NextRequest) {
         errorCode: "CRON_ORDER_PII_SELECT_FAILED",
         context: { message: cancelledSelectError.message, status: "CANCELLED" },
       });
+      await markSchedulerFailed("DATA_RETENTION", scheduler, "CRON_ORDER_PII_SELECT_FAILED");
       return apiError(500, {
         error: "Database error",
         code: "CRON_ORDER_PII_SELECT_FAILED",
@@ -164,6 +184,11 @@ async function executeDeleteOldHistories(req: NextRequest) {
           errorCode: "CRON_ORDER_PII_ANONYMIZE_FAILED",
           context: { message: anonymizeError.message, batchSize: terminalOrderIds.length },
         });
+        await markSchedulerFailed(
+          "DATA_RETENTION",
+          scheduler,
+          "CRON_ORDER_PII_ANONYMIZE_FAILED"
+        );
         return apiError(500, {
           error: "Database error",
           code: "CRON_ORDER_PII_ANONYMIZE_FAILED",
@@ -174,15 +199,21 @@ async function executeDeleteOldHistories(req: NextRequest) {
       anonymizedOrderCount = terminalOrderIds.length;
     }
 
-    // Clean up expired ReservationLineLinkTokens (expired > 7 days ago).
+    // The runtime role has no direct DELETE privilege. A bounded SECURITY
+    // DEFINER function is the only deletion path for expired link tokens.
     let deletedExpiredTokens = 0;
     try {
-      const tokenExpiryThreshold = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      const { count } = await prisma.reservationLineLinkToken.deleteMany({
-        where: { expiresAt: { lt: tokenExpiryThreshold } },
-      });
-      deletedExpiredTokens = count;
-      if (count > 0) {
+      const tokenExpiryThreshold = new Date(
+        Date.now() - LINE_LINK_TOKEN_RETENTION_DAYS * 24 * 60 * 60 * 1000
+      );
+      const rows = await prisma.$queryRaw<Array<{ deleted_count: bigint | number }>>(
+        Prisma.sql`SELECT public.cleanup_expired_reservation_line_link_tokens(
+          ${tokenExpiryThreshold},
+          ${LINE_LINK_TOKEN_DELETE_BATCH_SIZE}
+        ) AS deleted_count`
+      );
+      deletedExpiredTokens = Number(rows[0]?.deleted_count ?? 0);
+      if (deletedExpiredTokens > 0) {
         logInfo("crons.delete_old_histories.expired_tokens_deleted", {
           requestId,
           route,
@@ -190,8 +221,8 @@ async function executeDeleteOldHistories(req: NextRequest) {
         });
       }
     } catch (tokenCleanupError) {
-      // Non-fatal: log and continue — table may not exist if migration not yet applied.
-      logInfo("crons.delete_old_histories.token_cleanup_skipped", {
+      // Non-fatal during phased rollout where the cleanup migration may not exist yet.
+      logWarn("crons.delete_old_histories.token_cleanup_skipped", {
         requestId,
         route,
         context: {
@@ -200,13 +231,97 @@ async function executeDeleteOldHistories(req: NextRequest) {
       });
     }
 
+    // Only completed, minimized webhook receipts are eligible. Pending, failed,
+    // and processing rows remain available for retry and incident recovery.
+    let deletedLineWebhookInboxCount = 0;
+    try {
+      const lineInboxThreshold = new Date(
+        Date.now() - LINE_WEBHOOK_INBOX_RETENTION_DAYS * 24 * 60 * 60 * 1000
+      );
+      const rows = await prisma.$queryRaw<Array<{ deleted_count: bigint | number }>>(
+        Prisma.sql`SELECT public.cleanup_processed_line_webhook_inbox(
+          ${lineInboxThreshold},
+          ${LINE_WEBHOOK_INBOX_DELETE_BATCH_SIZE}
+        ) AS deleted_count`
+      );
+      deletedLineWebhookInboxCount = Number(rows[0]?.deleted_count ?? 0);
+    } catch (lineInboxCleanupError) {
+      // Non-fatal during phased rollout where the inbox migration may not exist yet.
+      logWarn("crons.delete_old_histories.line_webhook_cleanup_skipped", {
+        requestId,
+        route,
+        context: {
+          message:
+            lineInboxCleanupError instanceof Error
+              ? lineInboxCleanupError.message
+              : String(lineInboxCleanupError),
+        },
+      });
+    }
+
+    let deletedRateLimitEventCount = 0;
+    let deletedIdempotencyCount = 0;
+    try {
+      const rateLimitThreshold = new Date(
+        Date.now() - RATE_LIMIT_EVENT_RETENTION_HOURS * 60 * 60 * 1000
+      );
+      const idempotencyThreshold = new Date(
+        Date.now() - IDEMPOTENCY_RETENTION_DAYS * 24 * 60 * 60 * 1000
+      );
+      const rows = await prisma.$queryRaw<
+        Array<{
+          deleted_rate_limit_count: bigint | number;
+          deleted_idempotency_count: bigint | number;
+        }>
+      >(Prisma.sql`SELECT * FROM public.cleanup_ephemeral_reservation_security_state(
+        ${rateLimitThreshold},
+        ${idempotencyThreshold},
+        ${EPHEMERAL_SECURITY_DELETE_BATCH_SIZE}
+      )`);
+      deletedRateLimitEventCount = Number(rows[0]?.deleted_rate_limit_count ?? 0);
+      deletedIdempotencyCount = Number(rows[0]?.deleted_idempotency_count ?? 0);
+    } catch (ephemeralCleanupError) {
+      logWarn("crons.delete_old_histories.ephemeral_security_cleanup_skipped", {
+        requestId,
+        route,
+        context: {
+          message:
+            ephemeralCleanupError instanceof Error
+              ? ephemeralCleanupError.message
+              : String(ephemeralCleanupError),
+        },
+      });
+    }
+
     logInfo("crons.delete_old_histories.success", {
       requestId,
       route,
-      context: { deletedCount, hasMore, anonymizedOrderCount, deletedExpiredTokens },
+      context: {
+        deletedCount,
+        hasMore,
+        anonymizedOrderCount,
+        deletedExpiredTokens,
+        deletedLineWebhookInboxCount,
+        deletedRateLimitEventCount,
+        deletedIdempotencyCount,
+      },
+    });
+    await markSchedulerSucceeded("DATA_RETENTION", scheduler, {
+      processed:
+        deletedCount +
+        anonymizedOrderCount +
+        deletedExpiredTokens +
+        deletedLineWebhookInboxCount +
+        deletedRateLimitEventCount +
+        deletedIdempotencyCount,
+      retry: 0,
+      deadLetter: 0,
+      backlog: hasMore ? 1 : 0,
+      oldestBacklogAt: null,
     });
 
     return NextResponse.json({
+      ok: true,
       message: deletedCount === 0 ? "No old order histories to delete" : "Processed old order history deletion batch",
       deletedCount,
       hasMore,
@@ -216,9 +331,18 @@ async function executeDeleteOldHistories(req: NextRequest) {
       anonymizedOrderCount,
       anonymizeBatchSize: ORDER_PII_ANONYMIZE_BATCH_SIZE,
       deletedExpiredTokens,
+      deletedLineWebhookInboxCount,
+      lineWebhookInboxRetentionDays: LINE_WEBHOOK_INBOX_RETENTION_DAYS,
+      deletedRateLimitEventCount,
+      rateLimitEventRetentionHours: RATE_LIMIT_EVENT_RETENTION_HOURS,
+      deletedIdempotencyCount,
+      idempotencyRetentionDays: IDEMPOTENCY_RETENTION_DAYS,
       requestId,
     });
   } catch (error) {
+    await markSchedulerFailed("DATA_RETENTION", scheduler, "INTERNAL_SERVER_ERROR").catch(
+      () => undefined
+    );
     logError("crons.delete_old_histories.unexpected", {
       requestId,
       route,
@@ -237,8 +361,8 @@ export async function POST(req: NextRequest) {
   return executeDeleteOldHistories(req);
 }
 
-// Vercel Cron calls routes via HTTP GET. Authorization is enforced inside
-// executeDeleteOldHistories via CRON_SECRET Bearer check.
+// The free GitHub scheduler calls this route via HTTP GET. Authorization is
+// enforced inside executeDeleteOldHistories via CRON_SECRET Bearer check.
 export async function GET(req: NextRequest) {
   return executeDeleteOldHistories(req);
 }

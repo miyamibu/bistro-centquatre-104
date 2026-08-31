@@ -5,7 +5,7 @@ import type { ReservationServicePeriodKey } from "@/lib/reservation-config";
 type AuditClient = PrismaClient | Prisma.TransactionClient;
 
 export type PrivateBlockAuditResult = "CREATED" | "NO_OP" | "RELEASED";
-export type PrivateBlockAuditSource = "PUBLIC_FORM" | "ADMIN_SHARED_BASIC";
+export type PrivateBlockAuditSource = "PUBLIC_FORM" | "ADMIN_USER";
 
 export async function createPrivateBlockAuditLog(
   client: AuditClient,
@@ -16,6 +16,10 @@ export async function createPrivateBlockAuditLog(
     result: PrivateBlockAuditResult;
     source: PrivateBlockAuditSource;
     actorName?: string | null;
+    actorUserId?: string | null;
+    actorEmail?: string | null;
+    actorRole?: string | null;
+    operatorLabel?: string | null;
     requestId: string;
     ipAddress?: string | null;
     userAgent?: string | null;
@@ -32,6 +36,10 @@ export async function createPrivateBlockAuditLog(
         "result",
         "source",
         "actorName",
+        "actorUserId",
+        "actorEmail",
+        "actorRole",
+        "operatorLabel",
         "requestId",
         "ipAddress",
         "userAgent",
@@ -45,6 +53,10 @@ export async function createPrivateBlockAuditLog(
         CAST(${input.result} AS "PrivateBlockAuditResult"),
         CAST(${input.source} AS "PrivateBlockAuditSource"),
         ${input.actorName ?? null},
+        ${input.actorUserId ?? null},
+        ${input.actorEmail ?? null},
+        ${input.actorRole ?? null},
+        ${input.operatorLabel ?? null},
         ${input.requestId},
         ${input.ipAddress ?? null},
         ${input.userAgent ?? null},

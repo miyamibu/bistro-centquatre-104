@@ -8,7 +8,9 @@ import {
 import type { ReservationServicePeriodKey } from "@/lib/reservation-config";
 
 type ReservationClient = PrismaClient | Prisma.TransactionClient;
-const RESERVATION_SCHEMA_READY_CACHE_TTL_MS = 5 * 60 * 1000;
+// Keep rollout recovery bounded: a newly applied migration is observed within
+// 30 seconds even if an instance cached an earlier schema-not-ready result.
+const RESERVATION_SCHEMA_READY_CACHE_TTL_MS = 30 * 1000;
 let reservationSchemaReadyCheckedAt = 0;
 let reservationSchemaReadyCheckPromise: Promise<void> | null = null;
 
@@ -21,8 +23,13 @@ type ReservationCreateCompatInput = {
   arrivalTime: string | null;
   name: string;
   phone: string;
+  customerEmail?: string | null;
+  customerEmailVerifiedAt?: Date | null;
+  contactChannel?: "EMAIL" | "LINE" | null;
   note: string | null;
   status: ReservationStatus;
+  cancellationPolicyVersion?: string | null;
+  cancellationPolicyAcceptedAt?: Date | null;
   lineUserId: string | null;
   lineLinkedAt?: Date | null;
   lineLinkSource?: string | null;
@@ -46,7 +53,7 @@ export class ReservationSchemaNotReadyError extends Error {
 function isMissingReservationInfrastructureError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   const hasReservationSchemaHint =
-    /(serviceperiod|reservationtype|privateblockauditlog|reservationratelimitevent|lineuserid|linereminder|linelinkedat|linelinksource|linepushstatus|linepushcheckedat|reservationlinelinktoken|notificationevent|linefriend|linecustomerlink|reservationemailoutbox)/i.test(
+    /(serviceperiod|reservationtype|privateblockauditlog|businessdayauditlog|reservationcorrectionauditlog|reservationratelimitevent|reservationidempotency|reservationmanagementtoken|lineuserid|linereminder|lineclaim|lineconfirmation|linelinkedat|linelinksource|linepushstatus|linepushcheckedat|reservationlinelinktoken|notificationevent|linefriend|linecustomerlink|reservationemailoutbox|actoruserid|actoremail|actorrole|operatorlabel|reservation_cancelled_customer|reservation_noshow_customer)/i.test(
       message
     );
   const hasMissingHint = /(does not exist|not found|unknown|invalid|missing|undefined column)/i.test(
@@ -86,10 +93,21 @@ async function runReservationSchemaReadyCheck(client: ReservationClient) {
         reservationLineColumnsReady: boolean;
         reservationLineLinkTokenReady: boolean;
         notificationEventReady: boolean;
+        notificationEventClaimTokenReady: boolean;
         lineFriendReady: boolean;
         lineCustomerLinkReady: boolean;
         reservationStatusAuditLogReady: boolean;
         reservationEmailOutboxReady: boolean;
+        reservationManagementTokenReady: boolean;
+        reservationIdempotencyReady: boolean;
+        reservationContactReady: boolean;
+        businessDayAuditLogReady: boolean;
+        businessDayAuditFieldsReady: boolean;
+        reservationCorrectionAuditLogReady: boolean;
+        reservationCorrectionAuditFieldsReady: boolean;
+        reservationStatusAuditFieldsReady: boolean;
+        privateBlockAuditFieldsReady: boolean;
+        reservationStatusEmailTypesReady: boolean;
       }>>(
       Prisma.sql`
       SELECT
@@ -97,22 +115,88 @@ async function runReservationSchemaReadyCheck(client: ReservationClient) {
         to_regclass('"PrivateBlockAuditLog"') IS NOT NULL AS "privateBlockAuditLogReady",
         to_regclass('"ReservationRateLimitEvent"') IS NOT NULL AS "reservationRateLimitEventReady",
         (
-          SELECT COUNT(*) = 8
+          SELECT COUNT(*) = 11
           FROM information_schema.columns
           WHERE table_schema = current_schema()
             AND table_name = 'Reservation'
             AND column_name IN (
               'lineUserId', 'lineReminderSentAt', 'lineReminderStatus',
-              'lineReminderError', 'lineLinkedAt', 'lineLinkSource',
+              'lineReminderError', 'lineClaimTokenHash', 'lineClaimExpiresAt',
+              'lineConfirmationSentAt', 'lineLinkedAt', 'lineLinkSource',
               'linePushStatus', 'linePushCheckedAt'
             )
         ) AS "reservationLineColumnsReady",
         to_regclass('"ReservationLineLinkToken"') IS NOT NULL AS "reservationLineLinkTokenReady",
         to_regclass('"NotificationEvent"') IS NOT NULL AS "notificationEventReady",
+        (
+          SELECT COUNT(*) = 1
+          FROM information_schema.columns
+          WHERE table_schema = current_schema()
+            AND table_name = 'NotificationEvent'
+            AND column_name = 'claimToken'
+        ) AS "notificationEventClaimTokenReady",
         to_regclass('"LineFriend"') IS NOT NULL AS "lineFriendReady",
         to_regclass('"LineCustomerLink"') IS NOT NULL AS "lineCustomerLinkReady",
         to_regclass('"ReservationStatusAuditLog"') IS NOT NULL AS "reservationStatusAuditLogReady",
-        to_regclass('"ReservationEmailOutbox"') IS NOT NULL AS "reservationEmailOutboxReady"
+        to_regclass('"ReservationEmailOutbox"') IS NOT NULL AS "reservationEmailOutboxReady",
+        to_regclass('"ReservationManagementToken"') IS NOT NULL AS "reservationManagementTokenReady",
+        to_regclass('"ReservationIdempotency"') IS NOT NULL AS "reservationIdempotencyReady",
+        (
+          SELECT COUNT(*) = 8
+          FROM information_schema.columns
+          WHERE table_schema = current_schema()
+            AND table_name = 'Reservation'
+            AND column_name IN (
+              'customerEmail', 'customerEmailVerifiedAt', 'contactChannel',
+              'cancellationPolicyVersion', 'cancellationPolicyAcceptedAt',
+              'cancelledAt', 'cancelSource', 'cancellationReason'
+            )
+        ) AS "reservationContactReady"
+        ,to_regclass('"BusinessDayAuditLog"') IS NOT NULL AS "businessDayAuditLogReady"
+        ,(
+          SELECT COUNT(*) = 16
+          FROM information_schema.columns
+          WHERE table_schema = current_schema()
+            AND table_name = 'BusinessDayAuditLog'
+            AND column_name IN (
+              'id', 'businessDayId', 'date', 'previousIsClosed', 'nextIsClosed',
+              'previousNote', 'nextNote', 'actorName', 'actorUserId', 'actorEmail',
+              'actorRole', 'requestId', 'ipAddress', 'userAgent', 'reason', 'createdAt'
+            )
+        ) AS "businessDayAuditFieldsReady"
+        ,to_regclass('"ReservationCorrectionAuditLog"') IS NOT NULL AS "reservationCorrectionAuditLogReady"
+        ,(
+          SELECT COUNT(*) = 13
+          FROM information_schema.columns
+          WHERE table_schema = current_schema()
+            AND table_name = 'ReservationCorrectionAuditLog'
+            AND column_name IN (
+              'id', 'reservationId', 'actorName', 'actorUserId', 'actorEmail',
+              'actorRole', 'requestId', 'ipAddress', 'userAgent', 'reason',
+              'beforeData', 'afterData', 'createdAt'
+            )
+        ) AS "reservationCorrectionAuditFieldsReady"
+        ,(
+          SELECT COUNT(*) = 4
+          FROM information_schema.columns
+          WHERE table_schema = current_schema()
+            AND table_name = 'ReservationStatusAuditLog'
+            AND column_name IN ('actorUserId', 'actorEmail', 'actorRole', 'operatorLabel')
+        ) AS "reservationStatusAuditFieldsReady"
+        ,(
+          SELECT COUNT(*) = 4
+          FROM information_schema.columns
+          WHERE table_schema = current_schema()
+            AND table_name = 'PrivateBlockAuditLog'
+            AND column_name IN ('actorUserId', 'actorEmail', 'actorRole', 'operatorLabel')
+        ) AS "privateBlockAuditFieldsReady"
+        ,(
+          SELECT COUNT(*) = 2
+          FROM pg_enum
+          JOIN pg_type ON pg_type.oid = pg_enum.enumtypid
+          WHERE pg_type.typname = 'ReservationEmailNotificationType'
+            AND pg_enum.enumlabel IN ('RESERVATION_CANCELLED_CUSTOMER', 'RESERVATION_NOSHOW_CUSTOMER')
+        ) AS "reservationStatusEmailTypesReady"
       `
     );
     const schema = schemaRows[0];
@@ -139,7 +223,7 @@ async function runReservationSchemaReadyCheck(client: ReservationClient) {
 export async function ensureLineLinkSchemaReady(client: ReservationClient): Promise<void> {
   try {
     await client.$queryRaw`SELECT "id" FROM "ReservationLineLinkToken" LIMIT 0`;
-    await client.$queryRaw`SELECT "id" FROM "NotificationEvent" LIMIT 0`;
+    await client.$queryRaw`SELECT "id", "claimToken" FROM "NotificationEvent" LIMIT 0`;
     await client.$queryRaw`SELECT "lineUserId" FROM "LineFriend" LIMIT 0`;
     await client.$queryRaw`SELECT "id" FROM "LineCustomerLink" LIMIT 0`;
   } catch (error) {

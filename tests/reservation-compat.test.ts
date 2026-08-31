@@ -22,6 +22,18 @@ describe("reservation schema compatibility checks", () => {
     expect(calls).toBe(1);
   });
 
+  it("treats missing LINE recovery columns as schema-not-ready", async () => {
+    const client = {
+      $queryRaw: async () => {
+        throw new Error('Raw query failed. Code: `42703`. Message: `column "lineClaimTokenHash" does not exist`');
+      },
+    };
+
+    await expect(ensureReservationSchemaReady(client as never)).rejects.toSatisfy((error) =>
+      isReservationSchemaNotReadyError(error)
+    );
+  });
+
   it("updates reservation status with the previously read status as a CAS predicate", async () => {
     const updateMany = vi.fn().mockResolvedValue({ count: 1 });
     const findUnique = vi.fn().mockResolvedValue({

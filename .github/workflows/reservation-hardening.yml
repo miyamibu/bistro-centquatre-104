@@ -6,6 +6,9 @@ on:
       - main
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   reservation-hardening:
     runs-on: ubuntu-latest
@@ -36,14 +39,22 @@ jobs:
       CRON_SECRET: test-cron-secret
       IDEMPOTENCY_HASH_SECRET: test-idempotency-secret
       RATE_LIMIT_HASH_SECRET: test-rate-limit-secret
+      LINE_LINK_TOKEN_PEPPER: test-line-link-token-pepper-at-least-32-chars
+      STAFF_SESSION_MAX_AGE_SECONDS: "3600"
+      BACKUP_EXPORT_SECRET: test-backup-export-secret
+      BACKUP_ENCRYPTION_KEY: test-backup-encryption-key-at-least-32-chars
+      RESERVATION_TOKEN_SECRET: test-reservation-token-secret-at-least-32-chars
       BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY: ci-placeholder-bank-history-key
       NODE_ENV: test
       TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bistro_test?schema=public
       ALLOW_DESTRUCTIVE_TEST_DB: "1"
+      SKIP_STAFF_AUTH_DB_TESTS: "1"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -54,17 +65,35 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Reject high-severity production dependency vulnerabilities
+        run: npm run audit:production
+
       - name: Apply Prisma migrations
         run: npx prisma migrate deploy
 
       - name: Run lint
         run: npm run lint
 
+      - name: Run typecheck
+        run: npm run typecheck
+
       - name: Run test suite
         run: npm run test
 
       - name: Run database test suite
         run: npm run test:db
+
+      - name: Run env security check
+        run: npm run security:env
+
+      - name: Run destructive reservation security check
+        run: npm run security:destructive-reservations
+
+      - name: Run local release safety check
+        run: npm run check:release
+
+      - name: Check backup safety script syntax
+        run: node --check scripts/backup-restore-drill.mjs && node --check scripts/run-local-safety-backups.mjs && node --check scripts/check-workspace-bundle-provenance.mjs
 
       - name: Run production build
         run: npm run build

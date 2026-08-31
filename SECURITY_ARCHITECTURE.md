@@ -6,17 +6,18 @@ This document describes the security measures implemented for Supabase client us
 ## Key Principles
 
 ### 1. Client vs. Server Key Separation
-- **anon key** (`NEXT_PUBLIC_SUPABASE_ANON_KEY`): Used only in browser/client-side code
-- **service role key** (`SUPABASE_SERVICE_ROLE_KEY`): Used only on server-side (API routes, cron jobs)
-- **Never expose service role key to clients**
+- **anon key** (`NEXT_PUBLIC_SUPABASE_ANON_KEY`): May initialize browser-side Supabase SDK features, but has no direct table access
+- **service role key** (`SUPABASE_SERVICE_ROLE_KEY`): Used only by server-side Supabase API operations that require it
+- **runtime database role**: Used by Prisma with least-privilege grants and no `DELETE` / `TRUNCATE` on protected business and audit tables
+- **Never expose service-role or database credentials to clients**
 
 ### 2. Supabase Client Modules
 
 #### `supabase-client.ts`
 - Uses anonymous key
-- For browser/client-side operations only
-- Protected by Row-Level Security (RLS) policies
-- Example: Fetching public menu items, photos
+- For browser/client-side Supabase SDK operations only
+- RLS deny-all policies prevent `anon` and `authenticated` from reading or mutating application tables directly
+- Public menu, photo, reservation, and order data flows use application routes or server-rendered code
 
 #### `supabase-server.ts`
 - Uses service role key
@@ -31,19 +32,20 @@ This document describes the security measures implemented for Supabase client us
 
 ### 3. API Route Authentication
 
-All API routes using `supabaseServer` MUST include one of:
-1. **Basic authentication** (`isAuthorized()`) - For admin/dashboard routes
+All API routes using the Supabase service role client MUST include one of:
+1. **Individual Supabase Auth session** (`getStaffAuth()`) - For admin/dashboard routes
 2. **CRON_SECRET token** verification - For scheduled tasks
-3. **User session validation** - For user-specific operations
+3. **Route-scoped bearer token** verification - For backup export
+4. **User session validation** - For user-specific operations
 
 **Example:**
 ```typescript
 import { supabaseServer } from '@/lib/supabase-server'
-import { isAuthorized } from '@/lib/basic-auth'
+import { getStaffAuth } from '@/lib/staff-auth'
 
 export async function GET(request: NextRequest) {
   // 1. Always authenticate first
-  if (!isAuthorized(request)) {
+  if (!(await getStaffAuth())) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -57,38 +59,34 @@ export async function GET(request: NextRequest) {
 
 ### Client-Side (RLS Protected)
 - `/src/app/dashboard/orders/orders-client.tsx` - Uses API endpoints (not direct Supabase)
-- Menu page - Public queries with anon key
-- Photos page - Public queries with anon key
+- Menu and photo pages do not depend on direct anonymous table access
+- Reservation and order forms submit only to application API routes
 
 ### Server-Side (Service Role Key)
-- `/src/app/api/dashboard/orders/route.ts` - Protected by Basic Auth
-- `/src/app/api/dashboard/bank-account/route.ts` - Protected by Basic Auth
+- `/src/app/api/dashboard/orders/route.ts` - Protected by individual Supabase Auth user + role + MFA
+- `/src/app/api/dashboard/bank-account/route.ts` - Protected by individual Supabase Auth user + role + MFA
 - `/src/app/api/orders/route.ts` - Public order creation endpoint
 - `/src/app/api/crons/delete-old-histories/route.ts` - Protected by CRON_SECRET
 - `/src/app/api/crons/cancel-expired-orders/route.ts` - Protected by CRON_SECRET
 
-## RLS Policies (Required in Supabase Dashboard)
+## RLS Policies
 
-### orders table
-```sql
--- Public can create orders (with RLS)
-CREATE POLICY "allow_insert_orders" ON "public"."orders"
-  FOR INSERT TO anon
-  WITH CHECK (true);
+The canonical policy source is `supabase/rls-policies.sql`.
 
--- Only admin can read/update (via service role in API)
-CREATE POLICY "admin_orders_access" ON "public"."orders"
-  FOR ALL TO authenticated
-  USING (auth.jwt()->>'role' = 'authenticated');
+1. RLS is enabled on every application table covered by `supabase/verify.sql`.
+2. `anon` and `authenticated` are deny-all for direct table operations.
+3. Browser clients call application API routes; no public table-insert policy is used.
+4. Server-side Supabase operations use the service-role key only after the route's own authentication, authorization, CSRF/origin, rate-limit, and validation checks.
+5. Prisma uses a dedicated runtime role with the minimum table privileges required by the app. Protected reservation, audit, scheduler, and token tables deny direct `DELETE` and `TRUNCATE` to that role.
+6. Narrow cleanup operations use bounded `SECURITY DEFINER` functions whose `EXECUTE` privilege is granted only to the runtime role.
+
+After applying migrations and `supabase/rls-policies.sql`, run:
+
+```bash
+psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f supabase/verify.sql
 ```
 
-### bank_account table
-```sql
--- No anon access (only via admin API with service role)
-CREATE POLICY "admin_bank_account_access" ON "public"."bank_account"
-  FOR ALL TO authenticated
-  USING (auth.jwt()->>'role' = 'admin');
-```
+Do not deploy when any assertion fails. The verification script checks required tables, RLS, deny-all policies, foreign keys, runtime grants, forbidden destructive grants, and restricted cleanup-function execution.
 
 ## Environment Variables
 
@@ -116,9 +114,11 @@ CRON_SECRET=your-cron-secret-token
 - [x] Updated all cron routes to use `supabaseServer`
 - [x] Verified client components use API endpoints (not direct Supabase)
 - [x] Updated `.env.example` with all required variables
-- [ ] Configure RLS policies in Supabase dashboard
-- [ ] Test all API endpoints with authentication
-- [ ] Verify cron jobs run with correct CRON_SECRET
+- [x] Store canonical RLS policies in `supabase/rls-policies.sql`
+- [x] Add executable assertions in `supabase/verify.sql`
+- [x] Require individual staff authentication, role, and MFA for protected staff routes
+- [x] Require `CRON_SECRET` bearer authentication for cron routes
+- [ ] Re-run migrations, RLS assertions, authenticated endpoint tests, and cron canaries against each release target before production promotion
 
 ## Best Practices
 

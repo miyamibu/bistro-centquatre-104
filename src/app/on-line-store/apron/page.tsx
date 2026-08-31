@@ -65,7 +65,9 @@ function ApronPurchaseFallback() {
       className="relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] flex min-h-[60vh] w-screen items-center justify-center bg-gradient-to-b from-[#f7ebd3] via-[#f1ddb5] to-[#e8c98f] px-4"
       style={{ paddingTop: `${pageSpacing.top}px`, paddingBottom: `${pageSpacing.bottom}px` }}
     >
-      <p className={`${bodySerif.className} text-sm text-[#4a3121]`}>読み込み中...</p>
+      <p role="status" aria-live="polite" className={`${bodySerif.className} text-sm text-[#4a3121]`}>
+        読み込み中...
+      </p>
     </section>
   );
 }

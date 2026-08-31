@@ -6,6 +6,9 @@ on:
       - main
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   security-checks:
     runs-on: ubuntu-latest
@@ -30,6 +33,7 @@ jobs:
       DIRECT_URL: postgresql://postgres:postgres@localhost:5432/bistro_test?schema=public
       TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bistro_test?schema=public
       ALLOW_DESTRUCTIVE_TEST_DB: "1"
+      SKIP_STAFF_AUTH_DB_TESTS: "1"
       BASE_URL: http://localhost:3000
       ADMIN_BASIC_USER: admin
       ADMIN_BASIC_PASS: pass
@@ -45,6 +49,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -54,6 +60,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Reject high-severity production dependency vulnerabilities
+        run: npm run audit:production
 
       - name: Apply Prisma migrations
         run: npx prisma migrate deploy
@@ -72,3 +81,14 @@ jobs:
 
       - name: Run destructive reservation security check
         run: npm run security:destructive-reservations
+
+      - name: Generate commit-bound QA evidence
+        run: npm run qa:user-stories:evidence -- --output="$RUNNER_TEMP/canonical-user-story-validation-evidence.json"
+
+      - name: Upload commit-bound QA evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: canonical-user-story-evidence-${{ github.sha }}
+          path: ${{ runner.temp }}/canonical-user-story-validation-evidence.json
+          if-no-files-found: error
+          retention-days: 30

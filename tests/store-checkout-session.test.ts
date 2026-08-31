@@ -33,6 +33,7 @@ const validSetup: PendingOrderPaymentSetup = {
   orderId: "order-1",
   expectedVersion: 1,
   humanToken: "human-token",
+  receiptToken: "receipt-token",
   paymentMethod: "BANK_TRANSFER",
   storeVisitDate: null,
   holdExpiresAt: "2026-07-22T00:00:00.000Z",
@@ -114,6 +115,11 @@ describe("loadPendingOrderPaymentSetup", () => {
 
   it("returns null when cart items are missing", () => {
     writeSetup({ ...validSetup, cartItems: undefined });
+    expect(loadPendingOrderPaymentSetup("order-1")).toBeNull();
+  });
+
+  it("returns null when the server receipt token is missing", () => {
+    writeSetup({ ...validSetup, receiptToken: undefined });
     expect(loadPendingOrderPaymentSetup("order-1")).toBeNull();
   });
 

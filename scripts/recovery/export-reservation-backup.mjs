@@ -3,9 +3,19 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
+import {
+  BACKUP_ENCRYPTION_ALGORITHM,
+  BACKUP_ENCRYPTION_FORMAT,
+  BACKUP_ENCRYPTION_VERSION,
+  encryptBackupPayload,
+  resolveBackupEncryptionConfig,
+} from "../backup-encryption.mjs";
 
 const DEFAULT_ROUTE_PATH = "/api/admin/backups/reservations/export";
+const LOCAL_BACKUP_SCHEMA_VERSION = 4;
+const SUPPORTED_API_SCHEMA_VERSIONS = new Set([2, 3, LOCAL_BACKUP_SCHEMA_VERSION]);
 
 function parseCliArgs(argv) {
   const args = new Map();
@@ -123,20 +133,71 @@ function createTimestampLabel(now) {
   return now.toISOString().replace(/[:.]/g, "-");
 }
 
+function readCount(counts, key) {
+  const value = counts?.[key];
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`バックアップAPI応答のcounts.${key}が不正です`);
+  }
+  return value;
+}
+
+function readOptionalCount(counts, key) {
+  const value = counts?.[key];
+  if (value === undefined) return 0;
+  return readCount(counts, key);
+}
+
+function sanitizeExportPayload(exported) {
+  if (!Array.isArray(exported.reservationEmailOutbox)) {
+    throw new Error("バックアップAPI応答のreservationEmailOutboxが配列ではありません");
+  }
+
+  return {
+    ...exported,
+    businessDayAuditLogs: Array.isArray(exported.businessDayAuditLogs)
+      ? exported.businessDayAuditLogs
+      : [],
+    reservationCorrectionAuditLogs: Array.isArray(exported.reservationCorrectionAuditLogs)
+      ? exported.reservationCorrectionAuditLogs
+      : [],
+    reservationManagementTokens: Array.isArray(exported.reservationManagementTokens)
+      ? exported.reservationManagementTokens
+      : [],
+    reservationIdempotencyRecords: Array.isArray(exported.reservationIdempotencyRecords)
+      ? exported.reservationIdempotencyRecords
+      : [],
+    reservationEmailOutbox: exported.reservationEmailOutbox.map((row) => {
+      const sanitized = { ...row };
+      delete sanitized.claimToken;
+      delete sanitized.claim_token;
+      return sanitized;
+    }),
+  };
+}
+
 async function main() {
   const cwd = process.cwd();
   const args = parseCliArgs(process.argv.slice(2));
-  const env = mergedEnv(cwd);
   const now = new Date();
+
+  for (const option of ["secret", "admin-pass", "admin-user"]) {
+    if (args.has(option)) {
+      throw new Error(`--${option} は使用できません。認証情報は環境変数で設定してください`);
+    }
+  }
+
+  const env = mergedEnv(cwd);
 
   const baseUrlRaw = args.get("base-url") ?? env.BACKUP_BASE_URL ?? env.BASE_URL;
   if (!baseUrlRaw) {
     throw new Error("BACKUP_BASE_URL または BASE_URL を設定してください");
   }
 
-  const backupSecret = args.get("secret") ?? env.BACKUP_EXPORT_SECRET;
+  const backupSecret = env.BACKUP_EXPORT_SECRET?.trim();
   if (!backupSecret) {
-    throw new Error("BACKUP_EXPORT_SECRET を設定してください。CRON_SECRET はバックアップ認証に使用しません");
+    throw new Error(
+      "BACKUP_EXPORT_SECRET を環境変数で設定してください。CRON_SECRET はバックアップ認証に使用しません"
+    );
   }
 
   const routePath = args.get("route-path") ?? DEFAULT_ROUTE_PATH;
@@ -144,17 +205,12 @@ async function main() {
   const outputDir = resolveOutputDir(cwd, args, env);
   const dryRun = args.get("dry-run") === "true";
 
-  const adminUser = (args.get("admin-user") ?? env.ADMIN_BASIC_USER ?? "").trim();
-  const adminPass = (args.get("admin-pass") ?? env.ADMIN_BASIC_PASS ?? "").trim();
-
-  if ((adminUser && !adminPass) || (!adminUser && adminPass)) {
-    throw new Error("ADMIN_BASIC_USER / ADMIN_BASIC_PASS は両方指定してください");
-  }
-
-  const needsBasicAuth = routePath.startsWith("/api/admin");
-  if (needsBasicAuth && (!adminUser || !adminPass)) {
-    throw new Error("/api/admin バックアップには ADMIN_BASIC_USER / ADMIN_BASIC_PASS が必要です");
-  }
+  const encryptionConfig = dryRun
+    ? null
+    : await resolveBackupEncryptionConfig({
+        environment: env,
+        readFromStdin: args.get("encryption-key-stdin") === "true",
+      });
 
   const normalizedBaseUrl = normalizeBaseUrl(baseUrlRaw);
   const requestUrl = new URL(routePath.startsWith("/") ? routePath : `/${routePath}`, `${normalizedBaseUrl}/`);
@@ -171,11 +227,7 @@ async function main() {
     "x-backup-export-secret": backupSecret,
   };
 
-  if (adminUser && adminPass) {
-    headers.authorization = `Basic ${Buffer.from(`${adminUser}:${adminPass}`).toString("base64")}`;
-  } else {
-    headers.authorization = `Bearer ${backupSecret}`;
-  }
+  headers.authorization = `Bearer ${backupSecret}`;
 
   const response = await fetch(requestUrl, {
     method: "GET",
@@ -198,17 +250,66 @@ async function main() {
     throw new Error(`バックアップAPIエラー: ${apiError}`);
   }
 
-  const counts = json?.counts;
+  if (
+    !json ||
+    typeof json !== "object" ||
+    !SUPPORTED_API_SCHEMA_VERSIONS.has(json.schemaVersion)
+  ) {
+    throw new Error("バックアップAPI応答のschemaVersionが未対応です（2、3、4が必要です）");
+  }
+
+  const counts = json.counts;
   if (!counts || typeof counts !== "object") {
     throw new Error("バックアップAPI応答に counts が存在しません");
   }
 
-  const reservations = Number(counts.reservations ?? 0);
-  const businessDays = Number(counts.businessDays ?? 0);
-  const privateBlockAuditLogs = Number(counts.privateBlockAuditLogs ?? 0);
+  if (typeof json.checksumSha256 !== "string" || !/^[0-9a-f]{64}$/.test(json.checksumSha256)) {
+    throw new Error("バックアップAPI応答のchecksumSha256が不正です");
+  }
+
+  const reservations = readCount(counts, "reservations");
+  const businessDays = readCount(counts, "businessDays");
+  const privateBlockAuditLogs = readCount(counts, "privateBlockAuditLogs");
+  const businessDayAuditLogs = readOptionalCount(counts, "businessDayAuditLogs");
+  const reservationStatusAuditLogs = readCount(counts, "reservationStatusAuditLogs");
+  const reservationCorrectionAuditLogs = readOptionalCount(
+    counts,
+    "reservationCorrectionAuditLogs",
+  );
+  const reservationEmailOutbox = readCount(counts, "reservationEmailOutbox");
+  const reservationLineLinkTokens = readCount(counts, "reservationLineLinkTokens");
+  const reservationManagementTokens = readOptionalCount(counts, "reservationManagementTokens");
+  const reservationIdempotencyRecords = readOptionalCount(counts, "reservationIdempotencyRecords");
+  const notificationEvents = readCount(counts, "notificationEvents");
+  for (const [key, expectedCount] of [
+    ["businessDays", businessDays],
+    ["reservations", reservations],
+    ["privateBlockAuditLogs", privateBlockAuditLogs],
+    ["businessDayAuditLogs", businessDayAuditLogs],
+    ["reservationStatusAuditLogs", reservationStatusAuditLogs],
+    ["reservationCorrectionAuditLogs", reservationCorrectionAuditLogs],
+    ["reservationEmailOutbox", reservationEmailOutbox],
+    ["reservationLineLinkTokens", reservationLineLinkTokens],
+    ["notificationEvents", notificationEvents],
+  ]) {
+    if (!Array.isArray(json[key]) || json[key].length !== expectedCount) {
+      throw new Error(`バックアップAPI応答の${key}がcountsと一致しません`);
+    }
+  }
+  if (json.schemaVersion >= 4) {
+    for (const [key, expectedCount] of [
+      ["reservationManagementTokens", reservationManagementTokens],
+      ["reservationIdempotencyRecords", reservationIdempotencyRecords],
+    ]) {
+      if (!Array.isArray(json[key]) || json[key].length !== expectedCount) {
+        throw new Error(`バックアップAPI応答の${key}がcountsと一致しません`);
+      }
+    }
+  }
+  const sanitizedPayload = sanitizeExportPayload(json);
 
   const runAt = now.toISOString();
-  const backupFileName = `reservations-${createTimestampLabel(now)}.json`;
+  const backupFileName = `reservations-${createTimestampLabel(now)}.json.enc`;
   const backupFilePath = path.join(outputDir, backupFileName);
   const latestRunPath = path.join(outputDir, "latest-run.json");
 
@@ -217,27 +318,56 @@ async function main() {
     await fs.chmod(outputDir, 0o700);
 
     const exportPayload = {
-      schemaVersion: 1,
+      ...sanitizedPayload,
+      schemaVersion: LOCAL_BACKUP_SCHEMA_VERSION,
       exportedAt: runAt,
       counts: {
         reservations,
         businessDays,
         privateBlockAuditLogs,
+        businessDayAuditLogs,
+        reservationStatusAuditLogs,
+        reservationCorrectionAuditLogs,
+        reservationEmailOutbox,
+        reservationLineLinkTokens,
+        reservationManagementTokens,
+        reservationIdempotencyRecords,
+        notificationEvents,
       },
-      payload: json,
     };
 
-    await fs.writeFile(backupFilePath, `${JSON.stringify(exportPayload, null, 2)}\n`, "utf8");
+    const encrypted = encryptBackupPayload(exportPayload, encryptionConfig.secret, {
+      keyId: encryptionConfig.keyId,
+    });
+    await fs.writeFile(backupFilePath, `${encrypted}\n`, "utf8");
     await fs.chmod(backupFilePath, 0o600);
+    const encryptedFileSha256 = createHash("sha256").update(`${encrypted}\n`).digest("hex");
 
     const latestRun = {
-      schemaVersion: 1,
+      schemaVersion: LOCAL_BACKUP_SCHEMA_VERSION,
       runAt,
       backupFile: backupFilePath,
+      payloadSchemaVersion: json.schemaVersion,
+      checksumSha256: json.checksumSha256,
+      encryptedFileSha256,
+      encryption: {
+        format: BACKUP_ENCRYPTION_FORMAT,
+        encryptionVersion: BACKUP_ENCRYPTION_VERSION,
+        algorithm: BACKUP_ENCRYPTION_ALGORITHM,
+        keyId: encryptionConfig.keyId,
+      },
       counts: {
         reservations,
         businessDays,
         privateBlockAuditLogs,
+        businessDayAuditLogs,
+        reservationStatusAuditLogs,
+        reservationCorrectionAuditLogs,
+        reservationEmailOutbox,
+        reservationLineLinkTokens,
+        reservationManagementTokens,
+        reservationIdempotencyRecords,
+        notificationEvents,
       },
       dryRun: false,
     };
