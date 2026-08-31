@@ -123,7 +123,7 @@ describe("production-go regression contracts", () => {
       "FOR UPDATE TO %I USING (true) WITH CHECK (true)",
     );
     expect(operationalPolicyMigration).not.toMatch(/FOR (?:ALL|DELETE)/);
-    expect(verify).toContain("missing operational RLS policies");
+    expect(verify).toContain("missing required RLS policies");
   });
 
   it("serializes administrator private-block creation with reservation writes", () => {

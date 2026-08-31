@@ -121,6 +121,11 @@ TO bistro_app_runtime;
 
 > `GRANT` はRLSを迂回しません。接続roleがtable ownerでも `BYPASSRLS` roleでもない場合、切替前にそのruntime role向けの最小RLS policyを別migrationとしてレビュー・検証してください。権限SQLだけを先に適用して `DATABASE_URL` を切り替えないでください。
 
+`20260831183500_allow_runtime_business_policies` は上表のコマンド行列を
+`bistro_app_runtime` / `bistro_preview_runtime` のRLS policyへ反映します。
+`SELECT` / `INSERT` / `UPDATE` だけを作成し、`DELETE` / `ALL` policyは作成しません。
+`supabase/verify.sql` は表GRANTに加えて、この全行列のpolicy存在もfail-fastで確認します。
+
 ## Verification queries
 
 ```sql

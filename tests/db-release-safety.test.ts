@@ -382,6 +382,7 @@ describe("database release safety contracts", () => {
       "FAIL configured runtime role does not exist",
       "FAIL runtime role % missing required privileges",
       "FAIL runtime role % has forbidden privileges",
+      "FAIL runtime role % missing required RLS policies",
       "FAIL expired reservation LINE link token cleanup function is missing",
       "FAIL expired LINE link cleanup exposed to non-runtime roles",
     ]) {
@@ -406,7 +407,26 @@ describe("database release safety contracts", () => {
 
     expect(verifySql).toContain("current_setting('bistro.verify_runtime_role', true)");
     expect(verifySql).toContain("has_table_privilege(");
+    expect(verifySql).toContain("runtime_role::name = ANY(policy.roles)");
     expect(verifySql).toContain("constraint_record.confdeltype = 'r'");
+
+    const runtimePolicyMigration = readFileSync(
+      resolve(
+        repoRoot,
+        "prisma/migrations/20260831183500_allow_runtime_business_policies/migration.sql",
+      ),
+      "utf8",
+    );
+    for (const table of [
+      "Reservation",
+      "ReservationIdempotency",
+      "ReservationManagementToken",
+      "ReservationEmailOutbox",
+      "ReservationRateLimitEvent",
+    ]) {
+      expect(runtimePolicyMigration).toContain(`('${table}', ARRAY[`);
+    }
+    expect(runtimePolicyMigration).not.toMatch(/FOR\s+(DELETE|ALL)/i);
 
     const policiesSql = readFileSync(
       resolve(repoRoot, "supabase/rls-policies.sql"),

@@ -309,7 +309,7 @@ DECLARE
   missing_grants text[];
   forbidden_grants text[];
   forbidden_delete_policies text[];
-  missing_operational_policies text[];
+  missing_runtime_policies text[];
 BEGIN
   IF configured_runtime_role IS NOT NULL THEN
     SELECT role_record.rolname::text
@@ -455,6 +455,49 @@ BEGIN
 
     WITH required_policy(table_name, command_name) AS (
       VALUES
+        ('Reservation', 'SELECT'),
+        ('Reservation', 'INSERT'),
+        ('Reservation', 'UPDATE'),
+        ('BusinessDay', 'SELECT'),
+        ('BusinessDay', 'INSERT'),
+        ('BusinessDay', 'UPDATE'),
+        ('BusinessDayAuditLog', 'SELECT'),
+        ('BusinessDayAuditLog', 'INSERT'),
+        ('ReservationCorrectionAuditLog', 'SELECT'),
+        ('ReservationCorrectionAuditLog', 'INSERT'),
+        ('PrivateBlockAuditLog', 'SELECT'),
+        ('PrivateBlockAuditLog', 'INSERT'),
+        ('ReservationStatusAuditLog', 'SELECT'),
+        ('ReservationStatusAuditLog', 'INSERT'),
+        ('ReservationEmailOutbox', 'SELECT'),
+        ('ReservationEmailOutbox', 'INSERT'),
+        ('ReservationEmailOutbox', 'UPDATE'),
+        ('ReservationIdempotency', 'SELECT'),
+        ('ReservationIdempotency', 'INSERT'),
+        ('ReservationIdempotency', 'UPDATE'),
+        ('ReservationLineLinkToken', 'SELECT'),
+        ('ReservationLineLinkToken', 'INSERT'),
+        ('ReservationLineLinkToken', 'UPDATE'),
+        ('ReservationManagementToken', 'SELECT'),
+        ('ReservationManagementToken', 'INSERT'),
+        ('ReservationManagementToken', 'UPDATE'),
+        ('NotificationEvent', 'SELECT'),
+        ('NotificationEvent', 'INSERT'),
+        ('NotificationEvent', 'UPDATE'),
+        ('LineWebhookInbox', 'SELECT'),
+        ('LineWebhookInbox', 'INSERT'),
+        ('LineWebhookInbox', 'UPDATE'),
+        ('ReservationRateLimitEvent', 'SELECT'),
+        ('ReservationRateLimitEvent', 'INSERT'),
+        ('LineFriend', 'SELECT'),
+        ('LineFriend', 'INSERT'),
+        ('LineFriend', 'UPDATE'),
+        ('LineCustomerLink', 'SELECT'),
+        ('LineCustomerLink', 'INSERT'),
+        ('LineCustomerLink', 'UPDATE'),
+        ('DailyJournalEntry', 'SELECT'),
+        ('DailyJournalEntry', 'INSERT'),
+        ('DailyJournalEntry', 'UPDATE'),
         ('SchedulerHeartbeat', 'SELECT'),
         ('SchedulerHeartbeat', 'INSERT'),
         ('SchedulerHeartbeat', 'UPDATE'),
@@ -466,7 +509,7 @@ BEGIN
       format('%s:%s', required.table_name, required.command_name)
       ORDER BY required.table_name, required.command_name
     )
-    INTO missing_operational_policies
+    INTO missing_runtime_policies
     FROM required_policy required
     WHERE NOT EXISTS (
       SELECT 1
@@ -477,10 +520,10 @@ BEGIN
         AND runtime_role::name = ANY(policy.roles)
     );
 
-    IF coalesce(cardinality(missing_operational_policies), 0) > 0 THEN
-      RAISE EXCEPTION 'FAIL runtime role % missing operational RLS policies: %',
+    IF coalesce(cardinality(missing_runtime_policies), 0) > 0 THEN
+      RAISE EXCEPTION 'FAIL runtime role % missing required RLS policies: %',
         runtime_role,
-        array_to_string(missing_operational_policies, ', ');
+        array_to_string(missing_runtime_policies, ', ');
     END IF;
 
     RAISE NOTICE 'PASS runtime role grants: %', runtime_role;
