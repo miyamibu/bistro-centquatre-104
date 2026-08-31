@@ -10,6 +10,7 @@ function readSource(relativePath: string) {
 const layoutSource = readSource("src/app/layout.tsx");
 const appShellSource = readSource("src/components/app-shell.tsx");
 const homePageSource = readSource("src/app/page.tsx");
+const contactSource = readSource("src/lib/contact.ts");
 
 const indexedRouteMetadataSources: Record<string, string> = {
   "/": "src/app/layout.tsx",
@@ -147,5 +148,13 @@ describe("public layout regression contracts", () => {
     for (const relativePath of ["src/app/access/page.tsx", "src/app/legal/page.tsx"]) {
       expect(readSource(relativePath), relativePath).toContain("min-h-11");
     }
+  });
+
+  it("uses identical public contact values during server render and hydration", () => {
+    expect(contactSource).not.toContain('typeof window === "undefined"');
+    expect(contactSource).toContain("process.env.NEXT_PUBLIC_CONTACT_PHONE_DISPLAY");
+    expect(contactSource).toContain(
+      "process.env.CONTACT_PHONE_DISPLAY ?? CONTACT_PHONE_DISPLAY",
+    );
   });
 });
