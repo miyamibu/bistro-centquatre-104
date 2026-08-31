@@ -309,6 +309,7 @@ DECLARE
   missing_grants text[];
   forbidden_grants text[];
   forbidden_delete_policies text[];
+  missing_operational_policies text[];
 BEGIN
   IF configured_runtime_role IS NOT NULL THEN
     SELECT role_record.rolname::text
@@ -450,6 +451,36 @@ BEGIN
       RAISE EXCEPTION 'FAIL runtime role % has forbidden DELETE policies: %',
         runtime_role,
         array_to_string(forbidden_delete_policies, ', ');
+    END IF;
+
+    WITH required_policy(table_name, command_name) AS (
+      VALUES
+        ('SchedulerHeartbeat', 'SELECT'),
+        ('SchedulerHeartbeat', 'INSERT'),
+        ('SchedulerHeartbeat', 'UPDATE'),
+        ('OutboxDrainAuditLog', 'SELECT'),
+        ('OutboxDrainAuditLog', 'INSERT'),
+        ('OutboxDrainAuditLog', 'UPDATE')
+    )
+    SELECT array_agg(
+      format('%s:%s', required.table_name, required.command_name)
+      ORDER BY required.table_name, required.command_name
+    )
+    INTO missing_operational_policies
+    FROM required_policy required
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM pg_policies policy
+      WHERE policy.schemaname = 'public'
+        AND policy.tablename = required.table_name
+        AND policy.cmd = required.command_name
+        AND runtime_role::name = ANY(policy.roles)
+    );
+
+    IF coalesce(cardinality(missing_operational_policies), 0) > 0 THEN
+      RAISE EXCEPTION 'FAIL runtime role % missing operational RLS policies: %',
+        runtime_role,
+        array_to_string(missing_operational_policies, ', ');
     END IF;
 
     RAISE NOTICE 'PASS runtime role grants: %', runtime_role;

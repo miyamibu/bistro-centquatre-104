@@ -100,7 +100,11 @@ describe("production-go regression contracts", () => {
     const migration = source("prisma/migrations/20260826090000_add_scheduler_heartbeat/migration.sql");
     const privilegeMigration = source("prisma/migrations/20260826091000_enforce_runtime_minimum_privileges/migration.sql");
     const policyMigration = source("prisma/migrations/20260826092000_drop_runtime_delete_policy/migration.sql");
+    const operationalPolicyMigration = source(
+      "prisma/migrations/20260831014000_allow_runtime_operational_audit_writes/migration.sql",
+    );
     const policies = source("supabase/rls-policies.sql");
+    const verify = source("supabase/verify.sql");
 
     expect(migration).toContain('ALTER TABLE "SchedulerHeartbeat" ENABLE ROW LEVEL SECURITY');
     expect(migration).toContain('ALTER TABLE "OutboxDrainAuditLog" ENABLE ROW LEVEL SECURITY');
@@ -113,6 +117,13 @@ describe("production-go regression contracts", () => {
     expect(privilegeMigration).toContain('"ReservationLineLinkToken"');
     expect(privilegeMigration).toContain('"OutboxDrainAuditLog"');
     expect(policyMigration).toContain('DROP POLICY IF EXISTS "bistro_rt_reservationlinelinktoken_delete"');
+    expect(operationalPolicyMigration).toContain("FOR SELECT TO %I USING (true)");
+    expect(operationalPolicyMigration).toContain("FOR INSERT TO %I WITH CHECK (true)");
+    expect(operationalPolicyMigration).toContain(
+      "FOR UPDATE TO %I USING (true) WITH CHECK (true)",
+    );
+    expect(operationalPolicyMigration).not.toMatch(/FOR (?:ALL|DELETE)/);
+    expect(verify).toContain("missing operational RLS policies");
   });
 
   it("serializes administrator private-block creation with reservation writes", () => {
