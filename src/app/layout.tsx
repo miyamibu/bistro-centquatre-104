@@ -3,11 +3,6 @@ import "./globals.css";
 import { AppShell } from "@/components/app-shell";
 import { createPageMetadata, SITE_URL } from "@/lib/seo";
 
-const netlifyEdgeHydrationGuard = `document.querySelectorAll('meta[name="hosting-provider"],meta[name="netlify-deploy"]').forEach((node) => node.remove());
-Array.from(document.head.childNodes).forEach((node) => {
-  if (node.nodeType === Node.COMMENT_NODE && node.textContent?.includes("This site is hosted on Netlify.")) node.remove();
-});`;
-
 export const metadata: Metadata = {
   ...createPageMetadata("/"),
   metadataBase: new URL(SITE_URL),
@@ -29,7 +24,6 @@ Do not put personal data in query strings.
   return (
     <html lang="ja">
       <head>
-        <script dangerouslySetInnerHTML={{ __html: netlifyEdgeHydrationGuard }} />
         <link rel="alternate" type="text/plain" href="/llms.txt" />
         <link rel="alternate" type="text/html" href="/agents" />
         <link rel="alternate" type="application/json" href="/api/agent" />
