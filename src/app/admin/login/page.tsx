@@ -50,8 +50,7 @@ export default function AdminLoginPage() {
     }
     setState("submitting");
     setErrorMessage("");
-    const callbackUrl = new URL("/auth/callback", window.location.origin);
-    callbackUrl.searchParams.set("next", "/admin/password-reset");
+    const callbackUrl = new URL("/auth/recovery", window.location.origin);
     const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
       redirectTo: callbackUrl.toString(),
     });
