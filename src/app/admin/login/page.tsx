@@ -4,7 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase-client";
 
-type LoginState = "idle" | "submitting" | "mfa" | "error";
+type LoginState = "idle" | "submitting" | "mfa" | "recovery-sent" | "error";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -29,7 +29,8 @@ export default function AdminLoginPage() {
     if (factorsError) throw factorsError;
     const factor = factors.totp.find((item) => item.status === "verified");
     if (!factor) {
-      throw new Error("MFA未登録です。管理者にTOTP登録を依頼してください。");
+      router.replace("/admin/mfa/setup" as Parameters<typeof router.replace>[0]);
+      return;
     }
     const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({
       factorId: factor.id,
@@ -38,6 +39,28 @@ export default function AdminLoginPage() {
     setFactorId(factor.id);
     setChallengeId(challenge.id);
     setState("mfa");
+  }
+
+  async function sendPasswordRecovery() {
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail) {
+      setState("error");
+      setErrorMessage("メールアドレスを入力してください。");
+      return;
+    }
+    setState("submitting");
+    setErrorMessage("");
+    const callbackUrl = new URL("/auth/callback", window.location.origin);
+    callbackUrl.searchParams.set("next", "/admin/password-reset");
+    const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+      redirectTo: callbackUrl.toString(),
+    });
+    if (error) {
+      setState("error");
+      setErrorMessage(error.message);
+      return;
+    }
+    setState("recovery-sent");
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -50,14 +73,7 @@ export default function AdminLoginPage() {
         password,
       });
       if (error) throw error;
-      const { data: assurance, error: assuranceError } =
-        await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-      if (assuranceError) throw assuranceError;
-      if (assurance.nextLevel === "aal2") {
-        await beginMfa();
-      } else {
-        throw new Error("管理アカウントのMFAが必須です。");
-      }
+      await beginMfa();
     } catch (error) {
       setState("error");
       setErrorMessage(error instanceof Error ? error.message : "ログインに失敗しました。");
@@ -150,8 +166,21 @@ export default function AdminLoginPage() {
             >
               {isSubmitting ? "確認中..." : "ログイン"}
             </button>
+            <button
+              type="button"
+              disabled={isSubmitting}
+              onClick={sendPasswordRecovery}
+              className="min-h-11 w-full rounded-full border border-[#7a5528] bg-white px-4 py-2 font-semibold text-[#7a5528] disabled:opacity-60"
+            >
+              パスワードを設定・再設定
+            </button>
           </form>
         )}
+        {state === "recovery-sent" ? (
+          <p role="status" className="rounded-md bg-[#f4efe8] px-3 py-2 text-sm text-[#4a3121]">
+            パスワード設定メールを送信しました。メール内のリンクから続けてください。
+          </p>
+        ) : null}
         {state === "error" ? (
           <p role="alert" className="rounded-md bg-[#fff1f1] px-3 py-2 text-sm text-[#8f2a2a]">
             {errorMessage}

@@ -32,6 +32,10 @@ function isLoginPath(pathname: string) {
   return pathname === "/admin/login" || pathname.startsWith("/admin/login/");
 }
 
+function isStaffEnrollmentPath(pathname: string) {
+  return pathname === "/admin/password-reset" || pathname === "/admin/mfa/setup";
+}
+
 function copyResponseCookies(source: NextResponse, target: NextResponse) {
   for (const cookie of source.cookies.getAll()) {
     target.cookies.set(cookie);
@@ -141,10 +145,12 @@ export async function middleware(request: NextRequest) {
       return authFailure(request, supabaseResponse, pathname, "STAFF_ROLE_REQUIRED");
     }
 
-    const { data: assurance, error: assuranceError } =
-      await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (assuranceError || assurance.currentLevel !== "aal2") {
-      return authFailure(request, supabaseResponse, pathname, "MFA_REQUIRED");
+    if (!isStaffEnrollmentPath(pathname)) {
+      const { data: assurance, error: assuranceError } =
+        await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (assuranceError || assurance.currentLevel !== "aal2") {
+        return authFailure(request, supabaseResponse, pathname, "MFA_REQUIRED");
+      }
     }
   }
 

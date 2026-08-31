@@ -158,4 +158,27 @@ describe("middleware staff auth boundary", () => {
     expect(backupResponse.status).toBe(200);
     expect(createServerClientMock).not.toHaveBeenCalled();
   });
+
+  it("allows only the password-reset and MFA-enrollment pages at aal1 for a staff identity", async () => {
+    arrangeAuth({ role: "ADMIN", aal: "aal1" });
+
+    const passwordReset = await middleware(request("http://localhost:3000/admin/password-reset"));
+    expect(passwordReset.status).toBe(200);
+
+    const mfaSetup = await middleware(request("http://localhost:3000/admin/mfa/setup"));
+    expect(mfaSetup.status).toBe(200);
+
+    const protectedPage = await middleware(request("http://localhost:3000/admin/reservations"));
+    expect(protectedPage.status).toBe(307);
+    expect(protectedPage.headers.get("location")).toContain("error=mfa_required");
+  });
+
+  it("does not allow an unprivileged authenticated identity into enrollment pages", async () => {
+    arrangeAuth({ aal: "aal1" });
+
+    const response = await middleware(request("http://localhost:3000/admin/mfa/setup"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain("error=staff_role_required");
+  });
 });
