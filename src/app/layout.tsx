@@ -3,7 +3,10 @@ import "./globals.css";
 import { AppShell } from "@/components/app-shell";
 import { createPageMetadata, SITE_URL } from "@/lib/seo";
 
-const netlifyEdgeHydrationGuard = `document.querySelectorAll('meta[name="hosting-provider"],meta[name="netlify-deploy"]').forEach((node) => node.remove());`;
+const netlifyEdgeHydrationGuard = `document.querySelectorAll('meta[name="hosting-provider"],meta[name="netlify-deploy"]').forEach((node) => node.remove());
+Array.from(document.head.childNodes).forEach((node) => {
+  if (node.nodeType === Node.COMMENT_NODE && node.textContent?.includes("This site is hosted on Netlify.")) node.remove();
+});`;
 
 export const metadata: Metadata = {
   ...createPageMetadata("/"),
