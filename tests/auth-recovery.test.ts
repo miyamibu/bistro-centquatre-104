@@ -12,10 +12,10 @@ describe("Supabase password recovery handoff", () => {
     const recovery = source("src/app/auth/recovery/page.tsx");
 
     expect(login).toContain('new URL("/auth/recovery", window.location.origin)');
-    expect(recovery).toContain('event === "PASSWORD_RECOVERY"');
-    expect(recovery).toContain('event === "SIGNED_IN"');
+    expect(recovery).toContain('fragment.get("type") === "recovery"');
+    expect(recovery).toContain("supabase.auth.setSession");
     expect(recovery).toContain("supabase.auth.getSession()");
-    expect(recovery).toContain('router.replace("/admin/password-reset"');
-    expect(recovery).toContain("subscription.unsubscribe()");
+    expect(recovery).toContain("window.history.replaceState");
+    expect(recovery).toContain('window.location.replace("/admin/password-reset")');
   });
 });

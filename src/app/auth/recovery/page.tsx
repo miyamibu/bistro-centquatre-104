@@ -1,55 +1,48 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase-client";
 
 export default function AuthRecoveryPage() {
-  const router = useRouter();
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
     let active = true;
-    let completed = false;
 
-    function continueToPasswordReset() {
-      if (!active || completed) return;
-      completed = true;
-      router.replace("/admin/password-reset" as Parameters<typeof router.replace>[0]);
-      router.refresh();
-    }
+    async function establishRecoverySession() {
+      const fragment = new URLSearchParams(window.location.hash.slice(1));
+      const accessToken = fragment.get("access_token");
+      const refreshToken = fragment.get("refresh_token");
+      const isRecovery = fragment.get("type") === "recovery";
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      if ((event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") && session) {
-        continueToPasswordReset();
+      if (window.location.hash) {
+        window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
       }
-    });
 
-    void supabase.auth.getSession().then(({ data, error }) => {
-      if (!active || completed) return;
-      if (error) {
+      const result =
+        isRecovery && accessToken && refreshToken
+          ? await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+          : await supabase.auth.getSession();
+
+      if (!active) return;
+      if (result.error || !result.data.session) {
         setErrorMessage("回復セッションを確認できませんでした。新しい回復メールを発行してください。");
         return;
       }
-      if (data.session) {
-        continueToPasswordReset();
+
+      window.location.replace("/admin/password-reset");
+    }
+
+    void establishRecoverySession().catch(() => {
+      if (active) {
+        setErrorMessage("回復リンクを確認できませんでした。新しい回復メールを発行してください。");
       }
     });
 
-    const timeout = window.setTimeout(() => {
-      if (active && !completed) {
-        setErrorMessage("回復リンクを確認できませんでした。新しい回復メールを発行してください。");
-      }
-    }, 10_000);
-
     return () => {
       active = false;
-      window.clearTimeout(timeout);
-      subscription.unsubscribe();
     };
-  }, [router]);
+  }, []);
 
   return (
     <main className="mx-auto flex min-h-[70vh] max-w-md items-center px-4 py-12">
