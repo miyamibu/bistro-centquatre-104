@@ -1,8 +1,8 @@
 // Prisma schema for Bistro reservation system
 
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+  provider = "prisma-client-js"
+  engineType = "client"
 }
 
 datasource db {
@@ -66,6 +66,7 @@ enum ReservationEmailOutboxStatus {
 enum ReservationEmailNotificationType {
   RESERVATION_CONFIRMATION
   CUSTOMER_CONFIRMATION
+  RESERVATION_CHANGED_CUSTOMER
   RESERVATION_CANCELLED_CUSTOMER
   RESERVATION_NOSHOW_CUSTOMER
 }

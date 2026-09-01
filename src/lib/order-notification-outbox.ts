@@ -33,6 +33,13 @@ class OutboxDurabilityError extends Error {
   }
 }
 
+class OrderCancelledSuppressed extends Error {
+  constructor() {
+    super("ORDER_CANCELLED");
+    this.name = "OrderCancelledSuppressed";
+  }
+}
+
 function isOutboxDurabilityError(error: unknown): error is OutboxDurabilityError {
   return error instanceof OutboxDurabilityError;
 }
@@ -79,6 +86,7 @@ type OrderEmailItem = {
 
 type OrderEmailRow = {
   id: string;
+  status: string;
   customer_name: string;
   email: string;
   phone: string;
@@ -248,7 +256,6 @@ async function markOutboxSent(id: string, claimToken: string) {
       sent_at: new Date().toISOString(),
       locked_until: null,
       claim_token: null,
-      next_attempt_at: null,
       last_error: null,
     })
     .eq("id", id)
@@ -257,6 +264,23 @@ async function markOutboxSent(id: string, claimToken: string) {
     .select("id")
     .maybeSingle();
   requireFencedUpdate("ORDER_NOTIFICATION_OUTBOX_MARK_SENT_FAILED", data, error);
+}
+
+async function suppressCancelledOrderOutbox(id: string, claimToken: string) {
+  const { data, error } = await supabaseServer
+    .from("order_notification_outbox")
+    .update({
+      status: "DEAD_LETTER" satisfies OutboxStatus,
+      locked_until: null,
+      claim_token: null,
+      last_error: "ORDER_CANCELLED",
+    })
+    .eq("id", id)
+    .eq("claim_token", claimToken)
+    .eq("status", "PROCESSING")
+    .select("id")
+    .maybeSingle();
+  requireFencedUpdate("ORDER_NOTIFICATION_OUTBOX_CANCEL_SUPPRESSION_FAILED", data, error);
 }
 
 async function markOutboxFailed(
@@ -273,7 +297,7 @@ async function markOutboxFailed(
     .update({
       status,
       attempts,
-      next_attempt_at: status === "DEAD_LETTER" ? null : nextAttemptAt.toISOString(),
+      ...(status === "PENDING" ? { next_attempt_at: nextAttemptAt.toISOString() } : {}),
       locked_until: null,
       claim_token: null,
       last_error: message.slice(0, 1000),
@@ -299,7 +323,7 @@ async function sendOutboxRow(row: OutboxRow, requestId: string, claimToken: stri
   const { data: orderRow, error: orderError } = await supabaseServer
     .from("orders")
     .select(
-      "id, customer_name, email, phone, zip_code, prefecture, city, address, building, items, total, payment_method, store_visit_date"
+      "id, status, customer_name, email, phone, zip_code, prefecture, city, address, building, items, total, payment_method, store_visit_date"
     )
     .eq("id", row.order_id)
     .maybeSingle();
@@ -311,6 +335,10 @@ async function sendOutboxRow(row: OutboxRow, requestId: string, claimToken: stri
   }
 
   const order = orderRow as OrderEmailRow;
+  if (order.status === "CANCELLED") {
+    await suppressCancelledOrderOutbox(row.id, claimToken);
+    throw new OrderCancelledSuppressed();
+  }
   let bankAccount: BankAccountRow | undefined;
   if (order.payment_method === "BANK_TRANSFER") {
     const { data, error } = await supabaseServer
@@ -466,6 +494,14 @@ export async function processOrderConfirmationOutboxForOrder(input: {
     await markOutboxSent(row.id, claimToken);
     return { processed: true, sent: true, reason: "SENT" as const, durableState: true };
   } catch (error) {
+    if (error instanceof OrderCancelledSuppressed) {
+      return {
+        processed: true,
+        sent: false,
+        reason: "ORDER_CANCELLED" as const,
+        durableState: true,
+      };
+    }
     if (isOutboxDurabilityError(error)) {
       logError("orders.notification_outbox.durability_failed", {
         requestId: input.requestId,

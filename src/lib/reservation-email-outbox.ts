@@ -8,6 +8,7 @@ import {
 } from "@prisma/client";
 import {
   sendCustomerReservationEmail,
+  sendCustomerReservationChangedEmail,
   sendCustomerReservationStatusEmail,
   sendReservationEmail,
 } from "@/lib/email";
@@ -33,6 +34,7 @@ const DELIVERY_TIMEOUT_MS = 7_000;
 const IDEMPOTENCY_KEY_PREFIX = "reservation-email-outbox/";
 type ReservationDeliveryResult =
   | Awaited<ReturnType<typeof sendCustomerReservationEmail>>
+  | Awaited<ReturnType<typeof sendCustomerReservationChangedEmail>>
   | Awaited<ReturnType<typeof sendCustomerReservationStatusEmail>>
   | Awaited<ReturnType<typeof sendReservationEmail>>;
 
@@ -286,6 +288,55 @@ export async function enqueueReservationStatusEmail(
   });
 }
 
+export async function enqueueReservationChangedEmail(
+  tx: Prisma.TransactionClient,
+  reservationId: string,
+) {
+  const notificationType =
+    ReservationEmailNotificationType.RESERVATION_CHANGED_CUSTOMER;
+  const existing = await tx.reservationEmailOutbox.findUnique({
+    where: { reservationId_notificationType: { reservationId, notificationType } },
+    select: { id: true, status: true },
+  });
+  if (existing?.status === ReservationEmailOutboxStatus.PROCESSING) {
+    throw new ReservationEmailOutboxBusyError();
+  }
+  if (!existing) {
+    return tx.reservationEmailOutbox.create({
+      data: {
+        reservationId,
+        notificationType,
+        status: ReservationEmailOutboxStatus.PENDING,
+        attempts: 0,
+        maxAttempts: MAX_ATTEMPTS,
+        nextAttemptAt: new Date(),
+        providerIdempotencyKey: `${IDEMPOTENCY_KEY_PREFIX}change/${randomUUID()}`,
+      },
+      select: { id: true, status: true },
+    });
+  }
+  const updated = await tx.reservationEmailOutbox.updateMany({
+    where: { id: existing.id, status: { not: ReservationEmailOutboxStatus.PROCESSING } },
+    data: {
+      status: ReservationEmailOutboxStatus.PENDING,
+      attempts: 0,
+      nextAttemptAt: new Date(),
+      claimedAt: null,
+      lockedUntil: null,
+      claimToken: null,
+      sentAt: null,
+      providerMessageId: null,
+      providerIdempotencyKey: `${IDEMPOTENCY_KEY_PREFIX}change/${randomUUID()}`,
+      lastError: null,
+    },
+  });
+  if (updated.count !== 1) throw new ReservationEmailOutboxBusyError();
+  return tx.reservationEmailOutbox.findUniqueOrThrow({
+    where: { id: existing.id },
+    select: { id: true, status: true },
+  });
+}
+
 /** Prevent a still-pending confirmation from being sent after cancellation. */
 export async function suppressReservationConfirmationEmail(
   tx: Prisma.TransactionClient,
@@ -516,6 +567,7 @@ async function processOutboxItem(
 
   const customerDeliveryTypes = new Set<ReservationEmailNotificationType>([
     ReservationEmailNotificationType.CUSTOMER_CONFIRMATION,
+    ReservationEmailNotificationType.RESERVATION_CHANGED_CUSTOMER,
     ReservationEmailNotificationType.RESERVATION_CANCELLED_CUSTOMER,
     ReservationEmailNotificationType.RESERVATION_NOSHOW_CUSTOMER,
   ]);
@@ -525,6 +577,8 @@ async function processOutboxItem(
   ]);
   const isCustomerDelivery = customerDeliveryTypes.has(claimed.notificationType);
   const isCustomerStatusDelivery = customerStatusDeliveryTypes.has(claimed.notificationType);
+  const isCustomerChangeDelivery =
+    claimed.notificationType === ReservationEmailNotificationType.RESERVATION_CHANGED_CUSTOMER;
 
   if (!isCustomerStatusDelivery && reservation.status !== ReservationStatus.CONFIRMED) {
     return markSkipped(`SKIPPED_RESERVATION_STATUS_${reservation.status}`);
@@ -560,6 +614,11 @@ async function processOutboxItem(
             claimed.notificationType === ReservationEmailNotificationType.RESERVATION_CANCELLED_CUSTOMER
               ? "CANCELLED"
               : "NOSHOW",
+          idempotencyKey: providerIdempotencyKey,
+        })
+      : isCustomerChangeDelivery
+      ? sendCustomerReservationChangedEmail({
+          reservation,
           idempotencyKey: providerIdempotencyKey,
         })
       : isCustomerDelivery

@@ -12,6 +12,7 @@ import {
   encryptBackupPayload,
   resolveBackupEncryptionConfig,
 } from "../backup-encryption.mjs";
+import { reservationBackupChecksumMatches } from "../../src/lib/reservation-backup-checksum.mjs";
 
 const DEFAULT_ROUTE_PATH = "/api/admin/backups/reservations/export";
 const LOCAL_BACKUP_SCHEMA_VERSION = 4;
@@ -267,6 +268,10 @@ async function main() {
     throw new Error("バックアップAPI応答のchecksumSha256が不正です");
   }
 
+  if (!reservationBackupChecksumMatches(json, json.checksumSha256, json.schemaVersion)) {
+    throw new Error("バックアップAPI応答のchecksumSha256がpayloadと一致しません");
+  }
+
   const reservations = readCount(counts, "reservations");
   const businessDays = readCount(counts, "businessDays");
   const privateBlockAuditLogs = readCount(counts, "privateBlockAuditLogs");
@@ -320,6 +325,7 @@ async function main() {
     const exportPayload = {
       ...sanitizedPayload,
       schemaVersion: LOCAL_BACKUP_SCHEMA_VERSION,
+      sourcePayloadSchemaVersion: json.schemaVersion,
       exportedAt: runAt,
       counts: {
         reservations,

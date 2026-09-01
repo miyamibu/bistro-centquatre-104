@@ -9,6 +9,7 @@ const ensureReservationSchemaReadyMock = vi.hoisted(() => vi.fn());
 const findReservationByIdCompatMock = vi.hoisted(() => vi.fn());
 const updateReservationStatusCompatMock = vi.hoisted(() => vi.fn());
 const getStaffAuthMock = vi.hoisted(() => vi.fn());
+const enqueueReservationLineLifecycleMock = vi.hoisted(() => vi.fn());
 const txClient = {
   reservationStatusAuditLog: {
     create: auditLogCreateMock,
@@ -41,6 +42,12 @@ vi.mock("@/lib/staff-auth", () => ({
   getStaffAuth: getStaffAuthMock,
 }));
 
+vi.mock("@/lib/after-response", () => ({ scheduleAfterResponse: vi.fn() }));
+vi.mock("@/lib/reservation-line-outbox", () => ({
+  enqueueReservationLineLifecycle: enqueueReservationLineLifecycleMock,
+  processReservationLineLifecycleEvent: vi.fn(),
+}));
+
 const originalEnv = { ...process.env };
 
 beforeEach(() => {
@@ -56,6 +63,7 @@ beforeEach(() => {
     email: "staff@example.com",
     role: "ADMIN",
   });
+  enqueueReservationLineLifecycleMock.mockResolvedValue({ id: "line-event-1" });
   ensureReservationSchemaReadyMock.mockResolvedValue(undefined);
   transactionMock.mockImplementation(async (callback: (tx: unknown) => unknown) => callback(txClient));
   findReservationByIdCompatMock.mockReset();
@@ -92,6 +100,8 @@ function reservationBase(status: ReservationStatus): {
   servicePeriod: "DINNER";
   reservationType: ReservationType;
   status: ReservationStatus;
+  lineUserId: string;
+  updatedAt: Date;
 } {
   return {
     id: "res-1",
@@ -99,6 +109,8 @@ function reservationBase(status: ReservationStatus): {
     servicePeriod: "DINNER",
     reservationType: ReservationType.NORMAL,
     status,
+    lineUserId: `U${"0".repeat(32)}`,
+    updatedAt: new Date("2026-08-01T00:00:00.000Z"),
   };
 }
 

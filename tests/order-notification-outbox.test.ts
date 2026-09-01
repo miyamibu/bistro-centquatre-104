@@ -72,6 +72,7 @@ function orderQuery() {
   return query({
     data: {
       id: "order-1",
+      status: "PENDING_PAYMENT",
       customer_name: "Taro",
       email: "taro@example.com",
       phone: "09000000000",
@@ -106,6 +107,37 @@ afterEach(() => {
 });
 
 describe("processOrderConfirmationOutboxForOrder", () => {
+  it("dead-letters a cancelled order confirmation without sending", async () => {
+    const pendingQuery = query({ data: [baseRow()], error: null });
+    const claimQuery = query({ data: { id: "outbox-1", claim_token: "claim-token-1" }, error: null });
+    const suppressQuery = query({ data: { id: "outbox-1" }, error: null });
+    fromMock
+      .mockReturnValueOnce(pendingQuery)
+      .mockReturnValueOnce(claimQuery)
+      .mockReturnValueOnce(query({ data: { id: "order-1", status: "CANCELLED" }, error: null }))
+      .mockReturnValueOnce(suppressQuery);
+
+    const { processOrderConfirmationOutboxForOrder } = await loadProcessor();
+    const result = await processOrderConfirmationOutboxForOrder({
+      orderId: "order-1",
+      requestId: "req-cancelled",
+    });
+
+    expect(result).toMatchObject({
+      processed: true,
+      sent: false,
+      reason: "ORDER_CANCELLED",
+      durableState: true,
+    });
+    expect(sendOrderConfirmationEmailMock).not.toHaveBeenCalled();
+    expect(suppressQuery.update).toHaveBeenCalledWith({
+      status: "DEAD_LETTER",
+      locked_until: null,
+      claim_token: null,
+      last_error: "ORDER_CANCELLED",
+    });
+    expect(suppressQuery.update.mock.calls[0]?.[0]).not.toHaveProperty("next_attempt_at");
+  });
   it("uses the same due-or-expired condition when selecting claimable rows", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-28T08:00:00.000Z"));
@@ -237,6 +269,14 @@ describe("processOrderConfirmationOutboxForOrder", () => {
       ["claim_token", "claim-token-1"],
       ["status", "PROCESSING"],
     ]);
+    expect(markSentQuery.update).toHaveBeenCalledWith({
+      status: "SENT",
+      sent_at: expect.any(String),
+      locked_until: null,
+      claim_token: null,
+      last_error: null,
+    });
+    expect(markSentQuery.update.mock.calls[0]?.[0]).not.toHaveProperty("next_attempt_at");
     expect(sendOrderConfirmationEmailMock).toHaveBeenNthCalledWith(
       1,
       expect.any(Object),
@@ -365,6 +405,47 @@ describe("processOrderConfirmationOutboxForOrder", () => {
       ["claim_token", "claim-token-1"],
       ["status", "PROCESSING"],
     ]);
+  });
+
+  it("dead-letters a terminal delivery failure without writing a nullable retry time", async () => {
+    const pendingQuery = query({
+      data: [baseRow({ attempts: 4, max_attempts: 5 })],
+      error: null,
+    });
+    const claimQuery = query({ data: { id: "outbox-1", claim_token: "claim-token-1" }, error: null });
+    const markFailedQuery = query({ data: { id: "outbox-1" }, error: null });
+    fromMock
+      .mockReturnValueOnce(pendingQuery)
+      .mockReturnValueOnce(claimQuery)
+      .mockReturnValueOnce(orderQuery())
+      .mockReturnValueOnce(markFailedQuery);
+    sendOrderConfirmationEmailMock.mockResolvedValueOnce({
+      sent: false,
+      reason: "SEND_FAILED",
+      target: "customer",
+      provider: "resend",
+    });
+
+    const { processOrderConfirmationOutboxForOrder } = await loadProcessor();
+    const result = await processOrderConfirmationOutboxForOrder({
+      orderId: "order-1",
+      requestId: "req-dead-letter",
+    });
+
+    expect(result).toMatchObject({
+      processed: true,
+      sent: false,
+      reason: "DEAD_LETTER",
+      durableState: true,
+    });
+    expect(markFailedQuery.update).toHaveBeenCalledWith({
+      status: "DEAD_LETTER",
+      attempts: 5,
+      locked_until: null,
+      claim_token: null,
+      last_error: "ORDER_NOTIFICATION_FAILED:SEND_FAILED",
+    });
+    expect(markFailedQuery.update.mock.calls[0]?.[0]).not.toHaveProperty("next_attempt_at");
   });
 
   it("returns durableState false and does not reset the row when a partial-state write loses the claim", async () => {

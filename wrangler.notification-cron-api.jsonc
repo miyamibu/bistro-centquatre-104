@@ -1,0 +1,1 @@
+{"$schema":"./node_modules/wrangler/config-schema.json","name":"bistro-centquatre-104-notification-cron-api","main":"workers/notification-cron-api.mjs","workers_dev":false,"compatibility_date":"2026-09-01","compatibility_flags":["nodejs_compat"],"hyperdrive":[{"binding":"HYPERDRIVE","id":"dde5685c4fed4b00ba7e7ea62c2816bb"}],"vars":{"CLOUDFLARE_WORKER_RUNTIME":"true"}}

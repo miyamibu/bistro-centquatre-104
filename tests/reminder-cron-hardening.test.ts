@@ -53,6 +53,15 @@ vi.mock("@/lib/line-notification", () => ({
   claimAndSendLineReminder: claimAndSendLineReminderMock,
 }));
 
+vi.mock("@/lib/reservation-line-outbox", () => ({
+  processReservationLineLifecycleOutbox: vi.fn().mockResolvedValue({
+    scanned: 0,
+    sent: 0,
+    failed: 0,
+    skipped: 0,
+  }),
+}));
+
 vi.mock("@/lib/scheduler-heartbeat", () => schedulerHeartbeatMocks);
 
 vi.mock("@/lib/logger", () => ({

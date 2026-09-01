@@ -12,10 +12,9 @@ vi.mock("@/lib/reservation-rate-limit", () => ({
 vi.mock("@/lib/order-actions", () => ({
   buildIdempotencyHash: vi.fn(),
   createQuotedHoldExpiry: vi.fn(),
-  executeCreateOrderQuoteAction: vi.fn(),
+  executeAtomicOrderMutation: vi.fn(),
   hashHumanToken: vi.fn(),
   normalizeOrderPaymentMethod: vi.fn(),
-  runIdempotentMutation: vi.fn(),
 }));
 
 function buildRequest() {

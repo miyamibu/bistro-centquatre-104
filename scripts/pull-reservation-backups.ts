@@ -29,6 +29,10 @@ import {
   encryptBackupPayload,
   resolveBackupEncryptionConfig,
 } from "./backup-encryption.mjs";
+import {
+  computeReservationDayBackupChecksum,
+  reservationBackupChecksumMatches,
+} from "../src/lib/reservation-backup-checksum.mjs";
 
 const DEFAULT_ROUTE_PATH = "/api/admin/backups/reservations/export";
 const BACKUP_SCHEMA_VERSION = 4;
@@ -394,6 +398,10 @@ async function fetchChunk(
     throw new Error(`バックアップAPIレスポンス検証失敗: ${issue.path.join(".")} ${issue.message}`);
   }
 
+  if (!reservationBackupChecksumMatches(parsed.data, parsed.data.checksumSha256)) {
+    throw new Error("バックアップAPIレスポンス検証失敗: checksumSha256 がpayloadと一致しません");
+  }
+
   return parsed.data;
 }
 
@@ -593,9 +601,14 @@ async function main() {
         },
       };
 
+      const persistedDayPayload = {
+        ...dayPayload,
+        contentChecksumSha256: computeReservationDayBackupChecksum(dayPayload),
+      };
+
       if (!dryRun) {
         const dayPath = path.join(daysDir, `${date}.json.enc`);
-        const encrypted = encryptBackupPayload(dayPayload, encryptionConfig.secret, {
+        const encrypted = encryptBackupPayload(persistedDayPayload, encryptionConfig.secret, {
           keyId: encryptionConfig.keyId,
         });
         await fs.writeFile(dayPath, `${encrypted}\n`, "utf8");
