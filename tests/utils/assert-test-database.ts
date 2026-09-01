@@ -1,3 +1,4 @@
+import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 
 export type DestructiveTestDbAccess = {
@@ -87,10 +88,6 @@ export function createTestPrismaClient() {
   }
 
   return new PrismaClient({
-    datasources: {
-      db: {
-        url: testDatabaseUrl,
-      },
-    },
+    adapter: new PrismaPg({ connectionString: testDatabaseUrl }),
   });
 }
