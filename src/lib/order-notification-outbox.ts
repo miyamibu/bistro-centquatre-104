@@ -256,7 +256,6 @@ async function markOutboxSent(id: string, claimToken: string) {
       sent_at: new Date().toISOString(),
       locked_until: null,
       claim_token: null,
-      next_attempt_at: null,
       last_error: null,
     })
     .eq("id", id)
@@ -274,7 +273,6 @@ async function suppressCancelledOrderOutbox(id: string, claimToken: string) {
       status: "DEAD_LETTER" satisfies OutboxStatus,
       locked_until: null,
       claim_token: null,
-      next_attempt_at: null,
       last_error: "ORDER_CANCELLED",
     })
     .eq("id", id)
@@ -299,7 +297,7 @@ async function markOutboxFailed(
     .update({
       status,
       attempts,
-      next_attempt_at: status === "DEAD_LETTER" ? null : nextAttemptAt.toISOString(),
+      ...(status === "PENDING" ? { next_attempt_at: nextAttemptAt.toISOString() } : {}),
       locked_until: null,
       claim_token: null,
       last_error: message.slice(0, 1000),
