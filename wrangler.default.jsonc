@@ -1,0 +1,36 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "bistro-centquatre-104-web",
+  "main": "workers/default.mjs",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "hyperdrive": [
+    { "binding": "HYPERDRIVE", "id": "dde5685c4fed4b00ba7e7ea62c2816bb" }
+  ],
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "services": [
+    { "binding": "OPERATIONS_API", "service": "bistro-centquatre-104-operations-api" },
+    { "binding": "OUTBOX_API", "service": "bistro-centquatre-104-outbox-api" },
+    { "binding": "BACKUP_API", "service": "bistro-centquatre-104-backup-api" },
+    { "binding": "ADMIN_RESERVATIONS_API", "service": "bistro-centquatre-104-admin-reservations-api" },
+    { "binding": "ADMIN_RESERVATION_DETAIL_API", "service": "bistro-centquatre-104-admin-reservation-detail-api" },
+    { "binding": "ADMIN_RESERVATION_CORRECTION_API", "service": "bistro-centquatre-104-admin-reservation-correction-api" },
+    { "binding": "CRON_API", "service": "bistro-centquatre-104-cron-api" },
+    { "binding": "NOTIFICATION_CRON_API", "service": "bistro-centquatre-104-notification-cron-api" },
+    { "binding": "ORDER_NOTIFICATION_CRON_API", "service": "bistro-centquatre-104-order-notification-cron-api" },
+    { "binding": "ORDERS_API", "service": "bistro-centquatre-104-orders-api" },
+    { "binding": "ORDER_ACTIONS_API", "service": "bistro-centquatre-104-order-actions-api" },
+    { "binding": "ORDER_RECEIPT_API", "service": "bistro-centquatre-104-order-receipt-api" },
+    { "binding": "DASHBOARD_API", "service": "bistro-centquatre-104-dashboard-api" },
+    { "binding": "LINE_API", "service": "bistro-centquatre-104-line-api" },
+    { "binding": "MEDIA_API", "service": "bistro-centquatre-104-media-api" },
+    { "binding": "PUBLIC_API", "service": "bistro-centquatre-104-public-api" },
+    { "binding": "CONTACT_API", "service": "bistro-centquatre-104-contact-api" },
+    { "binding": "AGENT_API", "service": "bistro-centquatre-104-agent-api" },
+    { "binding": "AVAILABILITY_API", "service": "bistro-centquatre-104-availability-api" },
+    { "binding": "RESERVATIONS_API", "service": "bistro-centquatre-104-reservations-api" },
+    { "binding": "ADMIN_APPLICATION", "service": "bistro-centquatre-104-admin-application" },
+    { "binding": "CUSTOMER_APPLICATION", "service": "bistro-centquatre-104-customer-application" }
+  ],
+  "vars": { "CLOUDFLARE_WORKER_RUNTIME": "true" }
+}

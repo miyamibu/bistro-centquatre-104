@@ -1,0 +1,1 @@
+{"$schema":"./node_modules/wrangler/config-schema.json","name":"bistro-centquatre-104-media-api","main":"workers/media-api.mjs","workers_dev":false,"compatibility_date":"2026-09-01","compatibility_flags":["nodejs_compat"],"vars":{"CLOUDFLARE_WORKER_RUNTIME":"true"}}

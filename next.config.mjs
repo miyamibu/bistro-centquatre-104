@@ -3,6 +3,7 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isProduction = process.env.NODE_ENV === "production";
+const isCloudflareWorker = process.env.CLOUDFLARE_WORKER_RUNTIME === "true";
 
 const contentSecurityPolicy = [
   "default-src 'self'",
@@ -24,6 +25,13 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   typedRoutes: true,
+  serverExternalPackages: ["@prisma/client", ".prisma/client"],
+  webpack(config) {
+    if (isCloudflareWorker) {
+      config.resolve.alias.puppeteer = path.join(__dirname, "src/lib/cloudflare-puppeteer-disabled.ts");
+    }
+    return config;
+  },
   outputFileTracingRoot: __dirname,
   outputFileTracingExcludes: {
     // This route is intentionally disabled in production before its dynamic
@@ -83,6 +91,7 @@ const nextConfig = {
     ];
   },
   images: {
+    unoptimized: isCloudflareWorker,
     remotePatterns: [
       {
         protocol: "https",

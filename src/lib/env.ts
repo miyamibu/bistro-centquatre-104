@@ -89,7 +89,6 @@ const envSchema = z
     if (value.NODE_ENV !== "production" || isBuildTimeValidationBypass()) return;
 
     const requiredInProduction: Array<keyof typeof value> = [
-      "DATABASE_URL",
       "NEXT_PUBLIC_SUPABASE_URL",
       "NEXT_PUBLIC_SUPABASE_ANON_KEY",
       "SUPABASE_SERVICE_ROLE_KEY",
@@ -98,6 +97,10 @@ const envSchema = z
       "RATE_LIMIT_HASH_SECRET",
       "BANK_ACCOUNT_HISTORY_ENCRYPTION_KEY",
     ];
+
+    if (process.env.CLOUDFLARE_WORKER_RUNTIME !== "true") {
+      requiredInProduction.unshift("DATABASE_URL");
+    }
 
     for (const key of requiredInProduction) {
       if (!value[key]) {

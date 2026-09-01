@@ -1,8 +1,8 @@
 // Prisma schema for Bistro reservation system
 
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+  provider = "prisma-client-js"
+  engineType = "client"
 }
 
 datasource db {

@@ -12,6 +12,8 @@ node_modules/
 
 # Next.js build outputs
 /.next
+/.open-next
+/.wrangler*/
 /out
 /.turbo
 /dist
