@@ -6,7 +6,6 @@ const authClient = vi.hoisted(() => ({
     getUser: vi.fn(),
     getSession: vi.fn(),
     signOut: vi.fn(),
-    mfa: { getAuthenticatorAssuranceLevel: vi.fn() },
   },
 }));
 
@@ -36,7 +35,6 @@ function arrangeAuth(options: {
   sessionStartedAt?: number;
   iat?: number;
   user?: boolean;
-  assuranceLevel?: "aal1" | "aal2";
 } = {}) {
   authClient.auth.getUser.mockResolvedValue({
     data: {
@@ -62,10 +60,6 @@ function arrangeAuth(options: {
     error: null,
   });
   authClient.auth.signOut.mockResolvedValue({ error: null });
-  authClient.auth.mfa.getAuthenticatorAssuranceLevel.mockResolvedValue({
-    data: { currentLevel: options.assuranceLevel ?? "aal2", nextLevel: "aal2" },
-    error: null,
-  });
 }
 
 function request(url: string) {
@@ -133,7 +127,7 @@ describe("middleware staff auth boundary", () => {
     await expect(response.json()).resolves.toMatchObject({ code: "SESSION_EXPIRED" });
   });
 
-  it("passes an AAL2 staff session and keeps backup export on bearer auth", async () => {
+  it("passes a password-only staff session and keeps backup export on bearer auth", async () => {
     arrangeAuth({ role: "STAFF" });
     const protectedResponse = await middleware(request("http://localhost:3000/dashboard/orders"));
     expect(protectedResponse.status).toBe(200);
@@ -149,26 +143,11 @@ describe("middleware staff auth boundary", () => {
     expect(createServerClientMock).not.toHaveBeenCalled();
   });
 
-  it("rejects password-only sessions and allows AAL2 on protected routes", async () => {
-    arrangeAuth({ role: "ADMIN", assuranceLevel: "aal1" });
-
-    const passwordOnlyPage = await middleware(request("http://localhost:3000/admin/reservations"));
-    expect(passwordOnlyPage.status).toBe(307);
-    expect(passwordOnlyPage.headers.get("location")).toContain("error=aal2_required");
-
-    arrangeAuth({ role: "ADMIN", assuranceLevel: "aal2" });
+  it("allows a password-only staff session on protected routes", async () => {
+    arrangeAuth({ role: "ADMIN" });
 
     const protectedPage = await middleware(request("http://localhost:3000/admin/reservations"));
     expect(protectedPage.status).toBe(200);
-  });
-
-  it("allows a staff AAL1 session to reach only the MFA enrollment page", async () => {
-    arrangeAuth({ role: "STAFF", assuranceLevel: "aal1" });
-
-    const response = await middleware(request("http://localhost:3000/admin/mfa/setup"));
-
-    expect(response.status).toBe(200);
-    expect(authClient.auth.mfa.getAuthenticatorAssuranceLevel).not.toHaveBeenCalled();
   });
 
   it("does not allow an unprivileged authenticated identity into enrollment pages", async () => {

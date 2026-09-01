@@ -34,7 +34,7 @@ export default function AdminMfaSetupPage() {
         return;
       }
       if (factors.totp.some((factor) => factor.status === "verified")) {
-        router.replace("/admin/login?error=aal2_required&next=/admin/reservations");
+        router.replace("/admin/login?next=/admin/reservations");
         return;
       }
       if (!cancelled) setLoading(false);
@@ -103,7 +103,7 @@ export default function AdminMfaSetupPage() {
             認証アプリでQRコードを読み取り、表示された6桁コードを入力してください。
           </p>
           <p className="mt-2 text-sm leading-6 text-[#6b5644]">
-            管理画面を利用するにはTOTP登録と、ログインごとの6桁コード確認が必須です。
+            この登録は任意です。通常の管理画面ログインではTOTPコードを入力する必要はありません。
           </p>
         </div>
         {loading ? <p role="status">アカウントを確認しています...</p> : null}

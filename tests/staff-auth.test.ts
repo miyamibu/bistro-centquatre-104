@@ -5,7 +5,6 @@ const authClient = vi.hoisted(() => ({
     getUser: vi.fn(),
     getSession: vi.fn(),
     signOut: vi.fn(),
-    mfa: { getAuthenticatorAssuranceLevel: vi.fn() },
   },
 }));
 
@@ -42,7 +41,6 @@ function arrangeAuth(options: {
   role?: string;
   sessionStartedAt?: number;
   iat?: number;
-  assuranceLevel?: "aal1" | "aal2";
 } = {}) {
   authClient.auth.getUser.mockResolvedValue({ data: { user: user(options.role) }, error: null });
   authClient.auth.getSession.mockResolvedValue({
@@ -57,10 +55,6 @@ function arrangeAuth(options: {
     error: null,
   });
   authClient.auth.signOut.mockResolvedValue({ error: null });
-  authClient.auth.mfa.getAuthenticatorAssuranceLevel.mockResolvedValue({
-    data: { currentLevel: options.assuranceLevel ?? "aal2", nextLevel: "aal2" },
-    error: null,
-  });
 }
 
 describe("individual staff authentication", () => {
@@ -73,7 +67,7 @@ describe("individual staff authentication", () => {
     vi.restoreAllMocks();
   });
 
-  it("accepts a STAFF user with AAL2 and returns the authenticated identity", async () => {
+  it("accepts a STAFF user with password authentication and returns the authenticated identity", async () => {
     arrangeAuth({ role: "STAFF" });
 
     await expect(getStaffAuth()).resolves.toMatchObject({
@@ -91,12 +85,12 @@ describe("individual staff authentication", () => {
     await expect(getStaffAuth("ADMIN")).resolves.toBeNull();
   });
 
-  it("rejects a missing role and a password-only staff session", async () => {
+  it("rejects a missing role but accepts a password-only staff session", async () => {
     arrangeAuth();
     await expect(getStaffAuth()).resolves.toBeNull();
 
-    arrangeAuth({ role: "STAFF", assuranceLevel: "aal1" });
-    await expect(getStaffAuth()).resolves.toBeNull();
+    arrangeAuth({ role: "STAFF" });
+    await expect(getStaffAuth()).resolves.toMatchObject({ role: "STAFF" });
   });
 
   it("signs out and rejects a session older than the configured TTL", async () => {
