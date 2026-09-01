@@ -9,6 +9,10 @@ import {
   getBackupEnvelopeMetadata,
   resolveBackupEncryptionConfig,
 } from "./backup-encryption.mjs";
+import {
+  computeReservationDayBackupChecksum,
+  reservationBackupChecksumMatches,
+} from "../src/lib/reservation-backup-checksum.mjs";
 
 function parseArgs(argv) {
   const args = new Map();
@@ -67,6 +71,34 @@ function validatePayload(payload) {
   if (payload.schemaVersion >= 4) {
     for (const key of ["reservationManagementTokens", "reservationIdempotencyRecords"]) {
       assertCount(payload, key);
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, "contentChecksumSha256")) {
+    if (
+      typeof payload.contentChecksumSha256 !== "string" ||
+      !/^[0-9a-f]{64}$/.test(payload.contentChecksumSha256) ||
+      computeReservationDayBackupChecksum(payload) !== payload.contentChecksumSha256
+    ) {
+      throw new Error("復旧対象payloadのcontentChecksumSha256が内容と一致しません");
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "checksumSha256")) {
+    if (typeof payload.checksumSha256 !== "string") {
+      throw new Error("復旧対象payloadのchecksumSha256が内容と一致しません");
+    }
+    const preferredVersion = Number.isInteger(payload.sourcePayloadSchemaVersion)
+      ? payload.sourcePayloadSchemaVersion
+      : payload.schemaVersion;
+    const candidates = [...new Set([preferredVersion, payload.schemaVersion, 3, 2])].filter(
+      (version) => [2, 3, 4].includes(version),
+    );
+    if (
+      !candidates.some((version) =>
+        reservationBackupChecksumMatches(payload, payload.checksumSha256, version),
+      )
+    ) {
+      throw new Error("復旧対象payloadのchecksumSha256が内容と一致しません");
     }
   }
   return {

@@ -72,6 +72,7 @@ function orderQuery() {
   return query({
     data: {
       id: "order-1",
+      status: "PENDING_PAYMENT",
       customer_name: "Taro",
       email: "taro@example.com",
       phone: "09000000000",
@@ -106,6 +107,37 @@ afterEach(() => {
 });
 
 describe("processOrderConfirmationOutboxForOrder", () => {
+  it("dead-letters a cancelled order confirmation without sending", async () => {
+    const pendingQuery = query({ data: [baseRow()], error: null });
+    const claimQuery = query({ data: { id: "outbox-1", claim_token: "claim-token-1" }, error: null });
+    const suppressQuery = query({ data: { id: "outbox-1" }, error: null });
+    fromMock
+      .mockReturnValueOnce(pendingQuery)
+      .mockReturnValueOnce(claimQuery)
+      .mockReturnValueOnce(query({ data: { id: "order-1", status: "CANCELLED" }, error: null }))
+      .mockReturnValueOnce(suppressQuery);
+
+    const { processOrderConfirmationOutboxForOrder } = await loadProcessor();
+    const result = await processOrderConfirmationOutboxForOrder({
+      orderId: "order-1",
+      requestId: "req-cancelled",
+    });
+
+    expect(result).toMatchObject({
+      processed: true,
+      sent: false,
+      reason: "ORDER_CANCELLED",
+      durableState: true,
+    });
+    expect(sendOrderConfirmationEmailMock).not.toHaveBeenCalled();
+    expect(suppressQuery.update).toHaveBeenCalledWith({
+      status: "DEAD_LETTER",
+      locked_until: null,
+      claim_token: null,
+      next_attempt_at: null,
+      last_error: "ORDER_CANCELLED",
+    });
+  });
   it("uses the same due-or-expired condition when selecting claimable rows", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-28T08:00:00.000Z"));

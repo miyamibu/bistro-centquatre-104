@@ -20,6 +20,8 @@ const mocks = vi.hoisted(() => ({
   logInfo: vi.fn(),
   logError: vi.fn(),
   logWarn: vi.fn(),
+  enqueueReservationLineLifecycle: vi.fn(),
+  scheduleAfterResponse: vi.fn(),
 }));
 
 const originalEnv = { ...process.env };
@@ -70,6 +72,15 @@ vi.mock("@/lib/logger", () => ({
   logWarn: mocks.logWarn,
 }));
 
+vi.mock("@/lib/after-response", () => ({
+  scheduleAfterResponse: mocks.scheduleAfterResponse,
+}));
+
+vi.mock("@/lib/reservation-line-outbox", () => ({
+  enqueueReservationLineLifecycle: mocks.enqueueReservationLineLifecycle,
+  processReservationLineLifecycleEvent: vi.fn(),
+}));
+
 function buildRequest(body: Record<string, unknown>) {
   return new NextRequest("http://localhost:3000/api/reservations/manage", {
     method: "POST",
@@ -94,6 +105,8 @@ function reservation(status: ReservationStatus) {
     customerEmail: "customer@example.com",
     note: "ディナー: 席のみ",
     status,
+    lineUserId: `U${"0".repeat(32)}`,
+    updatedAt: new Date("2026-08-01T00:00:00.000Z"),
   };
 }
 
@@ -123,6 +136,7 @@ beforeEach(() => {
   };
   mocks.schemaReady.mockResolvedValue(undefined);
   mocks.enforceScopedRateLimit.mockResolvedValue(true);
+  mocks.enqueueReservationLineLifecycle.mockResolvedValue({ id: "line-event-1" });
   mocks.transaction.mockImplementation((callback: (tx: unknown) => unknown) => callback(txClient));
   mocks.tokenFindUnique.mockResolvedValue(tokenRow(reservation(ReservationStatus.CONFIRMED)));
   mocks.tokenUpdateMany.mockResolvedValue({ count: 1 });

@@ -25,12 +25,10 @@ import {
 } from "@/lib/validation";
 import {
   buildIdempotencyHash,
+  computePaymentExpiry,
+  executeAtomicOrderMutation,
   executeAtomicTerminalOrderAction,
-  executeConfirmHumanAction,
-  executeMarkCollectedAction,
-  executeMarkPaidAction,
-  executeSetPaymentMethodAction,
-  runIdempotentMutation,
+  hashHumanToken,
 } from "@/lib/order-actions";
 import { getRequestId, logError } from "@/lib/logger";
 
@@ -98,7 +96,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         }
 
         const actorKey = `user:${id}`;
-        const result = await runIdempotentMutation({
+        const result = await executeAtomicOrderMutation({
           scope: "POST:/api/orders/{id}/actions:CONFIRM_HUMAN",
           actorKey,
           idempotencyKey,
@@ -108,15 +106,14 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
             expectedVersion,
             payload: payloadResult.data,
           }),
-          execute: () =>
-            executeConfirmHumanAction({
-              orderId: id,
-              expectedVersion,
-              humanToken: payloadResult.data.humanToken,
-              actorId: actorKey,
-              requestId,
-              idempotencyKey,
-            }),
+          operation: "CONFIRM_HUMAN",
+          mutationArgs: {
+            orderId: id,
+            expectedVersion,
+            tokenHash: hashHumanToken(payloadResult.data.humanToken),
+            actorId: actorKey,
+            requestId,
+          },
         });
 
         return NextResponse.json(result.body, { status: result.status });
@@ -150,7 +147,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         }
 
         const actorKey = `user:${id}`;
-        const result = await runIdempotentMutation({
+        const result = await executeAtomicOrderMutation({
           scope: "POST:/api/orders/{id}/actions:SET_PAYMENT_METHOD",
           actorKey,
           idempotencyKey,
@@ -160,27 +157,29 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
             expectedVersion,
             payload: payloadResult.data,
           }),
-          execute: async () => {
-            const actionResult = await executeSetPaymentMethodAction({
-              orderId: id,
-              expectedVersion,
-              paymentMethod: payloadResult.data.paymentMethod,
-              storeVisitDate: payloadResult.data.storeVisitDate ?? null,
-              humanToken: payloadResult.data.humanToken,
-              actorType: "user",
-              actorId: actorKey,
-              requestId,
-              idempotencyKey,
-            });
-
-            return {
-              ...(actionResult as Record<string, unknown>),
-              notification: {
-                sent: false,
-                status: "QUEUED",
-                durableState: true,
-              },
-            };
+          operation: "SET_PAYMENT_METHOD",
+          mutationArgs: {
+            orderId: id,
+            expectedVersion,
+            paymentMethod: payloadResult.data.paymentMethod,
+            storeVisitDate: payloadResult.data.storeVisitDate ?? null,
+            tokenHash: payloadResult.data.humanToken
+              ? hashHumanToken(payloadResult.data.humanToken)
+              : null,
+            expiresAt: computePaymentExpiry(
+              payloadResult.data.paymentMethod,
+              payloadResult.data.storeVisitDate ?? null,
+            ),
+            actorType: "user",
+            actorId: actorKey,
+            requestId,
+          },
+          responseContext: {
+            notification: {
+              sent: false,
+              status: "QUEUED",
+              durableState: true,
+            },
           },
         });
 
@@ -257,7 +256,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
             });
           }
 
-          const result = await runIdempotentMutation({
+          const result = await executeAtomicOrderMutation({
             scope: "POST:/api/orders/{id}/actions:MARK_PAID",
             actorKey,
             idempotencyKey,
@@ -267,18 +266,17 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
               expectedVersion,
               payload: payloadResult.data,
             }),
-            execute: () =>
-              executeMarkPaidAction({
-                orderId: id,
-                expectedVersion,
-                paymentReference: payloadResult.data.paymentReference,
-                receivedAmount: payloadResult.data.receivedAmount,
-                actorType: "admin",
-                actorId: actorKey,
-                requestId,
-                idempotencyKey,
-                adminNote: payloadResult.data.adminNote,
-              }),
+            operation: "MARK_PAID",
+            mutationArgs: {
+              orderId: id,
+              expectedVersion,
+              paymentReference: payloadResult.data.paymentReference,
+              receivedAmount: payloadResult.data.receivedAmount,
+              actorType: "admin",
+              actorId: actorKey,
+              requestId,
+              adminNote: payloadResult.data.adminNote ?? null,
+            },
           });
 
           return NextResponse.json(result.body, { status: result.status });
@@ -296,7 +294,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
             });
           }
 
-          const result = await runIdempotentMutation({
+          const result = await executeAtomicOrderMutation({
             scope: "POST:/api/orders/{id}/actions:MARK_COLLECTED",
             actorKey,
             idempotencyKey,
@@ -306,17 +304,16 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
               expectedVersion,
               payload: payloadResult.data,
             }),
-            execute: () =>
-              executeMarkCollectedAction({
-                orderId: id,
-                expectedVersion,
-                receivedAmount: payloadResult.data.receivedAmount,
-                actorType: "admin",
-                actorId: actorKey,
-                requestId,
-                idempotencyKey,
-                adminNote: payloadResult.data.adminNote,
-              }),
+            operation: "MARK_COLLECTED",
+            mutationArgs: {
+              orderId: id,
+              expectedVersion,
+              receivedAmount: payloadResult.data.receivedAmount,
+              actorType: "admin",
+              actorId: actorKey,
+              requestId,
+              adminNote: payloadResult.data.adminNote ?? null,
+            },
           });
 
           return NextResponse.json(result.body, { status: result.status });

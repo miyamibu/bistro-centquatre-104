@@ -39,6 +39,10 @@ export async function getStaffAuth(requiredRole: StaffRole = "STAFF"): Promise<S
       return null;
     }
 
+    const { data: assurance, error: assuranceError } =
+      await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (assuranceError || assurance.currentLevel !== "aal2") return null;
+
     const role = getRole(data.user);
     if (!role || !hasStaffRole(role, requiredRole)) return null;
 

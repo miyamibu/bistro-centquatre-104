@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { computeReservationBackupChecksum } from "@/lib/reservation-backup-checksum.mjs";
 
 const originalEnv = { ...process.env };
 
@@ -405,5 +406,6 @@ describe("backup export auth boundary", () => {
     });
 
     expect(body.reservationEmailOutbox[0]).not.toHaveProperty("claimToken");
+    expect(body.checksumSha256).toBe(computeReservationBackupChecksum(body));
   });
 });

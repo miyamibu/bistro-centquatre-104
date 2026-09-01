@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
+import { computeReservationBackupChecksum } from "../src/lib/reservation-backup-checksum.mjs";
 
 const execFileAsync = promisify(execFile);
 const tempDirs: string[] = [];
@@ -34,8 +35,7 @@ describe("reservation backup export script", () => {
     const payload = {
       schemaVersion: 4,
       generatedAt: "2026-08-26T00:00:00.000Z",
-      range: { from: "2026-08-26", to: "2026-08-26" },
-      checksumSha256: "a".repeat(64),
+      range: { from: "2026-08-26", to: "2026-08-26", days: 1 },
       counts: {
         reservations: 0,
         businessDays: 0,
@@ -61,6 +61,7 @@ describe("reservation backup export script", () => {
       reservationIdempotencyRecords: [],
       notificationEvents: [],
     };
+    Object.assign(payload, { checksumSha256: computeReservationBackupChecksum(payload) });
     const server = http.createServer((request, response) => {
       expect(request.headers.authorization).toBe("Bearer test-backup-export-secret");
       expect(request.headers["x-backup-export-secret"]).toBe("test-backup-export-secret");
@@ -107,5 +108,70 @@ describe("reservation backup export script", () => {
     });
     expect(createHash("sha256").update(encryptedBytes).digest("hex")).toBe(manifest.encryptedFileSha256);
     expect(encryptedBytes.at(-1)).toBe(0x0a);
+  });
+
+  it("fails closed before writing files when the API checksum does not match the payload", async () => {
+    const payload = {
+      schemaVersion: 4,
+      generatedAt: "2026-08-26T00:00:00.000Z",
+      range: { from: "2026-08-26", to: "2026-08-26", days: 1 },
+      checksumSha256: "a".repeat(64),
+      counts: {
+        reservations: 0,
+        businessDays: 0,
+        privateBlockAuditLogs: 0,
+        businessDayAuditLogs: 0,
+        reservationStatusAuditLogs: 0,
+        reservationCorrectionAuditLogs: 0,
+        reservationEmailOutbox: 0,
+        reservationLineLinkTokens: 0,
+        reservationManagementTokens: 0,
+        reservationIdempotencyRecords: 0,
+        notificationEvents: 0,
+      },
+      reservations: [],
+      businessDays: [],
+      privateBlockAuditLogs: [],
+      businessDayAuditLogs: [],
+      reservationStatusAuditLogs: [],
+      reservationCorrectionAuditLogs: [],
+      reservationEmailOutbox: [],
+      reservationLineLinkTokens: [],
+      reservationManagementTokens: [],
+      reservationIdempotencyRecords: [],
+      notificationEvents: [],
+    };
+    const server = http.createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify(payload));
+    });
+    const port = await listen(server);
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "bistro-backup-export-mismatch-"));
+    tempDirs.push(cwd);
+    const outputDir = path.join(cwd, "output");
+    const script = path.resolve(process.cwd(), "scripts/recovery/export-reservation-backup.mjs");
+
+    try {
+      await expect(
+        execFileAsync(
+          process.execPath,
+          [script, `--base-url=http://127.0.0.1:${port}`, `--out-dir=${outputDir}`, "--date=2026-08-26"],
+          {
+            cwd,
+            env: {
+              PATH: process.env.PATH,
+              NODE_ENV: "test",
+              BACKUP_EXPORT_SECRET: "test-backup-export-secret",
+              BACKUP_ENCRYPTION_KEYS_JSON: JSON.stringify({ v4test: "k".repeat(32) }),
+              BACKUP_ENCRYPTION_ACTIVE_KEY_ID: "v4test",
+            },
+          },
+        ),
+      ).rejects.toMatchObject({ code: 1 });
+    } finally {
+      await close(server);
+    }
+
+    await expect(fs.stat(outputDir)).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

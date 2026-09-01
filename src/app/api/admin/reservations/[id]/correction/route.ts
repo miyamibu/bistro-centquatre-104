@@ -16,6 +16,16 @@ import {
 } from "@/lib/reservation-compat";
 import { parseReservationNote } from "@/lib/reservation-note";
 import { updateAdminReservationSchema, zodFields } from "@/lib/validation";
+import { scheduleAfterResponse } from "@/lib/after-response";
+import {
+  enqueueReservationChangedEmail,
+  processReservationEmailOutboxEntries,
+  ReservationEmailOutboxBusyError,
+} from "@/lib/reservation-email-outbox";
+import {
+  enqueueReservationLineLifecycle,
+  processReservationLineLifecycleEvent,
+} from "@/lib/reservation-line-outbox";
 
 export const dynamic = "force-dynamic";
 
@@ -188,7 +198,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         }
 
         if (Object.keys(updateData).length === 0) {
-          return { current, next: current, changed: false };
+          return { current, next: current, changed: false, emailOutboxId: null, lineEventId: null };
         }
 
         const updatedCount = await tx.reservation.updateMany({
@@ -216,13 +226,52 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
           },
         });
 
-        return { current, next, changed: true };
+        const emailOutbox = next.customerEmail
+          ? await enqueueReservationChangedEmail(tx, next.id)
+          : null;
+        const lineEvent = await enqueueReservationLineLifecycle(tx, {
+          reservationId: next.id,
+          lineUserId: next.lineUserId,
+          type: "RESERVATION_CHANGED",
+          eventKey: next.updatedAt.toISOString(),
+        });
+
+        return {
+          current,
+          next,
+          changed: true,
+          emailOutboxId: emailOutbox?.id ?? null,
+          lineEventId: lineEvent?.id ?? null,
+        };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
 
+    if (result.emailOutboxId || result.lineEventId) {
+      scheduleAfterResponse(async () => {
+        if (result.emailOutboxId) {
+          await processReservationEmailOutboxEntries({
+            ids: [result.emailOutboxId],
+            requestId: `${requestId}:correction-email`,
+          });
+        }
+        if (result.lineEventId) {
+          await processReservationLineLifecycleEvent(
+            result.lineEventId,
+            "ADMIN_CORRECTION",
+          );
+        }
+      });
+    }
     return NextResponse.json({ ...result.next, correctionChanged: result.changed, requestId });
   } catch (error) {
+    if (error instanceof ReservationEmailOutboxBusyError) {
+      return correctionError(
+        "予約変更通知を送信中です。完了後にもう一度訂正してください",
+        error.code,
+        requestId,
+      );
+    }
     if (error instanceof Error && error.message === "RESERVATION_NOT_FOUND") {
       return correctionError("予約が見つかりません", "RESERVATION_NOT_FOUND", requestId, 404);
     }

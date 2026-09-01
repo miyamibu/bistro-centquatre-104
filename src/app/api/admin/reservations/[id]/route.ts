@@ -22,6 +22,11 @@ import {
   evaluateReservationStatusTransition,
   requiresOperatorForReservationStatusTransition,
 } from "@/lib/reservation-status";
+import { scheduleAfterResponse } from "@/lib/after-response";
+import {
+  enqueueReservationLineLifecycle,
+  processReservationLineLifecycleEvent,
+} from "@/lib/reservation-line-outbox";
 
 export const dynamic = "force-dynamic";
 
@@ -144,7 +149,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       }
 
       if (current.status === parsed.data.status) {
-        return { current, next: current };
+        return { current, next: current, lineEventId: null };
       }
 
       const privateBlockReleaseRequested =
@@ -240,6 +245,17 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         await enqueueReservationStatusEmail(tx, next.id, next.status);
       }
 
+      const lineEvent =
+        next.reservationType === ReservationType.NORMAL &&
+        next.status === ReservationStatus.CANCELLED
+          ? await enqueueReservationLineLifecycle(tx, {
+              reservationId: next.id,
+              lineUserId: next.lineUserId,
+              type: "RESERVATION_CANCELLED",
+              eventKey: next.updatedAt.toISOString(),
+            })
+          : null;
+
       if (privateBlockReleaseRequested) {
         await createPrivateBlockAuditLog(tx, {
           reservationId: next.id,
@@ -259,7 +275,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         });
       }
 
-      return { current, next };
+      return { current, next, lineEventId: lineEvent?.id ?? null };
     });
 
     if (!updated) {
@@ -288,6 +304,12 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
           updated.next.status === ReservationStatus.CANCELLED,
       },
     });
+
+    if (updated.lineEventId) {
+      scheduleAfterResponse(async () => {
+        await processReservationLineLifecycleEvent(updated.lineEventId!, "ADMIN_CANCEL");
+      });
+    }
 
     return NextResponse.json(updated.next);
   } catch (error) {

@@ -22,6 +22,7 @@ import {
   getLineMonthlyQuotaConsumption,
 } from "@/lib/line";
 import { claimAndSendLineReminder } from "@/lib/line-notification";
+import { processReservationLineLifecycleOutbox } from "@/lib/reservation-line-outbox";
 import {
   markSchedulerFailed,
   markSchedulerStarted,
@@ -96,6 +97,10 @@ async function executeReminderCron(input: {
   deadlineMs?: number;
 } = {}) {
   await ensureReservationSchemaReady(prisma);
+
+  // The same free, authenticated LINE cron drains durable change/cancellation
+  // events so a transient immediate-send failure is retried.
+  await processReservationLineLifecycleOutbox({ source: "CRON", limit: 10 });
 
   const today = todayJst();
   const tomorrow = addDays(today, 1);

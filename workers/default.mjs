@@ -29,11 +29,35 @@ function selectApplication(env, pathname) {
   return null;
 }
 
+function withReleaseSha(response, releaseSha) {
+  if (!releaseSha) return response;
+  const released = new Response(response.body, response);
+  released.headers.set("X-Bistro-Release-SHA", releaseSha);
+  return released;
+}
+
 export default {
   async fetch(request, env, ctx) {
     globalThis.__BISTRO_HYPERDRIVE_CONNECTION_STRING__ = env.HYPERDRIVE?.connectionString;
-    const application = selectApplication(env, new URL(request.url).pathname);
-    if (application) return application.fetch(request);
-    return runWithCloudflareRequestContext(request, env, ctx, () => handler(request, env, ctx));
+    const pathname = new URL(request.url).pathname;
+    if (pathname === "/api/release") {
+      return Response.json(
+        {
+          releaseSha: env.RELEASE_SHA ?? null,
+          workerVersionId: env.CF_VERSION_METADATA?.id ?? null,
+          deployedAt: env.CF_VERSION_METADATA?.timestamp ?? null,
+        },
+        {
+          headers: env.RELEASE_SHA
+            ? { "X-Bistro-Release-SHA": env.RELEASE_SHA, "Cache-Control": "no-store" }
+            : { "Cache-Control": "no-store" },
+        },
+      );
+    }
+    const application = selectApplication(env, pathname);
+    const response = application
+      ? await application.fetch(request)
+      : await runWithCloudflareRequestContext(request, env, ctx, () => handler(request, env, ctx));
+    return withReleaseSha(response, env.RELEASE_SHA);
   },
 };

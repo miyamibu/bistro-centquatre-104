@@ -230,6 +230,7 @@ where n.nspname = 'public'
     'mark_order_collected_action',
     'mark_order_shipped_action',
     'cancel_order_action',
+    'execute_atomic_order_mutation',
     'execute_terminal_order_action',
     'save_bank_account_with_history',
     'delete_bank_account_with_history',
@@ -277,6 +278,7 @@ with expected_columns(table_name, column_name) as (
     ('order_notification_outbox', 'customer_sent_at'),
     ('order_notification_outbox', 'admin_sent_at'),
     ('order_notification_outbox', 'admin_skipped_at'),
+    ('api_idempotency', 'claim_token'),
     ('api_idempotency', 'claim_expires_at'),
     ('ReservationEmailOutbox', 'claimToken'),
     ('ReservationEmailOutbox', 'lockedUntil'),
@@ -319,12 +321,14 @@ where routine_schema = 'public'
     'mark_order_collected_action',
     'mark_order_shipped_action',
     'cancel_order_action',
+    'execute_atomic_order_mutation',
     'execute_terminal_order_action'
   )
 order by routine_name;
 
 select
   to_regclass('public.order_notification_outbox') is not null as has_order_notification_outbox,
+  to_regprocedure('public.execute_atomic_order_mutation(text,text,text,text,text,jsonb,jsonb,integer)') is not null as has_execute_atomic_order_mutation_rpc,
   to_regprocedure('public.execute_terminal_order_action(text,text,text,text,uuid,integer,text,text,text,text,text,text)') is not null as has_execute_terminal_order_action_rpc,
   to_regprocedure('public.set_order_payment_method_action(uuid,integer,text,date,timestamp with time zone,text,text,text,text,text)') is not null as has_set_payment_method_rpc,
   to_regprocedure('public.save_bank_account_with_history(text,text,text,text,text,text,text,text,text,text,text,integer)') is not null as has_save_bank_account_rpc,
@@ -355,5 +359,145 @@ where migration_name in (
   '20260728093000_restrict_reservation_related_deletes'
 )
 order by migration_name;
+
+do $assert_order_release_shape$
+declare
+  unsafe_runtime_roles text[];
+  runtime_owned_tables text[];
+  missing_columns text[];
+  has_unique_identity boolean;
+begin
+  select array_agg(role_record.rolname order by role_record.rolname)
+  into unsafe_runtime_roles
+  from pg_roles role_record
+  where role_record.rolname in ('bistro_app_runtime', 'bistro_preview_runtime')
+    and (role_record.rolsuper or role_record.rolbypassrls);
+
+  if coalesce(cardinality(unsafe_runtime_roles), 0) > 0 then
+    raise exception 'FAIL runtime roles can bypass RLS: %',
+      array_to_string(unsafe_runtime_roles, ', ');
+  end if;
+
+  select array_agg(format('%s:%s', owner_role.rolname, table_class.relname)
+    order by owner_role.rolname, table_class.relname)
+  into runtime_owned_tables
+  from pg_class table_class
+  join pg_namespace table_namespace on table_namespace.oid = table_class.relnamespace
+  join pg_roles owner_role on owner_role.oid = table_class.relowner
+  where table_namespace.nspname = 'public'
+    and table_class.relkind in ('r', 'p')
+    and owner_role.rolname in ('bistro_app_runtime', 'bistro_preview_runtime')
+    and table_class.relname in (
+      'orders', 'order_history', 'order_actions', 'human_tokens',
+      'order_receipt_tokens', 'api_idempotency', 'order_notification_outbox',
+      'Reservation', 'ReservationEmailOutbox', 'ReservationIdempotency'
+    );
+
+  if coalesce(cardinality(runtime_owned_tables), 0) > 0 then
+    raise exception 'FAIL runtime roles own RLS-protected tables: %',
+      array_to_string(runtime_owned_tables, ', ');
+  end if;
+
+  with expected_columns(column_name, udt_name) as (
+    values ('claim_token', 'uuid'), ('claim_expires_at', 'timestamptz')
+  )
+  select array_agg(format('%s:%s', expected.column_name, expected.udt_name))
+  into missing_columns
+  from expected_columns expected
+  where not exists (
+    select 1
+    from information_schema.columns column_record
+    where column_record.table_schema = 'public'
+      and column_record.table_name = 'api_idempotency'
+      and column_record.column_name = expected.column_name
+      and column_record.udt_name = expected.udt_name
+  );
+
+  if coalesce(cardinality(missing_columns), 0) > 0 then
+    raise exception 'FAIL api_idempotency required columns missing or wrong type: %',
+      array_to_string(missing_columns, ', ');
+  end if;
+
+  select exists (
+    select 1
+    from pg_constraint constraint_record
+    where constraint_record.conrelid = 'public.api_idempotency'::regclass
+      and constraint_record.contype = 'u'
+      and (
+        select array_agg(attribute_record.attname order by key_record.ordinality)
+        from unnest(constraint_record.conkey) with ordinality key_record(attnum, ordinality)
+        join pg_attribute attribute_record
+          on attribute_record.attrelid = constraint_record.conrelid
+         and attribute_record.attnum = key_record.attnum
+      ) = array['scope', 'actor_key', 'idempotency_key']::name[]
+  ) into has_unique_identity;
+
+  if not has_unique_identity then
+    raise exception 'FAIL api_idempotency unique identity is missing';
+  end if;
+
+  if to_regclass('public.idx_api_idempotency_unfinalized_claim') is null then
+    raise exception 'FAIL api_idempotency unfinished-claim index is missing';
+  end if;
+end
+$assert_order_release_shape$;
+
+do $assert_order_rpc_security$
+declare
+  expected_signatures text[] := array[
+    'public.execute_atomic_order_mutation(text,text,text,text,text,jsonb,jsonb,integer)',
+    'public.execute_terminal_order_action(text,text,text,text,uuid,integer,text,text,text,text,text,text)',
+    'public.create_order_quote_with_receipt_action(text,text,text,text,text,text,text,text,jsonb,integer,timestamp with time zone,text,text,text,text,text,date,text)',
+    'public.confirm_order_human_action(uuid,integer,text,text,text,text)',
+    'public.set_order_payment_method_action(uuid,integer,text,date,timestamp with time zone,text,text,text,text,text)',
+    'public.mark_order_paid_action(uuid,integer,text,integer,text,text,text,text,text)',
+    'public.mark_order_collected_action(uuid,integer,integer,text,text,text,text,text)'
+  ];
+  signature text;
+  procedure_oid regprocedure;
+  security_definer boolean;
+  function_settings text;
+begin
+  foreach signature in array expected_signatures loop
+    procedure_oid := to_regprocedure(signature);
+    if procedure_oid is null then
+      raise exception 'FAIL required order RPC signature missing: %', signature;
+    end if;
+
+    select procedure.prosecdef, coalesce(array_to_string(procedure.proconfig, ', '), '')
+    into security_definer, function_settings
+    from pg_proc procedure
+    where procedure.oid = procedure_oid;
+
+    if security_definer then
+      raise exception 'FAIL order RPC must be SECURITY INVOKER: %', signature;
+    end if;
+
+    if exists (
+         select 1
+         from pg_proc acl_procedure
+         cross join lateral aclexplode(
+           coalesce(acl_procedure.proacl, acldefault('f', acl_procedure.proowner))
+         ) acl
+         where acl_procedure.oid = procedure_oid
+           and acl.grantee = 0
+           and acl.privilege_type = 'EXECUTE'
+       )
+       or has_function_privilege('anon', procedure_oid, 'EXECUTE')
+       or has_function_privilege('authenticated', procedure_oid, 'EXECUTE') then
+      raise exception 'FAIL order RPC is exposed outside service_role: %', signature;
+    end if;
+
+    if not has_function_privilege('service_role', procedure_oid, 'EXECUTE') then
+      raise exception 'FAIL service_role cannot execute order RPC: %', signature;
+    end if;
+
+    if signature like 'public.execute_atomic_order_mutation(%'
+       and function_settings not like '%search_path=pg_catalog, public%' then
+      raise exception 'FAIL atomic order RPC search_path is not pinned';
+    end if;
+  end loop;
+end
+$assert_order_rpc_security$;
 
 rollback;

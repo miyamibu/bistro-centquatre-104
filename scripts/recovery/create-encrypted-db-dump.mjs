@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -8,6 +8,7 @@ import path from "node:path";
 const outputDir = path.resolve(process.argv[2] || "backups/database-safety-dumps");
 const connectionString = process.env.DIRECT_URL?.trim() || process.env.DATABASE_URL?.trim();
 const encryptionKey = process.env.DB_DUMP_ENCRYPTION_KEY?.trim();
+const postgresImage = process.env.DB_DUMP_POSTGRES_IMAGE?.trim() || "postgres:17";
 
 if (!connectionString) throw new Error("DIRECT_URL_OR_DATABASE_URL_MISSING");
 if (!encryptionKey || encryptionKey.length < 32) throw new Error("DB_DUMP_ENCRYPTION_KEY_MISSING");
@@ -18,7 +19,8 @@ const finalPath = path.join(outputDir, `production-pre-migration-${timestamp}.du
 const partialPath = `${finalPath}.partial`;
 const manifestPath = `${finalPath}.json`;
 const postgresEnv = {
-  ...process.env,
+  PATH: process.env.PATH,
+  DOCKER_CONFIG: process.env.DOCKER_CONFIG,
   PGHOST: databaseUrl.hostname,
   PGPORT: databaseUrl.port || "5432",
   PGDATABASE: databaseUrl.pathname.replace(/^\//, ""),
@@ -26,6 +28,32 @@ const postgresEnv = {
   PGPASSWORD: decodeURIComponent(databaseUrl.password),
   PGSSLMODE: databaseUrl.searchParams.get("sslmode") || "require",
 };
+const encryptionEnv = {
+  PATH: process.env.PATH,
+  DB_DUMP_ENCRYPTION_KEY: encryptionKey,
+};
+
+function spawnPostgresTool(tool, args, options = {}) {
+  const envNames = options.withConnection
+    ? ["PGHOST", "PGPORT", "PGDATABASE", "PGUSER", "PGPASSWORD", "PGSSLMODE"]
+    : [];
+  return spawn(
+    "docker",
+    [
+      "run",
+      "--rm",
+      "-i",
+      ...envNames.flatMap((name) => ["--env", name]),
+      postgresImage,
+      tool,
+      ...args,
+    ],
+    {
+      env: options.withConnection ? postgresEnv : { PATH: process.env.PATH, DOCKER_CONFIG: process.env.DOCKER_CONFIG },
+      stdio: options.stdio,
+    },
+  );
+}
 
 function collectText(stream, maxBytes = 256 * 1024) {
   let value = "";
@@ -43,13 +71,41 @@ function waitFor(child) {
   });
 }
 
+async function readSourceCounts() {
+  const query = `select json_build_object(
+    'Reservation', (select count(*) from public."Reservation"),
+    'BusinessDay', (select count(*) from public."BusinessDay"),
+    'ReservationEmailOutbox', (select count(*) from public."ReservationEmailOutbox"),
+    'ReservationStatusAuditLog', (select count(*) from public."ReservationStatusAuditLog"),
+    'ReservationCorrectionAuditLog', (select count(*) from public."ReservationCorrectionAuditLog"),
+    'orders', (select count(*) from public.orders),
+    'order_actions', (select count(*) from public.order_actions),
+    'order_history', (select count(*) from public.order_history),
+    'order_notification_outbox', (select count(*) from public.order_notification_outbox),
+    'api_idempotency', (select count(*) from public.api_idempotency)
+  )`;
+  const child = spawnPostgresTool("psql", ["-X", "-At", "-v", "ON_ERROR_STOP=1", "-c", query], {
+    withConnection: true,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const readOutput = collectText(child.stdout, 64 * 1024);
+  const readError = collectText(child.stderr, 8 * 1024);
+  const result = await waitFor(child);
+  if (result.code !== 0) {
+    throw new Error(`DB_DUMP_SOURCE_COUNT_FAILED ${result.code ?? result.signal} ${readError()}`);
+  }
+  return JSON.parse(readOutput().trim());
+}
+
 async function verifyEncryptedDump(filePath) {
   const decrypt = spawn(
     "openssl",
     ["enc", "-d", "-aes-256-cbc", "-pbkdf2", "-iter", "200000", "-pass", "env:DB_DUMP_ENCRYPTION_KEY", "-in", filePath],
-    { env: process.env, stdio: ["ignore", "pipe", "pipe"] },
+    { env: encryptionEnv, stdio: ["ignore", "pipe", "pipe"] },
   );
-  const restore = spawn("pg_restore", ["--list"], { stdio: ["pipe", "pipe", "pipe"] });
+  const restore = spawnPostgresTool("pg_restore", ["--list"], {
+    stdio: ["pipe", "pipe", "pipe"],
+  });
   decrypt.stdout.pipe(restore.stdin);
   const readList = collectText(restore.stdout);
   const readDecryptError = collectText(decrypt.stderr, 8 * 1024);
@@ -71,15 +127,15 @@ await fs.mkdir(outputDir, { recursive: true, mode: 0o700 });
 await fs.chmod(outputDir, 0o700);
 
 try {
-  const dump = spawn(
+  const dump = spawnPostgresTool(
     "pg_dump",
     ["--format=custom", "--compress=9", "--no-owner", "--no-privileges", "--schema=public"],
-    { env: postgresEnv, stdio: ["ignore", "pipe", "pipe"] },
+    { withConnection: true, stdio: ["ignore", "pipe", "pipe"] },
   );
   const encrypt = spawn(
     "openssl",
     ["enc", "-aes-256-cbc", "-salt", "-pbkdf2", "-iter", "200000", "-pass", "env:DB_DUMP_ENCRYPTION_KEY", "-out", partialPath],
-    { env: process.env, stdio: ["pipe", "ignore", "pipe"] },
+    { env: encryptionEnv, stdio: ["pipe", "ignore", "pipe"] },
   );
   dump.stdout.pipe(encrypt.stdin);
   const readDumpError = collectText(dump.stderr, 8 * 1024);
@@ -94,18 +150,26 @@ try {
   await fs.chmod(partialPath, 0o600);
   await fs.rename(partialPath, finalPath);
   const encrypted = await fs.readFile(finalPath);
+  const sourceCounts = await readSourceCounts();
+  const hmacKey = createHash("sha256")
+    .update("bistro-db-dump-hmac-v1\0")
+    .update(encryptionKey)
+    .digest();
   const objectCount = await verifyEncryptedDump(finalPath);
   const manifest = {
     schemaVersion: 1,
     createdAt: new Date().toISOString(),
     purpose: "PRODUCTION_PRE_MIGRATION_SAFETY_DUMP",
-    format: "postgresql-custom+openssl-aes-256-cbc-pbkdf2",
+    format: "postgresql-custom+openssl-aes-256-cbc-pbkdf2+hmac-sha256",
+    postgresImage,
     pbkdf2Iterations: 200000,
     encryptedFile: finalPath,
     encryptedBytes: encrypted.byteLength,
     encryptedSha256: createHash("sha256").update(encrypted).digest("hex"),
+    encryptedHmacSha256: createHmac("sha256", hmacKey).update(encrypted).digest("hex"),
     restoreListVerified: true,
     objectCount,
+    sourceCounts,
   };
   await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });
   await fs.chmod(manifestPath, 0o600);

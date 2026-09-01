@@ -23,6 +23,11 @@ import { getClientIp, getUserAgent, hashAuditIp, hashClientIp } from "@/lib/requ
 import { getRequestId, logError, logInfo } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { enforceScopedRateLimit } from "@/lib/reservation-rate-limit";
+import { scheduleAfterResponse } from "@/lib/after-response";
+import {
+  enqueueReservationLineLifecycle,
+  processReservationLineLifecycleEvent,
+} from "@/lib/reservation-line-outbox";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -52,6 +57,8 @@ const reservationSelect = {
   customerEmail: true,
   note: true,
   status: true,
+  lineUserId: true,
+  updatedAt: true,
 } as const;
 
 type ManagedReservation = Prisma.ReservationGetPayload<{
@@ -77,6 +84,7 @@ type ManagementResult =
       reservation: ManagedReservation;
       alreadyCancelled: boolean;
       customerEmailQueued?: boolean;
+      lineEventId?: string;
     }
   | {
       ok: false;
@@ -307,6 +315,12 @@ async function executeManagementAction(
 
   await suppressReservationConfirmationEmail(tx, next.id);
   await enqueueReservationStatusEmail(tx, next.id, "CANCELLED");
+  const lineEvent = await enqueueReservationLineLifecycle(tx, {
+    reservationId: next.id,
+    lineUserId: next.lineUserId,
+    type: "RESERVATION_CANCELLED",
+    eventKey: next.updatedAt.toISOString(),
+  });
 
   await tx.reservationManagementToken.updateMany({
     where: { reservationId: next.id, revokedAt: null },
@@ -317,6 +331,7 @@ async function executeManagementAction(
     ok: true,
     reservation: next,
     alreadyCancelled: false,
+    ...(lineEvent ? { lineEventId: lineEvent.id } : {}),
   };
 }
 
@@ -427,6 +442,12 @@ export async function POST(request: NextRequest) {
         },
       }
     );
+
+    if (result.lineEventId) {
+      scheduleAfterResponse(async () => {
+        await processReservationLineLifecycleEvent(result.lineEventId!, "CUSTOMER_CANCEL");
+      });
+    }
 
     return NextResponse.json(
       {

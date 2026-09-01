@@ -310,6 +310,9 @@ DECLARE
   forbidden_grants text[];
   forbidden_delete_policies text[];
   missing_runtime_policies text[];
+  runtime_role_is_superuser boolean;
+  runtime_role_bypasses_rls boolean;
+  runtime_owned_tables text[];
 BEGIN
   IF configured_runtime_role IS NOT NULL THEN
     SELECT role_record.rolname::text
@@ -330,6 +333,45 @@ BEGIN
   IF runtime_role IS NULL THEN
     RAISE NOTICE 'SKIP runtime role grants: optional role bistro_app_runtime does not exist';
   ELSE
+    SELECT role_record.rolsuper, role_record.rolbypassrls
+    INTO runtime_role_is_superuser, runtime_role_bypasses_rls
+    FROM pg_roles role_record
+    WHERE role_record.rolname = runtime_role;
+
+    IF runtime_role_is_superuser OR runtime_role_bypasses_rls THEN
+      RAISE EXCEPTION 'FAIL runtime role % can bypass RLS (superuser=%, bypassrls=%)',
+        runtime_role,
+        runtime_role_is_superuser,
+        runtime_role_bypasses_rls;
+    END IF;
+
+    SELECT array_agg(table_class.relname ORDER BY table_class.relname)
+    INTO runtime_owned_tables
+    FROM pg_class table_class
+    JOIN pg_namespace table_namespace ON table_namespace.oid = table_class.relnamespace
+    JOIN pg_roles owner_role ON owner_role.oid = table_class.relowner
+    WHERE table_namespace.nspname = 'public'
+      AND table_class.relkind IN ('r', 'p')
+      AND owner_role.rolname = runtime_role
+      AND table_class.relname IN (
+        'orders',
+        'order_history',
+        'order_actions',
+        'human_tokens',
+        'order_receipt_tokens',
+        'api_idempotency',
+        'order_notification_outbox',
+        'Reservation',
+        'ReservationEmailOutbox',
+        'ReservationIdempotency'
+      );
+
+    IF coalesce(cardinality(runtime_owned_tables), 0) > 0 THEN
+      RAISE EXCEPTION 'FAIL runtime role % owns RLS-protected tables and can bypass owner RLS: %',
+        runtime_role,
+        array_to_string(runtime_owned_tables, ', ');
+    END IF;
+
     WITH privilege_requirements(table_name, privileges) AS (
       VALUES
         ('Reservation', ARRAY['SELECT', 'INSERT', 'UPDATE']::text[]),
@@ -530,6 +572,123 @@ BEGIN
   END IF;
 END
 $verify_runtime_role$;
+
+DO $verify_order_idempotency_shape$
+DECLARE
+  missing_columns text[];
+  has_unique_identity boolean;
+  has_claim_index boolean;
+BEGIN
+  WITH expected_columns(column_name, udt_name) AS (
+    VALUES
+      ('claim_token', 'uuid'),
+      ('claim_expires_at', 'timestamptz')
+  )
+  SELECT array_agg(format('%s:%s', expected.column_name, expected.udt_name))
+  INTO missing_columns
+  FROM expected_columns expected
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns column_record
+    WHERE column_record.table_schema = 'public'
+      AND column_record.table_name = 'api_idempotency'
+      AND column_record.column_name = expected.column_name
+      AND column_record.udt_name = expected.udt_name
+  );
+
+  IF coalesce(cardinality(missing_columns), 0) > 0 THEN
+    RAISE EXCEPTION 'FAIL api_idempotency required columns missing or wrong type: %',
+      array_to_string(missing_columns, ', ');
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1
+    FROM pg_constraint constraint_record
+    WHERE constraint_record.conrelid = 'public.api_idempotency'::regclass
+      AND constraint_record.contype = 'u'
+      AND (
+        SELECT array_agg(attribute_record.attname ORDER BY key_record.ordinality)
+        FROM unnest(constraint_record.conkey) WITH ORDINALITY key_record(attnum, ordinality)
+        JOIN pg_attribute attribute_record
+          ON attribute_record.attrelid = constraint_record.conrelid
+         AND attribute_record.attnum = key_record.attnum
+      ) = ARRAY['scope', 'actor_key', 'idempotency_key']::name[]
+  ) INTO has_unique_identity;
+
+  IF NOT has_unique_identity THEN
+    RAISE EXCEPTION 'FAIL api_idempotency unique(scope, actor_key, idempotency_key) is missing';
+  END IF;
+
+  SELECT to_regclass('public.idx_api_idempotency_unfinalized_claim') IS NOT NULL
+  INTO has_claim_index;
+  IF NOT has_claim_index THEN
+    RAISE EXCEPTION 'FAIL api_idempotency unfinished-claim index is missing';
+  END IF;
+END
+$verify_order_idempotency_shape$;
+
+DO $verify_order_rpc_security$
+DECLARE
+  expected_signatures text[] := ARRAY[
+    'public.execute_atomic_order_mutation(text,text,text,text,text,jsonb,jsonb,integer)',
+    'public.execute_terminal_order_action(text,text,text,text,uuid,integer,text,text,text,text,text,text)',
+    'public.create_order_quote_with_receipt_action(text,text,text,text,text,text,text,text,jsonb,integer,timestamp with time zone,text,text,text,text,text,date,text)',
+    'public.confirm_order_human_action(uuid,integer,text,text,text,text)',
+    'public.set_order_payment_method_action(uuid,integer,text,date,timestamp with time zone,text,text,text,text,text)',
+    'public.mark_order_paid_action(uuid,integer,text,integer,text,text,text,text,text)',
+    'public.mark_order_collected_action(uuid,integer,integer,text,text,text,text,text)'
+  ];
+  signature text;
+  procedure_oid regprocedure;
+  procedure_record record;
+BEGIN
+  FOREACH signature IN ARRAY expected_signatures LOOP
+    procedure_oid := to_regprocedure(signature);
+    IF procedure_oid IS NULL THEN
+      RAISE EXCEPTION 'FAIL required order RPC signature missing: %', signature;
+    END IF;
+
+    SELECT procedure.prosecdef, procedure.proconfig
+    INTO procedure_record
+    FROM pg_proc procedure
+    WHERE procedure.oid = procedure_oid;
+
+    IF procedure_record.prosecdef THEN
+      RAISE EXCEPTION 'FAIL order RPC must be SECURITY INVOKER: %', signature;
+    END IF;
+
+    IF EXISTS (
+         SELECT 1
+         FROM pg_proc acl_procedure
+         CROSS JOIN LATERAL aclexplode(
+           coalesce(acl_procedure.proacl, acldefault('f', acl_procedure.proowner))
+         ) acl
+         WHERE acl_procedure.oid = procedure_oid
+           AND acl.grantee = 0
+           AND acl.privilege_type = 'EXECUTE'
+       )
+       OR has_function_privilege('anon', procedure_oid, 'EXECUTE')
+       OR has_function_privilege('authenticated', procedure_oid, 'EXECUTE') THEN
+      RAISE EXCEPTION 'FAIL order RPC is exposed outside service_role: %', signature;
+    END IF;
+
+    IF NOT has_function_privilege('service_role', procedure_oid, 'EXECUTE') THEN
+      RAISE EXCEPTION 'FAIL service_role cannot execute order RPC: %', signature;
+    END IF;
+  END LOOP;
+
+  procedure_oid := to_regprocedure(
+    'public.execute_atomic_order_mutation(text,text,text,text,text,jsonb,jsonb,integer)'
+  );
+  SELECT procedure.proconfig
+  INTO procedure_record
+  FROM pg_proc procedure
+  WHERE procedure.oid = procedure_oid;
+  IF coalesce(array_to_string(procedure_record.proconfig, ', '), '') NOT LIKE '%search_path=pg_catalog, public%' THEN
+    RAISE EXCEPTION 'FAIL atomic order RPC search_path is not pinned';
+  END IF;
+END
+$verify_order_rpc_security$;
 
 DO $verify_expired_line_link_cleanup$
 DECLARE

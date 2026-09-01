@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { apiError } from "@/lib/api-security";
@@ -7,6 +7,7 @@ import { env } from "@/lib/env";
 import { prisma } from "@/lib/prisma";
 import { getRequestId, logError, logInfo } from "@/lib/logger";
 import { getClientIp, getUserAgent, hashText } from "@/lib/request-meta";
+import { computeReservationBackupChecksum } from "@/lib/reservation-backup-checksum.mjs";
 import {
   ensureReservationSchemaReady,
   findReservationsCompat,
@@ -524,24 +525,7 @@ export async function GET(request: NextRequest) {
       })),
     };
 
-    const checksumSource = JSON.stringify({
-      schemaVersion: payload.schemaVersion,
-      range: payload.range,
-      counts: payload.counts,
-      businessDays: payload.businessDays,
-      businessDayAuditLogs: payload.businessDayAuditLogs,
-      reservations: payload.reservations,
-      privateBlockAuditLogs: payload.privateBlockAuditLogs,
-      reservationStatusAuditLogs: payload.reservationStatusAuditLogs,
-      reservationCorrectionAuditLogs: payload.reservationCorrectionAuditLogs,
-      reservationEmailOutbox: payload.reservationEmailOutbox,
-      reservationLineLinkTokens: payload.reservationLineLinkTokens,
-      reservationManagementTokens: payload.reservationManagementTokens,
-      reservationIdempotencyRecords: payload.reservationIdempotencyRecords,
-      notificationEvents: payload.notificationEvents,
-    });
-
-    const checksumSha256 = createHash("sha256").update(checksumSource).digest("hex");
+    const checksumSha256 = computeReservationBackupChecksum(payload);
 
     logInfo("admin.backups.reservations.export.success", {
       requestId,

@@ -34,6 +34,7 @@
     "backup:reservations:run": "node scripts/run-local-reservation-backup.mjs",
     "backup:reservations": "node scripts/recovery/export-reservation-backup.mjs --out-dir=backups/manual-export-backups",
     "backup:database:safety-dump": "node scripts/recovery/create-encrypted-db-dump.mjs",
+    "backup:database:restore-disposable": "node scripts/recovery/restore-encrypted-db-dump-disposable.mjs",
     "backup:restore-drill": "node scripts/backup-restore-drill.mjs",
     "staff:provision": "node scripts/provision-staff.mjs",
     "backup:project-snapshot": "bash scripts/recovery/create-project-snapshot.sh",

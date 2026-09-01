@@ -17,6 +17,13 @@ export interface TerminalOrderActionResult {
   reconciled?: boolean;
 }
 
+export type AtomicOrderMutationName =
+  | "CREATE_QUOTE"
+  | "CONFIRM_HUMAN"
+  | "SET_PAYMENT_METHOD"
+  | "MARK_PAID"
+  | "MARK_COLLECTED";
+
 interface IdempotencyRecord {
   id: string;
   request_hash: string;
@@ -328,6 +335,44 @@ export async function executeAtomicTerminalOrderAction(input: {
     typeof result.replayed !== "boolean"
   ) {
     throw createActionError(500, "TERMINAL_ORDER_ACTION_FAILED", "Unexpected RPC response");
+  }
+
+  return result;
+}
+
+export async function executeAtomicOrderMutation(input: {
+  scope: string;
+  actorKey: string;
+  idempotencyKey: string;
+  requestHash: string;
+  operation: AtomicOrderMutationName;
+  mutationArgs: Record<string, unknown>;
+  responseContext?: Record<string, unknown>;
+  successStatus?: number;
+}) {
+  const result = await executeRpc<TerminalOrderActionResult>({
+    rpcName: "execute_atomic_order_mutation",
+    rpcArgs: {
+      p_scope: input.scope,
+      p_actor_key: input.actorKey,
+      p_idempotency_key: input.idempotencyKey,
+      p_request_hash: input.requestHash,
+      p_operation: input.operation,
+      p_mutation_args: input.mutationArgs,
+      p_response_context: input.responseContext ?? {},
+      p_success_status: input.successStatus ?? 200,
+    },
+    fallbackCode: "ATOMIC_ORDER_MUTATION_FAILED",
+  });
+
+  if (
+    !Number.isInteger(result.status) ||
+    !result.body ||
+    typeof result.body !== "object" ||
+    Array.isArray(result.body) ||
+    typeof result.replayed !== "boolean"
+  ) {
+    throw createActionError(500, "ATOMIC_ORDER_MUTATION_FAILED", "Unexpected RPC response");
   }
 
   return result;

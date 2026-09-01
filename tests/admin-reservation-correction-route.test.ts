@@ -13,6 +13,9 @@ const findManyMock = vi.hoisted(() => vi.fn());
 const updateManyMock = vi.hoisted(() => vi.fn());
 const businessDayFindUniqueMock = vi.hoisted(() => vi.fn());
 const correctionAuditCreateMock = vi.hoisted(() => vi.fn());
+const enqueueReservationChangedEmailMock = vi.hoisted(() => vi.fn());
+const enqueueReservationLineLifecycleMock = vi.hoisted(() => vi.fn());
+const scheduleAfterResponseMock = vi.hoisted(() => vi.fn());
 
 const current = {
   id: "reservation-1",
@@ -26,6 +29,8 @@ const current = {
   phone: "090-1111-2222",
   note: "コース: ディナー: 席のみ",
   status: ReservationStatus.CONFIRMED,
+  customerEmail: "owner@example.com",
+  lineUserId: `U${"0".repeat(32)}`,
   updatedAt: new Date("2026-08-04T00:00:00.000Z"),
 };
 
@@ -43,6 +48,21 @@ vi.mock("@/lib/reservation-compat", () => ({
 
 vi.mock("@/lib/staff-auth", () => ({
   getStaffAuth: getStaffAuthMock,
+}));
+
+vi.mock("@/lib/after-response", () => ({ scheduleAfterResponse: scheduleAfterResponseMock }));
+
+vi.mock("@/lib/reservation-email-outbox", () => ({
+  enqueueReservationChangedEmail: enqueueReservationChangedEmailMock,
+  processReservationEmailOutboxEntries: vi.fn(),
+  ReservationEmailOutboxBusyError: class ReservationEmailOutboxBusyError extends Error {
+    code = "RESERVATION_EMAIL_SEND_IN_PROGRESS";
+  },
+}));
+
+vi.mock("@/lib/reservation-line-outbox", () => ({
+  enqueueReservationLineLifecycle: enqueueReservationLineLifecycleMock,
+  processReservationLineLifecycleEvent: vi.fn(),
 }));
 
 vi.mock("@/lib/reservation-advisory-lock", () => ({
@@ -90,6 +110,8 @@ beforeEach(() => {
   updateManyMock.mockResolvedValue({ count: 1 });
   businessDayFindUniqueMock.mockResolvedValue(null);
   correctionAuditCreateMock.mockResolvedValue({ id: "correction-audit-1" });
+  enqueueReservationChangedEmailMock.mockResolvedValue({ id: "email-outbox-1" });
+  enqueueReservationLineLifecycleMock.mockResolvedValue({ id: "line-event-1" });
   evaluateReservationAvailabilityMock.mockReturnValue({
     reason: "OK",
     webBookable: true,
@@ -140,6 +162,19 @@ describe("admin reservation correction route", () => {
         actorRole: "ADMIN",
       }),
     });
+    expect(enqueueReservationChangedEmailMock).toHaveBeenCalledWith(
+      txClient,
+      current.id,
+    );
+    expect(enqueueReservationLineLifecycleMock).toHaveBeenCalledWith(
+      txClient,
+      expect.objectContaining({
+        reservationId: current.id,
+        lineUserId: current.lineUserId,
+        type: "RESERVATION_CHANGED",
+      }),
+    );
+    expect(scheduleAfterResponseMock).toHaveBeenCalledOnce();
   });
 
   it("rejects a slot correction into a closed business day before writing", async () => {

@@ -69,7 +69,10 @@ async function waitForRoute(baseUrl, serverLog) {
       const response = await fetch(url, {
         headers: { accept: "application/json" },
       });
-      if (response.status === 401 || response.headers.get("content-type")?.includes("application/json")) {
+      // The protected export route is ready when it rejects this unauthenticated
+      // probe. A JSON 5xx response means Next.js is listening but the route is
+      // not healthy enough to run a backup yet.
+      if (response.status === 401) {
         return;
       }
     } catch {

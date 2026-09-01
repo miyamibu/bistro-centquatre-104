@@ -47,14 +47,14 @@ function authFailure(
   request: NextRequest,
   response: NextResponse,
   pathname: string,
-  code: "UNAUTHORIZED" | "STAFF_ROLE_REQUIRED" | "SESSION_EXPIRED",
+  code: "UNAUTHORIZED" | "STAFF_ROLE_REQUIRED" | "SESSION_EXPIRED" | "AAL2_REQUIRED",
 ) {
   if (pathname.startsWith("/api/")) {
     return copyResponseCookies(
       response,
       NextResponse.json(
         { error: "Unauthorized", code },
-        { status: code === "UNAUTHORIZED" || code === "SESSION_EXPIRED" ? 401 : 403, headers: { "Cache-Control": "private, no-store" } },
+        { status: code === "STAFF_ROLE_REQUIRED" ? 403 : 401, headers: { "Cache-Control": "private, no-store" } },
       ),
     );
   }
@@ -139,6 +139,14 @@ export async function middleware(request: NextRequest) {
 
     if (!isStaffRole(userData.user.app_metadata?.role)) {
       return authFailure(request, supabaseResponse, pathname, "STAFF_ROLE_REQUIRED");
+    }
+
+    if (pathname !== "/admin/mfa/setup") {
+      const { data: assurance, error: assuranceError } =
+        await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (assuranceError || assurance.currentLevel !== "aal2") {
+        return authFailure(request, supabaseResponse, pathname, "AAL2_REQUIRED");
+      }
     }
   }
 

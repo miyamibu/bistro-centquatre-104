@@ -9,10 +9,9 @@ import { createOrderSchema, zodFields } from "@/lib/validation";
 import {
   buildIdempotencyHash,
   createQuotedHoldExpiry,
-  executeCreateOrderQuoteAction,
+  executeAtomicOrderMutation,
   hashHumanToken,
   normalizeOrderPaymentMethod,
-  runIdempotentMutation,
 } from "@/lib/order-actions";
 import { createOrderReceiptToken, hashOrderReceiptToken } from "@/lib/order-receipt";
 import { buildOrderActorKey } from "@/lib/order-identity";
@@ -175,67 +174,57 @@ export async function POST(request: NextRequest) {
       storeVisitDate: input.storeVisitDate ?? null,
     });
 
-    const result = await runIdempotentMutation({
+    const holdExpiresAt = createQuotedHoldExpiry();
+    const humanToken = randomBytes(24).toString("base64url");
+    const receiptToken = createOrderReceiptToken();
+    const result = await executeAtomicOrderMutation({
       scope: "POST:/api/orders",
       actorKey,
       idempotencyKey,
       requestHash,
+      operation: "CREATE_QUOTE",
       successStatus: 201,
-      execute: async () => {
-        const holdExpiresAt = createQuotedHoldExpiry();
-
-        const humanToken = randomBytes(24).toString("base64url");
-        const receiptToken = createOrderReceiptToken();
-        const actionResult = await executeCreateOrderQuoteAction({
-          customerInfo: input.customerInfo,
-          items: validatedItems,
-          total: calculatedTotal,
-          holdExpiresAt,
-          humanTokenHash: hashHumanToken(humanToken),
-          receiptTokenHash: hashOrderReceiptToken(receiptToken),
-          actorId: actorKey,
-          requestId,
-          idempotencyKey,
-          selectedPaymentMethod: normalizedPaymentMethod,
-          selectedStoreVisitDate: input.storeVisitDate ?? null,
-        });
-
-        const order = (actionResult as { order?: Record<string, unknown> }).order ?? {};
-
-        logInfo("orders.create.success", {
-          requestId,
-          route,
-          context: {
-            orderId: order.id,
-            paymentMethod: normalizedPaymentMethod,
-            total: calculatedTotal,
-          },
-        });
-
-        return {
-          ok: true,
-          message: "Quote created successfully",
-          order: {
-            id: String(order.id),
-            status: String(order.status),
-            version: Number(order.version ?? 0),
-            total: Number(order.total ?? calculatedTotal),
-            holdExpiresAt,
-            items: validatedItems,
-          },
-          paymentSetup: {
-            orderId: String(order.id),
-            expectedVersion: Number(order.version ?? 0),
-            humanToken,
-            receiptToken,
-            paymentMethod: normalizedPaymentMethod,
-            storeVisitDate: input.storeVisitDate ?? null,
-            holdExpiresAt,
-          },
-          requestId,
-        };
+      mutationArgs: {
+        customerName: input.customerInfo.name,
+        email: input.customerInfo.email,
+        phone: input.customerInfo.phone,
+        zipCode: input.customerInfo.zipCode,
+        prefecture: input.customerInfo.prefecture,
+        city: input.customerInfo.city,
+        address: input.customerInfo.address,
+        building: input.customerInfo.building ?? null,
+        items: validatedItems,
+        total: calculatedTotal,
+        holdExpiresAt,
+        humanTokenHash: hashHumanToken(humanToken),
+        receiptTokenHash: hashOrderReceiptToken(receiptToken),
+        actorId: actorKey,
+        requestId,
+        selectedPaymentMethod: normalizedPaymentMethod,
+        selectedStoreVisitDate: input.storeVisitDate ?? null,
+      },
+      responseContext: {
+        message: "Quote created successfully",
+        humanToken,
+        receiptToken,
+        paymentMethod: normalizedPaymentMethod,
+        storeVisitDate: input.storeVisitDate ?? null,
+        requestId,
       },
     });
+
+    const order = (result.body as { order?: Record<string, unknown> }).order ?? {};
+    if (!result.replayed && result.status === 201) {
+      logInfo("orders.create.success", {
+        requestId,
+        route,
+        context: {
+          orderId: order.id,
+          paymentMethod: normalizedPaymentMethod,
+          total: calculatedTotal,
+        },
+      });
+    }
 
     return NextResponse.json(result.body, { status: result.status });
   } catch (error) {

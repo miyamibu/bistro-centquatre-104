@@ -415,6 +415,50 @@ export async function sendCustomerReservationStatusEmail({
   };
 }
 
+export async function sendCustomerReservationChangedEmail({
+  reservation,
+  idempotencyKey,
+}: {
+  reservation: Reservation;
+  idempotencyKey?: string;
+}) {
+  const to = reservation.customerEmail?.trim();
+  if (reservation.reservationType === "PRIVATE_BLOCK") {
+    return { skipped: true, reason: "PRIVATE_BLOCK" as const };
+  }
+  if (reservation.status !== "CONFIRMED") {
+    return { skipped: true, reason: "RESERVATION_STATUS_MISMATCH" as const };
+  }
+  if (!to) {
+    return { skipped: true, reason: "MISSING_CUSTOMER_EMAIL" as const };
+  }
+
+  const subject = `【予約変更のお知らせ】${reservation.date} ${reservation.partySize}名`;
+  const text = [
+    `${reservation.name} 様`,
+    "店舗側でご予約内容を変更しました。",
+    `日付: ${reservation.date}`,
+    `時間帯: ${reservation.servicePeriod === "LUNCH" ? "ランチ" : "ディナー"}`,
+    `人数: ${reservation.partySize}`,
+    `来店目安: ${reservation.arrivalTime ?? "未入力"}`,
+    "内容に相違がある場合は店舗へお問い合わせください。",
+  ].join("\n");
+
+  const delivery = await sendEmail({
+    to,
+    subject,
+    text,
+    ...(env.STORE_NOTIFY_EMAIL ? { replyTo: env.STORE_NOTIFY_EMAIL } : {}),
+    ...(idempotencyKey ? { idempotencyKey } : {}),
+  });
+  if (!delivery.sent) return { skipped: true, reason: delivery.reason };
+  return {
+    sent: true as const,
+    provider: delivery.provider,
+    ...(delivery.providerMessageId ? { providerMessageId: delivery.providerMessageId } : {}),
+  };
+}
+
 export async function sendContactEmail({ name, email, subject, message }: ContactEmailPayload) {
   const to = env.ADMIN_EMAIL ?? env.STORE_NOTIFY_EMAIL;
 

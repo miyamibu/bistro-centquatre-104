@@ -277,3 +277,67 @@ describe("executeAtomicTerminalOrderAction contract", () => {
     expect(fromMock).not.toHaveBeenCalled();
   });
 });
+
+describe("executeAtomicOrderMutation contract", () => {
+  const baseInput = {
+    scope: "POST:/api/orders/{id}/actions:MARK_PAID",
+    actorKey: "staff:admin-1",
+    idempotencyKey: "key-1",
+    requestHash: "hash-1",
+    operation: "MARK_PAID" as const,
+    mutationArgs: {
+      orderId: "order-1",
+      expectedVersion: 2,
+      paymentReference: "12345678",
+      receivedAmount: 5000,
+      actorType: "admin",
+      actorId: "staff:admin-1",
+      requestId: "request-1",
+    },
+  };
+
+  it("sends claim, mutation, and final response through one RPC", async () => {
+    rpcMock.mockResolvedValue({
+      data: {
+        status: 200,
+        body: { ok: true, order: { id: "order-1", status: "PAID" } },
+        replayed: false,
+      },
+      error: null,
+    });
+
+    const { executeAtomicOrderMutation } = await import("@/lib/order-actions");
+    const result = await executeAtomicOrderMutation(baseInput);
+
+    expect(result).toMatchObject({ status: 200, replayed: false });
+    expect(rpcMock).toHaveBeenCalledWith("execute_atomic_order_mutation", {
+      p_scope: baseInput.scope,
+      p_actor_key: baseInput.actorKey,
+      p_idempotency_key: baseInput.idempotencyKey,
+      p_request_hash: baseInput.requestHash,
+      p_operation: baseInput.operation,
+      p_mutation_args: baseInput.mutationArgs,
+      p_response_context: {},
+      p_success_status: 200,
+    });
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+
+  it("returns a durable replay without a second client-side mutation", async () => {
+    rpcMock.mockResolvedValue({
+      data: {
+        status: 201,
+        body: { ok: true, order: { id: "order-1" } },
+        replayed: true,
+      },
+      error: null,
+    });
+
+    const { executeAtomicOrderMutation } = await import("@/lib/order-actions");
+    const result = await executeAtomicOrderMutation({ ...baseInput, successStatus: 201 });
+
+    expect(result).toMatchObject({ status: 201, replayed: true });
+    expect(rpcMock).toHaveBeenCalledTimes(1);
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+});
