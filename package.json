@@ -98,6 +98,7 @@
     "@react-email/render": "^2.0.4",
     "axios": "^1.18.0",
     "diff": "^4.0.4",
+    "deepmerge-ts": "8.0.2",
     "flatted": "^3.4.2",
     "follow-redirects": "^1.16.0",
     "form-data": "^4.0.6",
