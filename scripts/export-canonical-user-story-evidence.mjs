@@ -28,7 +28,7 @@ function run(command, args, options = {}) {
     finishedAt: new Date().toISOString(),
     stdout: result.stdout ?? "",
     stderr: result.stderr ?? "",
-    error: result.error ? String(result.error) : null,
+    errorCode: result.error?.code ?? null,
   };
 }
 
@@ -37,9 +37,15 @@ function hashFile(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
-function commandText(entry) {
-  if (entry.error) return entry.error;
-  return `${entry.stdout}${entry.stderr}`;
+function validationEvidence(entry) {
+  return {
+    command: entry.command,
+    exitCode: entry.exitCode,
+    signal: entry.signal,
+    errorCode: entry.errorCode,
+    startedAt: entry.startedAt,
+    finishedAt: entry.finishedAt,
+  };
 }
 
 const gitHead = run("git", ["rev-parse", "HEAD"]);
@@ -61,17 +67,17 @@ const releaseChecks = {
 
 const buildIdPath = resolve(repoRoot, ".next/BUILD_ID");
 const evidence = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   generatedAt: new Date().toISOString(),
   purpose: "Canonical user-story tracker validation evidence bound to the checked-out commit.",
   scope: process.env.CI
     ? "CI commit evidence. This artifact is not production deployment or external provider proof."
     : "Local snapshot evidence. This file is not production deployment or external provider proof.",
   repository: {
-    root: repoRoot,
+    root: ".",
     branch: gitBranch.stdout.trim() || null,
     headSha: gitHead.stdout.trim() || null,
-    dirtyStatus: gitStatus.stdout.trim().split("\n").filter(Boolean),
+    dirtyFileCount: gitStatus.stdout.trim().split("\n").filter(Boolean).length,
   },
   runtime: {
     node: nodeVersion.stdout.trim() || null,
@@ -89,39 +95,25 @@ const evidence = {
     buildIdPath: existsSync(buildIdPath) ? relative(repoRoot, buildIdPath) : null,
     buildIdSha256: hashFile(buildIdPath),
   },
-  validations: validations.map((entry) => ({
-    command: entry.command,
-    exitCode: entry.exitCode,
-    signal: entry.signal,
-    startedAt: entry.startedAt,
-    finishedAt: entry.finishedAt,
-    outputSha256: createHash("sha256").update(commandText(entry)).digest("hex"),
-    stdoutTail: entry.stdout.slice(-4000),
-    stderrTail: entry.stderr.slice(-4000),
-    error: entry.error,
-  })),
+  validations: validations.map(validationEvidence),
   releaseChecks: Object.fromEntries(
     Object.entries(releaseChecks).map(([name, entry]) => [
       name,
-      {
-        command: entry.command,
-        exitCode: entry.exitCode,
-        signal: entry.signal,
-        startedAt: entry.startedAt,
-        finishedAt: entry.finishedAt,
-        outputSha256: createHash("sha256").update(commandText(entry)).digest("hex"),
-        stdoutTail: entry.stdout.slice(-4000),
-        stderrTail: entry.stderr.slice(-4000),
-        error: entry.error,
-      },
+      validationEvidence(entry),
     ])
   ),
 };
 
 evidence.summary = {
   commitBoundCleanSnapshot:
-    Boolean(evidence.repository.headSha) && evidence.repository.dirtyStatus.length === 0,
-  allValidationExitCodesZero: evidence.validations.every((entry) => entry.exitCode === 0),
+    gitHead.exitCode === 0 && gitStatus.exitCode === 0 &&
+    Boolean(evidence.repository.headSha) && evidence.repository.dirtyFileCount === 0,
+  allValidationExitCodesZero: evidence.validations.every(
+    (entry) => entry.exitCode === 0 && entry.signal === null && entry.errorCode === null
+  ),
+  failedValidations: evidence.validations
+    .filter((entry) => entry.exitCode !== 0 || entry.signal !== null || entry.errorCode !== null)
+    .map(({ command, exitCode, signal, errorCode }) => ({ command, exitCode, signal, errorCode })),
   validationCommands: evidence.validations.map((entry) => entry.command),
   productionReleaseCheckExitCode: evidence.releaseChecks.production.exitCode,
   productionReleaseCheckPassed: evidence.releaseChecks.production.exitCode === 0,
@@ -130,7 +122,10 @@ evidence.summary = {
 mkdirSync(dirname(outputPath), { recursive: true });
 writeFileSync(outputPath, `${JSON.stringify(evidence, null, 2)}\n`, "utf8");
 
-console.log(`Wrote ${relative(repoRoot, outputPath)}`);
+console.log("Wrote QA evidence");
 console.log(`tracker_sha256=${evidence.tracker.sha256}`);
 console.log(`all_validation_exit_codes_zero=${evidence.summary.allValidationExitCodesZero}`);
+for (const failure of evidence.summary.failedValidations) {
+  console.error(`validation_failed=${failure.command} exit=${failure.exitCode ?? "null"} signal=${failure.signal ?? "none"} error=${failure.errorCode ?? "none"}`);
+}
 process.exit(evidence.summary.allValidationExitCodesZero ? 0 : 1);

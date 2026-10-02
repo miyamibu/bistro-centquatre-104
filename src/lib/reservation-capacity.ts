@@ -43,7 +43,7 @@ export type ReservationAvailabilityInput = {
     reservationType?: "NORMAL" | "PRIVATE_BLOCK";
   }>;
   businessDayClosed?: boolean;
-  /** Administrative corrections may bypass public cutoff/same-day rules. */
+  /** Administrative corrections bypass public cutoff/same-day rules, but not the rolling horizon. */
   skipPublicBookingWindow?: boolean;
   now?: Date;
 };
@@ -179,7 +179,7 @@ export function evaluateReservationAvailability(
     };
   }
 
-  if (isBeyondRange(parsedDate)) {
+  if (isBeyondRange(parsedDate, { includePublicCutoff: !input.skipPublicBookingWindow })) {
     return {
       reason: "OUT_OF_RANGE",
       webBookable: false,

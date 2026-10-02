@@ -83,9 +83,11 @@ jobs:
         run: npm run security:destructive-reservations
 
       - name: Generate commit-bound QA evidence
+        id: qa_evidence
         run: npm run qa:user-stories:evidence -- --output="$RUNNER_TEMP/canonical-user-story-validation-evidence.json"
 
       - name: Upload commit-bound QA evidence
+        if: ${{ always() && steps.qa_evidence.outcome != 'skipped' }}
         uses: actions/upload-artifact@v4
         with:
           name: canonical-user-story-evidence-${{ github.sha }}

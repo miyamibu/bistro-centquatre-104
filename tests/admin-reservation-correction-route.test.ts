@@ -7,7 +7,6 @@ const ensureReservationSchemaReadyMock = vi.hoisted(() => vi.fn());
 const isReservationSchemaNotReadyErrorMock = vi.hoisted(() => vi.fn());
 const getStaffAuthMock = vi.hoisted(() => vi.fn());
 const acquireReservationAdvisoryLockMock = vi.hoisted(() => vi.fn());
-const evaluateReservationAvailabilityMock = vi.hoisted(() => vi.fn());
 const findUniqueMock = vi.hoisted(() => vi.fn());
 const findManyMock = vi.hoisted(() => vi.fn());
 const updateManyMock = vi.hoisted(() => vi.fn());
@@ -28,6 +27,7 @@ const current = {
   status: ReservationStatus.CONFIRMED,
   updatedAt: new Date("2026-08-04T00:00:00.000Z"),
 };
+let currentReservation = current;
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -49,10 +49,6 @@ vi.mock("@/lib/reservation-advisory-lock", () => ({
   acquireReservationAdvisoryLock: acquireReservationAdvisoryLockMock,
 }));
 
-vi.mock("@/lib/reservation-capacity", () => ({
-  evaluateReservationAvailability: evaluateReservationAvailabilityMock,
-}));
-
 const txClient = {
   reservation: {
     findUnique: findUniqueMock,
@@ -71,6 +67,7 @@ const txClient = {
 beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
+  currentReservation = current;
   getStaffAuthMock.mockResolvedValue({
     userId: "staff-user-1",
     email: "staff@example.com",
@@ -83,17 +80,13 @@ beforeEach(() => {
   );
   findUniqueMock.mockImplementation(async () =>
     updateManyMock.mock.calls.length > 0
-      ? { ...current, phone: "090-9999-8888" }
-      : current,
+      ? { ...currentReservation, ...updateManyMock.mock.calls[0][0].data }
+      : currentReservation,
   );
   findManyMock.mockResolvedValue([]);
   updateManyMock.mockResolvedValue({ count: 1 });
   businessDayFindUniqueMock.mockResolvedValue(null);
   correctionAuditCreateMock.mockResolvedValue({ id: "correction-audit-1" });
-  evaluateReservationAvailabilityMock.mockReturnValue({
-    reason: "OK",
-    webBookable: true,
-  });
 });
 
 function buildRequest(body: Record<string, unknown>) {
@@ -125,7 +118,6 @@ describe("admin reservation correction route", () => {
 
     expect(response.status).toBe(200);
     expect(businessDayFindUniqueMock).not.toHaveBeenCalled();
-    expect(evaluateReservationAvailabilityMock).not.toHaveBeenCalled();
     expect(updateManyMock).toHaveBeenCalledWith({
       where: { id: current.id, updatedAt: current.updatedAt },
       data: { phone: "090-9999-8888" },
@@ -144,10 +136,6 @@ describe("admin reservation correction route", () => {
 
   it("rejects a slot correction into a closed business day before writing", async () => {
     businessDayFindUniqueMock.mockResolvedValue({ isClosed: true });
-    evaluateReservationAvailabilityMock.mockReturnValue({
-      reason: "CLOSED",
-      webBookable: false,
-    });
 
     const response = await patch({
       date: "2026-08-07",
@@ -162,5 +150,42 @@ describe("admin reservation correction route", () => {
     expect(acquireReservationAdvisoryLockMock).toHaveBeenCalledTimes(2);
     expect(updateManyMock).not.toHaveBeenCalled();
     expect(correctionAuditCreateMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["date", { date: "2027-01-02" }, { date: "2027-01-02" }],
+    ["party size", { partySize: 3 }, { partySize: 3 }],
+    [
+      "service period",
+      { servicePeriod: "LUNCH", arrivalTime: "11:30", note: "コース: ランチ: 席のみ" },
+      { servicePeriod: "LUNCH", arrivalTime: "11:30", note: "コース: ランチ: 席のみ" },
+    ],
+  ])("corrects an existing January 2027 reservation's %s through real availability", async (_label, changes, expected) => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-10-02T12:00:00+09:00"));
+      currentReservation = { ...current, date: "2027-01-01" };
+      const response = await patch({
+        ...changes,
+        reason: "既存予約の入力訂正",
+        expectedUpdatedAt: current.updatedAt.toISOString(),
+      });
+
+      expect(response.status).toBe(200);
+      expect(businessDayFindUniqueMock).toHaveBeenCalledTimes(1);
+      expect(updateManyMock).toHaveBeenCalledWith({
+        where: { id: current.id, updatedAt: current.updatedAt },
+        data: expected,
+      });
+      expect(correctionAuditCreateMock).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          reservationId: current.id,
+          reason: "既存予約の入力訂正",
+          afterData: expected,
+        }),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
