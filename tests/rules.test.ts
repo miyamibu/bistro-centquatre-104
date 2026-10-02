@@ -1,5 +1,5 @@
 import { addDays, addMonths } from "date-fns";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   canAcceptWebReservation,
   getAllowedArrivalTimesForServicePeriod,
@@ -13,10 +13,12 @@ import {
 import { isArrivalTimeValid, isCoursePeriodConsistent, isWithinAcceptance } from "@/lib/availability";
 import {
   formatJst,
+  isBeyondRange,
   jstDateFromString,
   jstDateTimeFromString,
   todayJst,
 } from "@/lib/dates";
+import { RESERVATION_CONFIG } from "@/lib/reservation-config";
 
 describe("Availability Rules", () => {
   describe("isArrivalTimeValid", () => {
@@ -76,7 +78,8 @@ describe("Availability Rules", () => {
       const dateAtBoundary = addMonths(todayJst(), 3);
       expect(isWithinAcceptance(formatJst(dateAtBoundary))).toBe(
         !isBeforeOpeningReservationDate(dateAtBoundary) &&
-          !isClosedReservationWeekday(dateAtBoundary)
+          !isClosedReservationWeekday(dateAtBoundary) &&
+          formatJst(dateAtBoundary) <= RESERVATION_CONFIG.lastBookableDate
       );
     });
 
@@ -90,6 +93,20 @@ describe("Availability Rules", () => {
     it("rejects past dates", () => {
       const yesterday = formatJst(new Date(todayJst().getTime() - 86400000));
       expect(isWithinAcceptance(yesterday)).toBe(false);
+    });
+
+    it("accepts December 31 but blocks every date from January 2027", () => {
+      vi.useFakeTimers();
+      try {
+        vi.setSystemTime(new Date("2026-10-02T12:00:00+09:00"));
+        expect(isBeyondRange(jstDateFromString("2026-12-31"))).toBe(false);
+        expect(canAcceptWebReservation(jstDateFromString("2026-12-31"))).toBe(true);
+        expect(isBeyondRange(jstDateFromString("2027-01-01"))).toBe(true);
+        expect(isWithinAcceptance("2027-01-01")).toBe(false);
+        expect(isWithinAcceptance("2027-02-04")).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 

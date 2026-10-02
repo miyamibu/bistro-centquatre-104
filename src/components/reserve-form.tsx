@@ -646,6 +646,9 @@ export function ReserveForm({
         monthOffset += 1
       ) {
         const candidateMonth = addJstMonths(calendarMonth, monthOffset);
+        if (getJstMonthKey(candidateMonth) > RESERVATION_CONFIG.lastBookableDate.slice(0, 7)) {
+          break;
+        }
         const candidateDays = await loadMonthlyAvailability(
           candidateMonth,
           currentServicePeriod,
@@ -907,6 +910,9 @@ export function ReserveForm({
   }
 
   const monthStart = startOfJstMonth(calendarMonth);
+  const hasReachedLastBookableMonth =
+    getJstMonthKey(addJstMonths(monthStart, 1)) >
+    RESERVATION_CONFIG.lastBookableDate.slice(0, 7);
   const monthDays = getDaysInJstMonth(monthStart);
   const firstWeekday = getJstWeekday(monthStart);
   const calendarDayCircleSize = 44;
@@ -1054,6 +1060,7 @@ export function ReserveForm({
                 来店日 <span className="text-[#b32626]">（必須）</span>
               </p>
             </div>
+            <p className="text-xs text-[#7b6b5b]">2027年1月以降のご予約は受け付けていません。</p>
 
             {(monthlyAvailabilityError || monthlyAvailabilityLoading) && availability.reason !== "ERROR" ? (
               <div
@@ -1110,7 +1117,8 @@ export function ReserveForm({
                 <button
                   type="button"
                   onClick={() => setCalendarMonth((prev) => addJstMonths(prev, 1))}
-                  className="rounded-md border-0 text-[#4a3121] leading-none hover:bg-[#f8f2e6]"
+                  disabled={hasReachedLastBookableMonth}
+                  className="rounded-md border-0 text-[#4a3121] leading-none hover:bg-[#f8f2e6] disabled:cursor-not-allowed disabled:opacity-40"
                   style={{
                     width: `${calendarMonthNavButtonSize}px`,
                     height: `${calendarMonthNavButtonSize}px`,
@@ -1191,6 +1199,7 @@ export function ReserveForm({
                   const isUnconfirmedDate = !isSelected && !monthlyAvailabilityReady;
                   const isDateDisabled =
                     isSameOrPast ||
+                    cell.value > RESERVATION_CONFIG.lastBookableDate ||
                     isUnconfirmedDate ||
                     (monthlyAvailabilityReady &&
                       dailyStates.length > 0 &&
