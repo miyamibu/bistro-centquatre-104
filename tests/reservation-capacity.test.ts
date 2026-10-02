@@ -1,5 +1,5 @@
 import { addDays } from "date-fns";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { getNextBookableReservationDate } from "@/lib/booking-rules";
 import {
   aggregateSlotCounts,
@@ -113,6 +113,21 @@ describe("reservation capacity rules", () => {
   });
 
   describe("evaluateReservationAvailability", () => {
+    it("rejects January 2027 even when public booking window checks are skipped", () => {
+      vi.useFakeTimers();
+      try {
+        vi.setSystemTime(new Date("2026-10-02T12:00:00+09:00"));
+        expect(evaluateReservationAvailability({
+          date: "2027-01-01",
+          servicePeriod: "DINNER",
+          partySize: 2,
+          existingReservations: [],
+          skipPublicBookingWindow: true,
+        })).toEqual({ reason: "OUT_OF_RANGE", webBookable: false });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
     it("returns BEFORE_OPENING before all other checks", () => {
       expect(
         evaluateReservationAvailability({

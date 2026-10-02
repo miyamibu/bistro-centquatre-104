@@ -20,6 +20,12 @@ describe("isExplicitReservationDateUsable", () => {
     expect(isExplicitReservationDateUsable("2026-07-20", referenceDate)).toBe(false);
     expect(isExplicitReservationDateUsable("2026-10-22", referenceDate)).toBe(false);
   });
+
+  it("rejects an explicit date from January 2027 onward", () => {
+    const octoberReference = new Date("2026-10-02T12:00:00+09:00");
+    expect(isExplicitReservationDateUsable("2026-12-31", octoberReference)).toBe(true);
+    expect(isExplicitReservationDateUsable("2027-01-01", octoberReference)).toBe(false);
+  });
 });
 
 describe("shouldSearchFutureAvailability", () => {

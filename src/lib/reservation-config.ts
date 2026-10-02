@@ -7,6 +7,7 @@ export const RESERVATION_CONFIG = {
   closedServicePeriods: [] as const,
   specialOpenDates: [] as string[],
   bookingWindowMonths: 3,
+  lastBookableDate: "2026-12-31",
   bookingCutoff: {
     daysBefore: 1,
     time: "17:00",

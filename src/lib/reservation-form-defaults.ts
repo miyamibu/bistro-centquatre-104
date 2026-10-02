@@ -51,7 +51,8 @@ export function isExplicitReservationDateUsable(
     return (
       !isBeforeOpeningReservationDate(parsed) &&
       value > referenceDateKey &&
-      value <= maxDateKey
+      value <= maxDateKey &&
+      value <= RESERVATION_CONFIG.lastBookableDate
     );
   } catch {
     return false;

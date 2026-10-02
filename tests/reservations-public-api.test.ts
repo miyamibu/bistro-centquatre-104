@@ -255,6 +255,18 @@ describe("public reservations API — adminLink (P12)", () => {
   });
 });
 
+describe("public reservations API — final bookable date", () => {
+  it("rejects a January 2027 reservation before any booking transaction", async () => {
+    vi.setSystemTime(new Date("2026-10-02T12:00:00+09:00"));
+    const { POST } = await loadRoute();
+    const response = await POST(post({ ...MIN_BODY, date: "2027-01-01", name: "山田" }));
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).code).toBe("OUT_OF_RANGE");
+    expect(routeMocks.txReservationFindMany).not.toHaveBeenCalled();
+  });
+});
+
 describe("public reservations API — durable email enqueue", () => {
   it("writes the reservation confirmation outbox intent inside the reservation transaction", async () => {
     const { POST } = await loadRoute();

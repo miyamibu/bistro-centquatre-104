@@ -12,6 +12,7 @@ import {
 } from "@/lib/reservation-rate-limit";
 import { acquireReservationAdvisoryLock } from "@/lib/reservation-advisory-lock";
 import { evaluateReservationAvailability } from "@/lib/reservation-capacity";
+import { RESERVATION_CONFIG } from "@/lib/reservation-config";
 import { getClientIp, hashClientIp } from "@/lib/request-meta";
 import {
   RESERVATION_SCHEMA_NOT_READY_CODE,
@@ -350,6 +351,15 @@ export async function POST(request: NextRequest) {
     lineIdToken,
     course,
   } = parsed.data;
+  if (date > RESERVATION_CONFIG.lastBookableDate) {
+    const blocked = availabilityReasonToError("OUT_OF_RANGE");
+    return apiError(blocked.status, {
+      error: blocked.error,
+      code: blocked.code,
+      requestId,
+      ...contact,
+    });
+  }
   const reservationNote =
     [course ? `コース: ${course}` : null, note].filter(Boolean).join("\n") || null;
 
