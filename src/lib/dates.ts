@@ -132,10 +132,11 @@ export function isSameOrBeforeToday(date: Date): boolean {
   return !isAfter(date, today);
 }
 
-export function isBeyondRange(date: Date): boolean {
+export function isBeyondRange(date: Date, options: { includePublicCutoff?: boolean } = {}): boolean {
   const today = todayJst();
   const limit = addMonths(today, MAX_MONTH_AHEAD);
-  return isAfter(date, limit) || formatJst(date) > RESERVATION_CONFIG.lastBookableDate;
+  return isAfter(date, limit) ||
+    (options.includePublicCutoff !== false && formatJst(date) > RESERVATION_CONFIG.lastBookableDate);
 }
 
 export function isAfterOrSameOpeningDate(date: Date): boolean {
