@@ -37,12 +37,86 @@ jobs:
           base_url="${PRODUCTION_BASE_URL%/}"
           reservation_response="$(mktemp)"
           order_response="$(mktemp)"
-          trap 'rm -f "$reservation_response" "$order_response"' EXIT
+          response_headers="$(mktemp)"
+          curl_errors="$(mktemp)"
+          reservation_summary="$(mktemp)"
+          order_summary="$(mktemp)"
+          trap 'rm -f "$reservation_response" "$order_response" "$response_headers" "$curl_errors" "$reservation_summary" "$order_summary"' EXIT
+
+          # Persist only a sanitized observation; raw bodies/headers remain temporary.
+          summarize_attempts() {
+            python3 - "$@" <<'PY'
+          import datetime, email.utils, json, math, re, sys
+          lane, headers_path, body_path, curl_exit, final_status, safe_summary_path = sys.argv[1:]
+          recorded_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+          responses = []
+          with open(headers_path, encoding="utf-8", errors="replace") as headers:
+              for line in headers:
+                  match = re.fullmatch(r"HTTP/\d+(?:\.\d+)? ([1-5]\d{2})(?: [^\r\n]*)?\r?\n?", line)
+                  if match and int(match[1]) >= 200:
+                      responses.append({"status": int(match[1]), "responseAt": None})
+                  elif responses and line.lower().startswith("date:"):
+                      try:
+                          date = email.utils.parsedate_to_datetime(line[5:].strip()[:256])
+                          if date.tzinfo is not None:
+                              responses[-1]["responseAt"] = date.astimezone(datetime.timezone.utc).isoformat()
+                      except (ValueError, TypeError, OverflowError):
+                          pass
+          allowed_codes = {
+              "UNAUTHORIZED",
+              f"CRON_{lane}_OUTBOX_PARTIAL_FAILURE", f"CRON_{lane}_OUTBOX_FAILED",
+          }
+          body = {}
+          try:
+              with open(body_path, "rb") as body_file:
+                  payload = body_file.read(16385)
+              parsed = json.loads(payload) if len(payload) <= 16384 else None
+              if isinstance(parsed, dict):
+                  body = parsed
+          except (ValueError, OSError):
+              pass
+          code = body.get("code")
+          code = code if isinstance(code, str) and code in allowed_codes else "UNRECOGNIZED_ERROR_CODE"
+          curl_exit = curl_exit if re.fullmatch(r"\d{1,3}", curl_exit) else "UNKNOWN"
+          final_status = final_status if re.fullmatch(r"[1-5]\d{2}", final_status) else "UNKNOWN"
+          def safe_count(field):
+              value = body.get(field)
+              if type(value) in (int, float) and 0 <= value <= 1000000 and math.isfinite(value) and math.floor(value) == value:
+                  return str(int(value))
+              return "UNKNOWN"
+          fields = " ".join(f"{field}={safe_count(field)}" for field in ("scanned", "sent", "failed", "deadLetter", "backlog"))
+          with open(safe_summary_path, "w", encoding="utf-8") as safe_summary:
+              safe_summary.write(f"http={final_status} code={code if code in allowed_codes else 'UNKNOWN'} {fields}")
+          lines = []
+          for attempt, response in enumerate(responses, 1):
+              status = response["status"]
+              error_code = "NONE" if status < 400 else f"HTTP_{status}"
+              if attempt == len(responses) and status >= 400:
+                  error_code = code
+              lines.append(f"- lane={lane}; attempt={attempt}; HTTP={status}; errorCode={error_code}; responseAt={response['responseAt'] or 'unknown'}; recordedAt={recorded_at}")
+          if not responses:
+              error_code = f"CURL_{curl_exit}" if curl_exit != "0" else "OBSERVATION_UNAVAILABLE"
+              lines.append(f"- lane={lane}; attempt=unobserved; HTTP={final_status}; errorCode={error_code}; recordedAt={recorded_at}")
+          recovered = curl_exit == "0" and final_status.startswith("2") and any(r["status"] >= 400 for r in responses[:-1])
+          recovery = "YES" if recovered else "NOT_ESTABLISHED"
+          lines.append(f"- lane={lane}; HTTP_recovered={recovery}; delivery_recovery=UNVERIFIED; curlExit={curl_exit}")
+          text = "\n".join(lines) + "\n"
+          print(text, end="")
+          import os
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write(text)
+          PY
+          }
 
           call_lane() {
             local endpoint="$1"
             local output_file="$2"
-            curl \
+            local lane="$3"
+            local safe_summary_file="$4"
+            local curl_exit=0
+            local final_status
+            : > "$response_headers"
+            if final_status="$(curl \
               --silent \
               --show-error \
               --fail-with-body \
@@ -50,16 +124,30 @@ jobs:
               --max-time 30 \
               --retry 1 \
               --retry-all-errors \
+              --suppress-connect-headers \
               --header "Authorization: Bearer ${CRON_SECRET}" \
               --header "X-Scheduler-Kind: github-actions" \
               --header "X-Scheduler-Run-Id: ${GITHUB_RUN_ID}" \
               --output "$output_file" \
-              "${base_url}${endpoint}"
+              --dump-header "$response_headers" \
+              --write-out '%{http_code}' \
+              "${base_url}${endpoint}" 2>"$curl_errors")"; then
+              curl_exit=0
+            else
+              curl_exit=$?
+            fi
+            summarize_attempts "$lane" "$response_headers" "$output_file" "$curl_exit" "$final_status" "$safe_summary_file"
+            return "$curl_exit"
           }
 
+          {
+            echo "## Production notification outbox HTTP attempts"
+            echo "HTTP retry success does not confirm notification delivery recovery."
+            echo "attempt numbers enumerate observed HTTP responses; transport-only attempts may be unobserved. responseAt is the server Date; recordedAt is capture completion."
+          } >> "$GITHUB_STEP_SUMMARY"
           reservation_ok=0
           order_ok=0
-          if call_lane "/api/crons/process-reservation-emails?batchSize=10&deadlineMs=8000" "$reservation_response" &&
+          if call_lane "/api/crons/process-reservation-emails?batchSize=10&deadlineMs=8000" "$reservation_response" "RESERVATION_EMAIL" "$reservation_summary" &&
             jq -e '
               .ok == true and
               (.scanned | type == "number") and
@@ -67,11 +155,11 @@ jobs:
               (.failed | type == "number") and
               (.deadLetter | type == "number") and
               (.backlog | type == "number")
-            ' "$reservation_response" >/dev/null; then
+            ' "$reservation_response" >/dev/null 2>&1; then
             reservation_ok=1
           fi
 
-          if call_lane "/api/crons/process-order-notifications?limit=10&deadlineMs=8000" "$order_response" &&
+          if call_lane "/api/crons/process-order-notifications?limit=10&deadlineMs=8000" "$order_response" "ORDER_NOTIFICATION" "$order_summary" &&
             jq -e '
               .ok == true and
               (.scanned | type == "number") and
@@ -79,21 +167,21 @@ jobs:
               (.failed | type == "number") and
               (.deadLetter | type == "number") and
               (.backlog | type == "number")
-            ' "$order_response" >/dev/null; then
+            ' "$order_response" >/dev/null 2>&1; then
             order_ok=1
           fi
 
           {
             echo "## Production notification outbox"
             if [[ "$reservation_ok" == "1" ]]; then
-              jq -r '"- reservation: PASS; scanned=\(.scanned), sent=\(.sent), retry=\(.failed), dead-letter=\(.deadLetter), backlog=\(.backlog)"' "$reservation_response"
+              echo "- reservation: final sweep PASS (delivery recovery unverified); $(cat "$reservation_summary")"
             else
-              echo "- reservation: FAIL"
+              echo "- reservation: FAIL; $(cat "$reservation_summary")"
             fi
             if [[ "$order_ok" == "1" ]]; then
-              jq -r '"- order: PASS; scanned=\(.scanned), sent=\(.sent), retry=\(.failed), dead-letter=\(.deadLetter), backlog=\(.backlog)"' "$order_response"
+              echo "- order: final sweep PASS (delivery recovery unverified); $(cat "$order_summary")"
             else
-              echo "- order: FAIL"
+              echo "- order: FAIL; $(cat "$order_summary")"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 

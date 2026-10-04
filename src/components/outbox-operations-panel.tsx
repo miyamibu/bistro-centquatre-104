@@ -11,6 +11,11 @@ type StatusPayload = {
     reservation: { count: number; oldestAt: string | null };
     order: { count: number; oldestAt: string | null };
   };
+  deadLetters: {
+    reservation: { count: number; oldestAt: string | null };
+    order: { count: number; oldestAt: string | null };
+  };
+  scheduler: Record<Lane, { lastHeartbeatAt: string | null; lastSuccessAt: string | null; lastFailureAt: string | null }>;
 };
 
 type DrainPayload = {
@@ -113,9 +118,10 @@ export function OutboxOperationsPanel() {
       ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <BacklogCard title="予約メール" value={status?.backlog.reservation.count} oldest={status?.backlog.reservation.oldestAt} />
-        <BacklogCard title="注文通知" value={status?.backlog.order.count} oldest={status?.backlog.order.oldestAt} />
+        <BacklogCard title="予約メール" value={status?.backlog.reservation.count} oldest={status?.backlog.reservation.oldestAt} deadLetters={status?.deadLetters.reservation} heartbeat={status?.scheduler.RESERVATION_EMAIL} />
+        <BacklogCard title="注文通知" value={status?.backlog.order.count} oldest={status?.backlog.order.oldestAt} deadLetters={status?.deadLetters.order} heartbeat={status?.scheduler.ORDER_NOTIFICATION} />
       </div>
+      <p className="text-xs leading-5 text-[#6b5644]">送信済みはメール事業者の受付を示します。受信先への配達・閲覧はこの画面では確認できません。未解決dead-letterは今回の処理件数とは別に現在の状態から集計します。各集計は独立した照会で、同一時点のスナップショットではありません。</p>
 
       <div className="space-y-4 rounded-2xl border border-[#eadfce] bg-white p-4 sm:p-6">
         <div className="grid gap-4 sm:grid-cols-2">
@@ -142,7 +148,7 @@ export function OutboxOperationsPanel() {
         {error ? <p role="alert" className="text-sm text-red-700">{error}</p> : null}
         {result ? (
           <p role="status" className="text-sm text-[#4a3121]">
-            {result.dryRun ? "dry-run" : "実行"}: scanned={result.scanned}, sent={result.sent}, failed={result.failed}, dead-letter={result.deadLetter}, backlog={result.backlog}
+            {result.dryRun ? "dry-run" : "今回の処理結果"}: scanned={result.scanned}, sent={result.sent}, failed={result.failed}, 今回dead-letter化={result.deadLetter}, 処理待ち={result.backlog}
           </p>
         ) : null}
       </div>
@@ -163,12 +169,23 @@ export function OutboxOperationsPanel() {
   );
 }
 
-function BacklogCard({ title, value, oldest }: { title: string; value?: number; oldest?: string | null }) {
+function BacklogCard({ title, value, oldest, deadLetters, heartbeat }: {
+  title: string;
+  value?: number;
+  oldest?: string | null;
+  deadLetters?: { count: number; oldestAt: string | null };
+  heartbeat?: { lastHeartbeatAt: string | null; lastSuccessAt: string | null; lastFailureAt: string | null };
+}) {
   return (
     <div className="rounded-xl border border-[#eadfce] bg-[#fffdfa] p-4">
       <p className="text-sm text-[#6b5644]">{title}</p>
-      <p className="mt-1 text-2xl font-semibold">{value ?? "—"}件</p>
-      <p className="mt-1 break-all text-xs text-[#6b5644]">最古: {oldest ?? "なし"}</p>
+      <p className="mt-1 text-2xl font-semibold">処理待ち {value ?? "—"}件</p>
+      <p className="mt-1 break-all text-xs text-[#6b5644]">処理待ち最古: {oldest ?? "なし"}</p>
+      <p className="mt-3 text-sm font-semibold text-[#8b3b28]">未解決dead-letter総数: {deadLetters?.count ?? "—"}件</p>
+      <p className="mt-1 break-all text-xs text-[#6b5644]">未解決最古: {deadLetters?.oldestAt ?? "なし"}</p>
+      <p className="mt-3 break-all text-xs text-[#6b5644]">GitHub scheduler最終heartbeat（開始）: {heartbeat?.lastHeartbeatAt ?? "記録なし"}</p>
+      <p className="mt-1 break-all text-xs text-[#6b5644]">最終成功: {heartbeat?.lastSuccessAt ?? "記録なし"}</p>
+      <p className="mt-1 break-all text-xs text-[#6b5644]">最終失敗: {heartbeat?.lastFailureAt ?? "記録なし"}</p>
     </div>
   );
 }

@@ -597,3 +597,26 @@ export async function getOrderNotificationOutboxBacklog() {
     oldestBacklogAt: typeof oldest === "string" ? new Date(oldest) : null,
   };
 }
+
+// Read only: a successful sweep does not clear earlier DEAD_LETTER rows.
+export async function getOrderNotificationOutboxDeadLetters() {
+  const { data, count, error } = await supabaseServer
+    .from("order_notification_outbox")
+    .select("created_at", { count: "exact" })
+    .eq("status", "DEAD_LETTER")
+    .order("created_at", { ascending: true })
+    .limit(1);
+
+  if (error) {
+    throw new Error("ORDER_NOTIFICATION_OUTBOX_DEAD_LETTER_COUNT_FAILED:" + error.message);
+  }
+  if (count === null) {
+    throw new Error("ORDER_NOTIFICATION_OUTBOX_DEAD_LETTER_COUNT_UNAVAILABLE");
+  }
+
+  const oldest = data?.[0]?.created_at;
+  return {
+    count,
+    oldestAt: typeof oldest === "string" ? new Date(oldest) : null,
+  };
+}

@@ -113,17 +113,37 @@ describe("reservation capacity rules", () => {
   });
 
   describe("evaluateReservationAvailability", () => {
-    it("rejects January 2027 even when public booking window checks are skipped", () => {
+    it("keeps the public 2026 cutoff while allowing an admin correction within the rolling horizon", () => {
       vi.useFakeTimers();
       try {
         vi.setSystemTime(new Date("2026-10-02T12:00:00+09:00"));
-        expect(evaluateReservationAvailability({
-          date: "2027-01-01",
+        const input = {
+          date: "2027-01-01" as const,
           servicePeriod: "DINNER",
           partySize: 2,
           existingReservations: [],
+        } as const;
+        expect(evaluateReservationAvailability({ ...input, existingReservations: [] }))
+          .toEqual({ reason: "OUT_OF_RANGE", webBookable: false });
+        expect(evaluateReservationAvailability({ ...input, existingReservations: [], skipPublicBookingWindow: true }))
+          .toEqual({ reason: "OK", webBookable: true });
+        expect(evaluateReservationAvailability({ ...input, date: "2027-01-03", existingReservations: [], skipPublicBookingWindow: true }))
+          .toEqual({ reason: "OUT_OF_RANGE", webBookable: false });
+        expect(evaluateReservationAvailability({ ...input, existingReservations: [], businessDayClosed: true, skipPublicBookingWindow: true }))
+          .toEqual({ reason: "CLOSED", webBookable: false });
+        expect(evaluateReservationAvailability({
+          ...input,
+          existingReservations: [{ partySize: 1, status: "CONFIRMED", servicePeriod: "DINNER", reservationType: "PRIVATE_BLOCK" }],
           skipPublicBookingWindow: true,
-        })).toEqual({ reason: "OUT_OF_RANGE", webBookable: false });
+        })).toEqual({ reason: "PRIVATE_BLOCK", webBookable: false });
+        expect(evaluateReservationAvailability({
+          ...input,
+          existingReservations: [{ partySize: 8, status: "CONFIRMED", servicePeriod: "DINNER" },
+            { partySize: 6, status: "CONFIRMED", servicePeriod: "DINNER" }],
+          skipPublicBookingWindow: true,
+        })).toEqual({ reason: "PHONE_ONLY", webBookable: false });
+        expect(evaluateReservationAvailability({ ...input, partySize: 9, existingReservations: [], skipPublicBookingWindow: true }))
+          .toEqual({ reason: "PHONE_ONLY", webBookable: false });
       } finally {
         vi.useRealTimers();
       }
