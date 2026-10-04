@@ -741,6 +741,20 @@ export async function getReservationEmailOutboxBacklog() {
   return { backlog: count, oldestBacklogAt: oldest?.createdAt ?? null };
 }
 
+// Current unresolved rows, independent of what the latest sweep processed.
+export async function getReservationEmailOutboxDeadLetters() {
+  const where = { status: ReservationEmailOutboxStatus.DEAD_LETTER };
+  const [count, oldest] = await Promise.all([
+    prisma.reservationEmailOutbox.count({ where }),
+    prisma.reservationEmailOutbox.findFirst({
+      where,
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: { createdAt: true },
+    }),
+  ]);
+  return { count, oldestAt: oldest?.createdAt ?? null };
+}
+
 export async function processReservationEmailOutboxEntries(input: {
   ids: string[];
   requestId: string;

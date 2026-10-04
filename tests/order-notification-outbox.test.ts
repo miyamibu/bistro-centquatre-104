@@ -466,3 +466,33 @@ describe("processOrderConfirmationOutboxForOrder", () => {
     expect(fromMock).toHaveBeenCalledTimes(4);
   });
 });
+
+describe("order dead-letter status aggregate", () => {
+  it("counts only unresolved DEAD_LETTER rows without claiming or selecting recipient data", async () => {
+    const deadLettersQuery = query({
+      data: [{ created_at: "2026-07-01T00:00:00Z" }],
+      count: 2,
+      error: null,
+    });
+    fromMock.mockReturnValueOnce(deadLettersQuery);
+    const { getOrderNotificationOutboxDeadLetters } = await loadProcessor();
+
+    await expect(getOrderNotificationOutboxDeadLetters()).resolves.toEqual({
+      count: 2,
+      oldestAt: new Date("2026-07-01T00:00:00Z"),
+    });
+    expect(deadLettersQuery.select).toHaveBeenCalledWith("created_at", { count: "exact" });
+    expect(deadLettersQuery.eq).toHaveBeenCalledWith("status", "DEAD_LETTER");
+    expect(deadLettersQuery.limit).toHaveBeenCalledWith(1);
+    expect(deadLettersQuery.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects a failed or unavailable exact count instead of treating one returned row as the total", async () => {
+    const { getOrderNotificationOutboxDeadLetters } = await loadProcessor();
+    fromMock.mockReturnValueOnce(query({ data: [], count: null, error: { message: "synthetic count failure" } }));
+    await expect(getOrderNotificationOutboxDeadLetters()).rejects.toThrow("DEAD_LETTER_COUNT_FAILED");
+
+    fromMock.mockReturnValueOnce(query({ data: [{ created_at: "2026-07-01T00:00:00Z" }], count: null, error: null }));
+    await expect(getOrderNotificationOutboxDeadLetters()).rejects.toThrow("DEAD_LETTER_COUNT_UNAVAILABLE");
+  });
+});

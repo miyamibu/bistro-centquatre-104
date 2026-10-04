@@ -3,8 +3,12 @@ import { enforceReadRequestSecurity } from "@/lib/api-security";
 import { getStaffAuth } from "@/lib/staff-auth";
 import {
   getOrderNotificationOutboxBacklog,
+  getOrderNotificationOutboxDeadLetters,
 } from "@/lib/order-notification-outbox";
-import { getReservationEmailOutboxBacklog } from "@/lib/reservation-email-outbox";
+import {
+  getReservationEmailOutboxBacklog,
+  getReservationEmailOutboxDeadLetters,
+} from "@/lib/reservation-email-outbox";
 import { listSchedulerHeartbeats } from "@/lib/scheduler-heartbeat";
 
 export const dynamic = "force-dynamic";
@@ -23,10 +27,12 @@ export async function GET(request: NextRequest) {
   const requestSecurityError = enforceReadRequestSecurity(request);
   if (requestSecurityError) return requestSecurityError;
 
-  const [heartbeats, reservation, order] = await Promise.all([
+  const [heartbeats, reservation, order, reservationDeadLetters, orderDeadLetters] = await Promise.all([
     listSchedulerHeartbeats(),
     getReservationEmailOutboxBacklog(),
     getOrderNotificationOutboxBacklog(),
+    getReservationEmailOutboxDeadLetters(),
+    getOrderNotificationOutboxDeadLetters(),
   ]);
   const now = Date.now();
   const lanes = ["RESERVATION_EMAIL", "ORDER_NOTIFICATION"] as const;
@@ -52,6 +58,26 @@ export async function GET(request: NextRequest) {
           oldestAt: order.oldestBacklogAt?.toISOString() ?? null,
         },
       },
+      deadLetters: {
+        reservation: {
+          count: reservationDeadLetters.count,
+          oldestAt: reservationDeadLetters.oldestAt?.toISOString() ?? null,
+        },
+        order: {
+          count: orderDeadLetters.count,
+          oldestAt: orderDeadLetters.oldestAt?.toISOString() ?? null,
+        },
+      },
+      scheduler: Object.fromEntries(lanes.map((lane) => {
+        const heartbeat = heartbeats.find(
+          (entry) => entry.schedulerKind === "GITHUB_ACTIONS" && entry.lane === lane,
+        );
+        return [lane, {
+          lastHeartbeatAt: heartbeat?.lastStartedAt.toISOString() ?? null,
+          lastSuccessAt: heartbeat?.lastSuccessAt?.toISOString() ?? null,
+          lastFailureAt: heartbeat?.lastFailureAt?.toISOString() ?? null,
+        }];
+      })),
       heartbeats: heartbeats.map((entry) => ({
         schedulerKind: entry.schedulerKind,
         lane: entry.lane,

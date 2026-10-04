@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   findMany: vi.fn(),
+  count: vi.fn(),
   findFirst: vi.fn(),
   idempotencyFindFirst: vi.fn(),
   findUnique: vi.fn(),
@@ -20,6 +21,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     reservationEmailOutbox: {
+      count: mocks.count,
       findMany: mocks.findMany,
       findFirst: mocks.findFirst,
       updateMany: mocks.updateMany,
@@ -72,6 +74,7 @@ beforeEach(() => {
   vi.setSystemTime(now);
   vi.clearAllMocks();
   mocks.findMany.mockResolvedValue([{ id: "outbox-1" }]);
+  mocks.count.mockResolvedValue(0);
   mocks.updateMany.mockResolvedValue({ count: 1 });
   mocks.findFirst.mockResolvedValue(claimedRow());
   mocks.findUnique.mockResolvedValue(null);
@@ -88,6 +91,34 @@ beforeEach(() => {
   mocks.idempotencyFindFirst.mockResolvedValue({
     idempotencyKey: "reservation-request-key",
     tokenKeyId: "v1",
+  });
+});
+
+describe("reservation dead-letter status aggregate", () => {
+  it("counts only unresolved DEAD_LETTER rows without processing or reading recipient data", async () => {
+    mocks.count.mockResolvedValue(2);
+    mocks.findFirst.mockResolvedValue({ createdAt: new Date("2026-07-01T00:00:00Z") });
+    const { getReservationEmailOutboxDeadLetters } = await import("@/lib/reservation-email-outbox");
+
+    await expect(getReservationEmailOutboxDeadLetters()).resolves.toEqual({
+      count: 2,
+      oldestAt: new Date("2026-07-01T00:00:00Z"),
+    });
+    expect(mocks.count).toHaveBeenCalledWith({ where: { status: "DEAD_LETTER" } });
+    expect(mocks.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { status: "DEAD_LETTER" },
+      select: { createdAt: true },
+    }));
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("propagates a count failure rather than reporting zero", async () => {
+    mocks.count.mockRejectedValue(new Error("synthetic count failure"));
+    mocks.findFirst.mockResolvedValue(null);
+    const { getReservationEmailOutboxDeadLetters } = await import("@/lib/reservation-email-outbox");
+
+    await expect(getReservationEmailOutboxDeadLetters()).rejects.toThrow("synthetic count failure");
+    expect(mocks.updateMany).not.toHaveBeenCalled();
   });
 });
 
