@@ -59,6 +59,7 @@ async function execute(request: NextRequest) {
       );
       return apiError(500, {
         ...summary,
+        backlog: backlog.backlog,
         error: "Cron partially failed",
         code: "CRON_RESERVATION_EMAIL_OUTBOX_PARTIAL_FAILURE",
         requestId,
