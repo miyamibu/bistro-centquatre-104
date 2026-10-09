@@ -59,6 +59,27 @@ beforeEach(() => {
 });
 
 describe("reservation email outbox cron route", () => {
+  it.each(["failed", "deadLetter", "unsafe"])("includes the already-read backlog when %s alone causes partial failure", async (counter) => {
+    processReservationEmailOutboxMock.mockResolvedValue({
+      scanned: 7, sent: 1, failed: 0, deadLetter: 0, skipped: 0, unsafe: 0,
+      [counter]: 1,
+    });
+    getReservationEmailOutboxBacklogMock.mockResolvedValue({ backlog: 51, oldestBacklogAt: null });
+    const { GET } = await import("@/app/api/crons/process-reservation-emails/route");
+    const response = await GET(request("GET", "cron-secret"));
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "CRON_RESERVATION_EMAIL_OUTBOX_PARTIAL_FAILURE", scanned: 7, sent: 1,
+      [counter]: 1, backlog: 51,
+    });
+    expect(processReservationEmailOutboxMock).toHaveBeenCalledTimes(1);
+    expect(getReservationEmailOutboxBacklogMock).toHaveBeenCalledTimes(1);
+    expect(heartbeatMocks.markSchedulerFailed).toHaveBeenCalledWith(
+      "RESERVATION_EMAIL", { schedulerKind: "GITHUB_ACTIONS", runId: "123" },
+      "CRON_RESERVATION_EMAIL_OUTBOX_PARTIAL_FAILURE",
+    );
+    expect(heartbeatMocks.markSchedulerSucceeded).not.toHaveBeenCalled();
+  });
   it("rejects requests without CRON_SECRET", async () => {
     const { GET } = await import(
       "@/app/api/crons/process-reservation-emails/route"
