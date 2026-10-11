@@ -1,11 +1,11 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 type Fixture = { headers: string; body: unknown; status: string; exit: number; stderr?: string };
-const okBody = { ok: true, scanned: 0, sent: 0, failed: 0, deadLetter: 0, backlog: 0 };
+const okBody = { ok: true, scanned: 0, sent: 0, failed: 0, deadLetter: 0, unsafe: 0, backlog: 0 };
 const sensitive = "synthetic-private@example.test receipt-private-token secret-private-token";
 function headers(...statuses: number[]) {
   return statuses.map((status, index) =>
@@ -42,7 +42,7 @@ process.exit(fixture.exit);
     const result = spawnSync("bash", ["-c", script], {
       cwd: process.cwd(), encoding: "utf8", timeout: 10_000,
       env: {
-        ...process.env, PATH: `${dir}:${process.env.PATH}`, TMPDIR: dir,
+        NODE_ENV: "test", PATH: `${dir}:${process.env.PATH}`, TMPDIR: dir,
         PRODUCTION_BASE_URL: "https://synthetic.invalid", CRON_SECRET: "synthetic-secret",
         GITHUB_RUN_ID: "synthetic-run", GITHUB_STEP_SUMMARY: summaryPath,
         MOCK_FIXTURES: fixturesPath, MOCK_CALLS: callsPath,
@@ -51,7 +51,7 @@ process.exit(fixture.exit);
     const calls = readFileSync(callsPath, "utf8").trim().split("\n").map((line) => JSON.parse(line) as string[]);
     return {
       status: result.status, stdout: result.stdout, stderr: result.stderr,
-      summary: readFileSync(summaryPath, "utf8"), calls,
+      summary: readFileSync(summaryPath, "utf8"), calls, remainingFiles: readdirSync(dir).sort(),
       rawFilesCleaned: calls.every((args) => ["--output", "--dump-header"].every((flag) => !existsSync(args[args.indexOf(flag) + 1]))),
     };
   } finally {
@@ -59,7 +59,71 @@ process.exit(fixture.exit);
   }
 }
 
+function expectSafeFinalRecords(result: ReturnType<typeof runWorkflow>) {
+  const finalLines = (text: string) => text.split("\n").filter((line) => /^- (reservation|order):/.test(line));
+  expect(finalLines(result.stdout)).toEqual(finalLines(result.summary));
+  expect(finalLines(result.stdout)).toHaveLength(2);
+  for (const line of finalLines(result.stdout)) {
+    expect(line).toMatch(/http=(?:[1-5]\d{2}|UNKNOWN) code=(?:UNKNOWN|UNAUTHORIZED|CRON_(?:RESERVATION_EMAIL|ORDER_NOTIFICATION)_OUTBOX_(?:PARTIAL_FAILURE|FAILED)) scanned=(?:\d{1,7}|UNKNOWN) sent=(?:\d{1,7}|UNKNOWN) failed=(?:\d{1,7}|UNKNOWN) deadLetter=(?:\d{1,7}|UNKNOWN) unsafe=(?:\d{1,7}|UNKNOWN) backlog=(?:\d{1,7}|UNKNOWN) ok=(?:TRUE|FALSE|UNKNOWN) counterScope=FINAL_SWEEP scannedMeaning=SELECTED_CANDIDATES$/);
+  }
+  expect(result.rawFilesCleaned).toBe(true);
+  expect(result.remainingFiles).toEqual(["calls.jsonl", "curl", "fixtures.json", "summary.md"]);
+  expect(result.stdout + result.stderr + result.summary).not.toMatch(/private-token|private@example|X-Receipt|Authorization:|Bearer|synthetic-secret/);
+}
+
 describe("notification outbox workflow HTTP observations (mock curl, no network)", () => {
+  it("logs the unsafe-only partial failure and the existing backlog identically to the summary", () => {
+    const result = runWorkflow(fixture([500, 500], {
+      code: "CRON_RESERVATION_EMAIL_OUTBOX_PARTIAL_FAILURE",
+      scanned: 7, sent: 0, failed: 0, deadLetter: 0, unsafe: 1, backlog: 51,
+      requestId: sensitive, message: sensitive, headers: sensitive, exception: sensitive,
+    }, 22), fixture());
+    expect(result.status).toBe(1);
+    expectSafeFinalRecords(result);
+    expect(result.stdout).toContain("scanned=7 sent=0 failed=0 deadLetter=0 unsafe=1 backlog=51 ok=UNKNOWN");
+    expect(result.stdout).toContain("order: final sweep PASS");
+    expect(result.calls).toHaveLength(2);
+  });
+
+  it("keeps final-sweep counts instead of adding repeated failures or inferring delivery", () => {
+    const result = runWorkflow(fixture([500, 200], { ...okBody, scanned: 3, sent: 1 }), fixture([500, 500], {
+      ...okBody, ok: false, code: "CRON_ORDER_NOTIFICATION_OUTBOX_PARTIAL_FAILURE", scanned: 2, sent: 1, failed: 1,
+    }, 22));
+    expect(result.status).toBe(1);
+    expectSafeFinalRecords(result);
+    expect(result.stdout).toContain("reservation: final sweep PASS (delivery recovery unverified); http=200 code=UNKNOWN scanned=3 sent=1");
+    expect(result.stdout).toContain("order: FAIL; http=500 code=CRON_ORDER_NOTIFICATION_OUTBOX_PARTIAL_FAILURE scanned=2 sent=1 failed=1");
+    expect(result.stdout).toContain("HTTP_recovered=YES; delivery_recovery=UNVERIFIED");
+  });
+
+  it.each([
+    ["missing", {}],
+    ["malformed", sensitive],
+    ["oversized", { ...okBody, code: "CRON_RESERVATION_EMAIL_OUTBOX_PARTIAL_FAILURE", unsafe: 1, padding: sensitive.repeat(1000) }],
+    ["invalid fields", { scanned: -1, sent: 1.5, failed: true, deadLetter: 1e100, unsafe: "1", backlog: 1000001, ok: "true" }],
+  ])("logs fixed-schema UNKNOWN for %s without treating missing values as zero", (_name, body) => {
+    const result = runWorkflow(fixture([500], body, 22), fixture());
+    expect(result.status).toBe(1);
+    expectSafeFinalRecords(result);
+    expect(result.stdout).toContain("code=UNKNOWN scanned=UNKNOWN sent=UNKNOWN failed=UNKNOWN deadLetter=UNKNOWN unsafe=UNKNOWN backlog=UNKNOWN ok=UNKNOWN");
+  });
+
+  it.each([true, false, "true", null])("only emits validated booleans for ok=%s", (ok) => {
+    const result = runWorkflow(fixture([200], { ...okBody, ok }), fixture());
+    expectSafeFinalRecords(result);
+    expect(result.stdout).toContain(`ok=${ok === true ? "TRUE" : ok === false ? "FALSE" : "UNKNOWN"} counterScope=FINAL_SWEEP`);
+    expect(result.status).toBe(ok === true ? 0 : 1);
+  });
+
+  it("does not invent an unsafe count when the other lane omits it", () => {
+    const withoutUnsafe: Partial<typeof okBody> = { ...okBody };
+    delete withoutUnsafe.unsafe;
+    const result = runWorkflow(fixture([500], { code: "CRON_RESERVATION_EMAIL_OUTBOX_PARTIAL_FAILURE", unsafe: 2 }, 22), fixture([200], withoutUnsafe));
+    expectSafeFinalRecords(result);
+    expect(result.stdout).toContain("unsafe=2 backlog=UNKNOWN");
+    expect(result.stdout).toContain("unsafe=UNKNOWN backlog=0 ok=TRUE");
+    expect(result.status).toBe(1);
+  });
   it("retains 500 then 200 with zero final sweep counts and marks delivery recovery unverified", () => {
     const result = runWorkflow(fixture([500, 200], { ...okBody, providerMessageId: sensitive }), fixture());
     expect(result.status).toBe(0);
@@ -132,7 +196,7 @@ describe("notification outbox workflow HTTP observations (mock curl, no network)
       scanned: 2, sent: 1, failed: 1, deadLetter: 0, error: sensitive,
     }, 22), fixture());
     expect(result.status).toBe(1);
-    expect(result.summary).toContain("reservation: FAIL; http=500 code=CRON_RESERVATION_EMAIL_OUTBOX_PARTIAL_FAILURE scanned=2 sent=1 failed=1 deadLetter=0 backlog=UNKNOWN");
+    expect(result.summary).toContain("reservation: FAIL; http=500 code=CRON_RESERVATION_EMAIL_OUTBOX_PARTIAL_FAILURE scanned=2 sent=1 failed=1 deadLetter=0 unsafe=UNKNOWN backlog=UNKNOWN");
     expect(result.stdout + result.stderr + result.summary).not.toContain(sensitive);
   });
 
@@ -143,7 +207,7 @@ describe("notification outbox workflow HTTP observations (mock curl, no network)
   ])("uses UNKNOWN for a %s response without dumping its data", (_name, body) => {
     const result = runWorkflow(fixture([500], body, 22), fixture());
     expect(result.status).toBe(1);
-    expect(result.summary).toContain("reservation: FAIL; http=500 code=UNKNOWN scanned=UNKNOWN sent=UNKNOWN failed=UNKNOWN deadLetter=UNKNOWN backlog=UNKNOWN");
+    expect(result.summary).toContain("reservation: FAIL; http=500 code=UNKNOWN scanned=UNKNOWN sent=UNKNOWN failed=UNKNOWN deadLetter=UNKNOWN unsafe=UNKNOWN backlog=UNKNOWN");
     expect(result.summary).not.toContain("padding");
   });
 
@@ -153,7 +217,7 @@ describe("notification outbox workflow HTTP observations (mock curl, no network)
       failed: 1e100, deadLetter: "3", backlog: 1000001,
     }, 22), status: "500\nFORGED" }, fixture());
     expect(result.status).toBe(1);
-    expect(result.summary).toContain("reservation: FAIL; http=UNKNOWN code=UNKNOWN scanned=UNKNOWN sent=UNKNOWN failed=UNKNOWN deadLetter=UNKNOWN backlog=UNKNOWN");
+    expect(result.summary).toContain("reservation: FAIL; http=UNKNOWN code=UNKNOWN scanned=UNKNOWN sent=UNKNOWN failed=UNKNOWN deadLetter=UNKNOWN unsafe=UNKNOWN backlog=UNKNOWN");
     expect(result.stdout + result.stderr + result.summary).not.toMatch(/INJECTED|FORGED|private-token|private@example/);
   });
 

@@ -84,9 +84,11 @@ jobs:
               if type(value) in (int, float) and 0 <= value <= 1000000 and math.isfinite(value) and math.floor(value) == value:
                   return str(int(value))
               return "UNKNOWN"
-          fields = " ".join(f"{field}={safe_count(field)}" for field in ("scanned", "sent", "failed", "deadLetter", "backlog"))
+          fields = " ".join(f"{field}={safe_count(field)}" for field in ("scanned", "sent", "failed", "deadLetter", "unsafe", "backlog"))
+          ok = "TRUE" if body.get("ok") is True else "FALSE" if body.get("ok") is False else "UNKNOWN"
+          # Final response only; scanned remains selected candidates, not sends or retry totals.
           with open(safe_summary_path, "w", encoding="utf-8") as safe_summary:
-              safe_summary.write(f"http={final_status} code={code if code in allowed_codes else 'UNKNOWN'} {fields}")
+              safe_summary.write(f"http={final_status} code={code if code in allowed_codes else 'UNKNOWN'} {fields} ok={ok} counterScope=FINAL_SWEEP scannedMeaning=SELECTED_CANDIDATES")
           lines = []
           for attempt, response in enumerate(responses, 1):
               status = response["status"]
@@ -183,7 +185,7 @@ jobs:
             else
               echo "- order: FAIL; $(cat "$order_summary")"
             fi
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
           if [[ "$reservation_ok" != "1" || "$order_ok" != "1" ]]; then
             exit 1
