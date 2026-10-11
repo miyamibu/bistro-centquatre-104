@@ -562,7 +562,9 @@ export async function processOrderNotificationOutbox(input: {
       sent += 1;
     } else if (result.reason === "DEAD_LETTER") {
       deadLetter += 1;
-    } else if (result.processed) {
+    } else if (
+      result.processed || result.reason === "LOOKUP_FAILED" || result.reason === "CLAIM_FAILED"
+    ) {
       failed += 1;
     } else {
       skipped += 1;
