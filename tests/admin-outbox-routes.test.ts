@@ -1,3 +1,4 @@
+const legacyPaused = vi.hoisted(() => ({ value: false }));
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -16,6 +17,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/staff-auth", () => ({ getStaffAuth: mocks.getStaffAuth }));
 vi.mock("@/lib/reservation-email-outbox", () => ({
+  isReservationEmailLegacySenderPaused: () => legacyPaused.value,
   getReservationEmailOutboxBacklog: mocks.reservationBacklog,
   getReservationEmailOutboxDeadLetters: mocks.reservationDeadLetters,
   processReservationEmailOutbox: mocks.reservationProcess,
@@ -61,6 +63,7 @@ function statusRequest(headers: Record<string, string> = {}) {
 }
 
 beforeEach(() => {
+  legacyPaused.value = false;
   vi.clearAllMocks();
   mocks.getStaffAuth.mockResolvedValue({
     userId: "admin-1",
@@ -268,4 +271,16 @@ describe("admin outbox operations", () => {
     });
     expect(mocks.heartbeatList).not.toHaveBeenCalled();
   });
+});
+
+
+it("reports paused reservation drain with actual backlog and keeps orders dispatchable", async () => {
+  mocks.reservationProcess.mockResolvedValue({ paused: true, dispatchExecuted: false, scanned: 0, sent: 0, failed: 0, deadLetter: 0 });
+  const { POST } = await import("@/app/api/admin/outbox/drain/route");
+  const response = await POST(request({ lane: "RESERVATION_EMAIL", limit: 2, dryRun: false, confirm: true }));
+  expect(await response.json()).toMatchObject({ paused: true, dispatchExecuted: false, backlog: 4, sent: 0 });
+  expect(mocks.orderProcess).not.toHaveBeenCalled();
+  const orderResponse = await POST(request({ lane: "ORDER_NOTIFICATION", limit: 2, dryRun: false, confirm: true }));
+  expect(await orderResponse.json()).toMatchObject({ paused: false, dispatchExecuted: true, backlog: 2, sent: 1 });
+  expect(mocks.orderProcess).toHaveBeenCalledOnce();
 });

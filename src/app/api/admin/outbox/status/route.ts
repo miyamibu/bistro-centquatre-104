@@ -7,6 +7,7 @@ import {
 } from "@/lib/order-notification-outbox";
 import {
   getReservationEmailOutboxBacklog,
+  isReservationEmailLegacySenderPaused,
   getReservationEmailOutboxDeadLetters,
 } from "@/lib/reservation-email-outbox";
 import { listSchedulerHeartbeats } from "@/lib/scheduler-heartbeat";
@@ -46,6 +47,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json(
     {
       ok: true,
+      reservationLegacySenderPaused: isReservationEmailLegacySenderPaused(),
       warning: staleLanes.length > 0,
       staleLanes,
       backlog: {

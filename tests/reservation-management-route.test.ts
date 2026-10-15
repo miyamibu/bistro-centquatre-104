@@ -303,7 +303,8 @@ describe("public reservation management API", () => {
       expect.objectContaining({
         where: {
           id: "customer-email-1",
-          status: { not: "PROCESSING" },
+          status: { notIn: ["PROCESSING", "DISPATCH_CLAIMED", "RETRY_NOT_SENT", "SENDING", "OUTCOME_UNKNOWN", "RECONCILE_REQUIRED"] },
+          dispatchUnknownAt: null,
         },
         data: expect.objectContaining({ status: "PENDING", attempts: 0 }),
       }),

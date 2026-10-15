@@ -12,6 +12,8 @@ const TEST_NOW = new Date("2026-08-01T03:00:00.000Z");
 
 const routeMocks = vi.hoisted(() => ({
   scheduleAfterResponse: vi.fn(),
+  recordImmediateAttempt: vi.fn(),
+  outboxClaim: vi.fn(),
   lineLinkTokenCreate: vi.fn(),
   txReservationFindMany: vi.fn(),
   reservationEmailOutboxUpsert: vi.fn(),
@@ -22,6 +24,8 @@ const routeMocks = vi.hoisted(() => ({
   reservationManagementTokenCreate: vi.fn(),
   idempotencyRows: new Map<string, Record<string, unknown>>(),
 }));
+
+vi.mock("@/lib/scheduler-heartbeat", () => ({ recordImmediateAttempt: routeMocks.recordImmediateAttempt }));
 
 vi.mock("@/lib/after-response", () => ({
   scheduleAfterResponse: routeMocks.scheduleAfterResponse,
@@ -128,6 +132,7 @@ const MIN_BODY = {
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    reservationEmailOutbox: { count: vi.fn().mockResolvedValue(5), findFirst: vi.fn().mockResolvedValue({ createdAt: TEST_NOW }), updateMany: routeMocks.outboxClaim },
     $queryRaw: vi.fn().mockResolvedValue([readySchemaRow]),
     $transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => unknown) => {
       const fakeTx = {
@@ -432,4 +437,18 @@ describe("public reservations API — LINE customer link auto attach", () => {
     expect(body.lineNotification.enabled).toBe(false);
     expect(p.lineCustomerLink.findMany).not.toHaveBeenCalled();
   });
+});
+
+
+it("keeps enqueue durable while paused and skips immediate delivery/heartbeat", async () => {
+  process.env.RESERVATION_EMAIL_LEGACY_SENDER_PAUSED = "true";
+  const { POST } = await loadRoute();
+  const response = await POST(post({ ...MIN_BODY, name: "山田" }));
+  expect(response.status).toBe(200);
+  expect(routeMocks.reservationEmailOutboxUpsert).toHaveBeenCalled();
+  const callback = routeMocks.scheduleAfterResponse.mock.calls[0][0] as () => Promise<void>;
+  await callback();
+  expect(routeMocks.sendReservationEmail).not.toHaveBeenCalled();
+  expect(routeMocks.outboxClaim).not.toHaveBeenCalled();
+  expect(routeMocks.recordImmediateAttempt).not.toHaveBeenCalled();
 });

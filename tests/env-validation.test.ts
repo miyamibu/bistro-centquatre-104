@@ -96,3 +96,17 @@ describe("Production env validation", () => {
     );
   });
 });
+
+
+describe("legacy sender pause env", () => {
+  it.each([[undefined, false], ["false", false], ["true", true]])("parses %s as %s", async (value, expected) => {
+    process.env = { NODE_ENV: "test" };
+    if (value !== undefined) process.env.RESERVATION_EMAIL_LEGACY_SENDER_PAUSED = String(value);
+    const { env } = await import("@/lib/env");
+    expect(env.RESERVATION_EMAIL_LEGACY_SENDER_PAUSED).toBe(expected);
+  });
+  it("rejects an ambiguous pause flag", async () => {
+    process.env = { NODE_ENV: "test", RESERVATION_EMAIL_LEGACY_SENDER_PAUSED: "1" };
+    await expect(import("@/lib/env")).rejects.toThrow(/RESERVATION_EMAIL_LEGACY_SENDER_PAUSED/);
+  });
+});

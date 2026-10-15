@@ -1,3 +1,4 @@
+const legacyPaused = vi.hoisted(() => ({ value: false }));
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -16,6 +17,7 @@ vi.mock("@/lib/env", () => ({
 
 vi.mock("@/lib/reservation-email-outbox", () => ({
   processReservationEmailOutbox: processReservationEmailOutboxMock,
+  isReservationEmailLegacySenderPaused: () => legacyPaused.value,
   getReservationEmailOutboxBacklog: getReservationEmailOutboxBacklogMock,
 }));
 
@@ -37,6 +39,7 @@ function request(method: "GET" | "POST", token?: string, query = "") {
 }
 
 beforeEach(() => {
+  legacyPaused.value = false;
   processReservationEmailOutboxMock.mockReset();
   getReservationEmailOutboxBacklogMock.mockReset();
   getReservationEmailOutboxBacklogMock.mockResolvedValue({
@@ -185,4 +188,16 @@ describe("reservation email outbox cron route", () => {
       error: "Cron execution failed",
     });
   });
+});
+
+
+it("returns paused with real backlog without advancing delivery heartbeat", async () => {
+  legacyPaused.value = true;
+  getReservationEmailOutboxBacklogMock.mockResolvedValue({ backlog: 7, oldestBacklogAt: null });
+  const { POST } = await import("@/app/api/crons/process-reservation-emails/route");
+  const response = await POST(request("POST", "cron-secret"));
+  expect(await response.json()).toMatchObject({ paused: true, dispatchExecuted: false, backlog: 7, sent: 0 });
+  expect(processReservationEmailOutboxMock).not.toHaveBeenCalled();
+  expect(heartbeatMocks.markSchedulerStarted).not.toHaveBeenCalled();
+  expect(heartbeatMocks.markSchedulerSucceeded).not.toHaveBeenCalled();
 });

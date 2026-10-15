@@ -58,6 +58,11 @@ enum DailyJournalStatus {
 enum ReservationEmailOutboxStatus {
   PENDING
   PROCESSING
+  DISPATCH_CLAIMED
+  RETRY_NOT_SENT
+  SENDING
+  OUTCOME_UNKNOWN
+  RECONCILE_REQUIRED
   SENT
   SKIPPED
   DEAD_LETTER
@@ -138,6 +143,7 @@ model ReservationEmailOutbox {
   sentAt                 DateTime?
   providerMessageId      String?
   providerIdempotencyKey String?
+  dispatchUnknownAt      DateTime?
   lastError              String?
   createdAt              DateTime                         @default(now())
   updatedAt              DateTime                         @updatedAt

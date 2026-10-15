@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 type Lane = "RESERVATION_EMAIL" | "ORDER_NOTIFICATION";
 
 type StatusPayload = {
+  reservationLegacySenderPaused?: boolean;
   warning: boolean;
   staleLanes: Lane[];
   backlog: {
@@ -21,6 +22,7 @@ type StatusPayload = {
 type DrainPayload = {
   ok: boolean;
   dryRun: boolean;
+  paused?: boolean;
   lane: Lane;
   scanned: number;
   sent: number;
@@ -40,6 +42,7 @@ export function OutboxOperationsPanel() {
   const openButtonRef = useRef<HTMLButtonElement>(null);
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const reservationPaused = lane === "RESERVATION_EMAIL" && status?.reservationLegacySenderPaused === true;
 
   const loadStatus = useCallback(async () => {
     const response = await fetch("/api/admin/outbox/status", {
@@ -85,6 +88,7 @@ export function OutboxOperationsPanel() {
   }, [confirmOpen]);
 
   async function drain(dryRun: boolean) {
+    if (!dryRun && reservationPaused) return;
     setLoading(true);
     setError(null);
     try {
@@ -111,6 +115,9 @@ export function OutboxOperationsPanel() {
 
   return (
     <div className="space-y-6">
+      {status?.reservationLegacySenderPaused ? (
+        <p role="status" className="text-sm">予約メールの旧送信処理は停止中です。Outboxへの登録は継続します。独立Workerの稼働状況は別途確認してください。</p>
+      ) : null}
       {status?.warning ? (
         <div role="alert" className="rounded-xl border border-amber-500 bg-amber-50 p-4 text-sm text-amber-950">
           GitHub schedulerの正常heartbeatが15分以上ありません。対象: {status.staleLanes.join(", ")}
@@ -141,19 +148,22 @@ export function OutboxOperationsPanel() {
           <button type="button" disabled={loading} onClick={() => drain(true)} className="min-h-11 rounded-full border border-[#8a6233] px-5 font-semibold text-[#8a6233] disabled:opacity-50">
             dry-run
           </button>
-          <button ref={openButtonRef} type="button" disabled={loading} onClick={() => setConfirmOpen(true)} className="min-h-11 rounded-full bg-[#7a5528] px-5 font-semibold text-white disabled:opacity-50">
+          <button ref={openButtonRef} type="button" disabled={loading || reservationPaused} aria-describedby={reservationPaused ? "reservation-drain-paused" : undefined} onClick={() => setConfirmOpen(true)} className="min-h-11 rounded-full bg-[#7a5528] px-5 font-semibold text-white disabled:opacity-50">
             再処理を確認
           </button>
         </div>
+        {reservationPaused ? (
+          <p id="reservation-drain-paused" className="text-sm text-[#6b5644]">予約メールの旧送信処理は停止中のため再処理できません。状態確認にはdry-runを利用できます。</p>
+        ) : null}
         {error ? <p role="alert" className="text-sm text-red-700">{error}</p> : null}
         {result ? (
           <p role="status" className="text-sm text-[#4a3121]">
-            {result.dryRun ? "dry-run" : "今回の処理結果"}: scanned={result.scanned}, sent={result.sent}, failed={result.failed}, 今回dead-letter化={result.deadLetter}, 処理待ち={result.backlog}
+            {result.paused ? "旧送信停止中・送信未実行" : result.dryRun ? "dry-run" : "今回の処理結果"}: scanned={result.scanned}, sent={result.sent}, failed={result.failed}, 今回dead-letter化={result.deadLetter}, 処理待ち={result.backlog}
           </p>
         ) : null}
       </div>
 
-      {confirmOpen ? (
+      {confirmOpen && !reservationPaused ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setConfirmOpen(false); }}>
           <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="outbox-confirm-title" className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
             <h2 id="outbox-confirm-title" className="text-xl font-semibold">Outbox再処理の確認</h2>

@@ -20,6 +20,18 @@ import {
 } from "@/lib/reservation-management-token";
 import { deriveReservationScopedToken } from "@/lib/reservation-token";
 
+const WORKER_OWNED_STATUSES: ReservationEmailOutboxStatus[] = [
+  ReservationEmailOutboxStatus.DISPATCH_CLAIMED,
+  ReservationEmailOutboxStatus.RETRY_NOT_SENT,
+  ReservationEmailOutboxStatus.SENDING,
+  ReservationEmailOutboxStatus.OUTCOME_UNKNOWN,
+  ReservationEmailOutboxStatus.RECONCILE_REQUIRED,
+];
+
+export function isReservationEmailLegacySenderPaused() {
+  return env.RESERVATION_EMAIL_LEGACY_SENDER_PAUSED === true;
+}
+
 const CRON_ROUTE = "/api/crons/process-reservation-emails";
 const MAX_ATTEMPTS = 5;
 const LOCK_DURATION_MS = 5 * 60 * 1000;
@@ -208,10 +220,14 @@ export async function enqueueReservationCustomerEmail(
 
   const existing = await tx.reservationEmailOutbox.findUnique({
     where: { reservationId_notificationType: { reservationId, notificationType } },
-    select: { id: true, status: true },
+    select: { id: true, status: true, dispatchUnknownAt: true },
   });
 
-  if (existing?.status === ReservationEmailOutboxStatus.PROCESSING) {
+  if (existing && (
+    existing.status === ReservationEmailOutboxStatus.PROCESSING ||
+    WORKER_OWNED_STATUSES.includes(existing.status) ||
+    existing.dispatchUnknownAt != null
+  )) {
     throw new ReservationEmailOutboxBusyError();
   }
 
@@ -233,7 +249,8 @@ export async function enqueueReservationCustomerEmail(
   const updated = await tx.reservationEmailOutbox.updateMany({
     where: {
       id: existing.id,
-      status: { not: ReservationEmailOutboxStatus.PROCESSING },
+      status: { notIn: [ReservationEmailOutboxStatus.PROCESSING, ...WORKER_OWNED_STATUSES] },
+      dispatchUnknownAt: null,
     },
     data: {
       status: ReservationEmailOutboxStatus.PENDING,
@@ -369,6 +386,7 @@ async function processOutboxItem(
     const claim = await prisma.reservationEmailOutbox.updateMany({
       where: {
         id,
+        dispatchUnknownAt: null,
         OR: [
           {
             status: ReservationEmailOutboxStatus.PENDING,
@@ -728,6 +746,8 @@ export async function getReservationEmailOutboxBacklog() {
     OR: [
       { status: ReservationEmailOutboxStatus.PENDING, nextAttemptAt: { lte: now } },
       { status: ReservationEmailOutboxStatus.PROCESSING, lockedUntil: { lte: now } },
+      { status: { in: WORKER_OWNED_STATUSES } },
+      { dispatchUnknownAt: { not: null } },
     ],
   };
   const [count, oldest] = await Promise.all([
@@ -755,11 +775,25 @@ export async function getReservationEmailOutboxDeadLetters() {
   return { count, oldestAt: oldest?.createdAt ?? null };
 }
 
+async function pausedDispatchSummary() {
+  const backlog = await getReservationEmailOutboxBacklog();
+  return {
+    paused: true as const,
+    dispatchExecuted: false,
+    reason: "LEGACY_SENDER_PAUSED" as const,
+    scanned: 0, sent: 0, failed: 0, deadLetter: 0, skipped: 0, unsafe: 0,
+    deadlineReached: false,
+    nextCursor: null,
+    ...backlog,
+  };
+}
+
 export async function processReservationEmailOutboxEntries(input: {
   ids: string[];
   requestId: string;
   deadlineMs?: number;
 }) {
+  if (isReservationEmailLegacySenderPaused()) return pausedDispatchSummary();
   const ids = [...new Set(input.ids.filter(Boolean))].slice(0, 2);
   const deadlineMs = clampInteger(input.deadlineMs, DEFAULT_DEADLINE_MS, MIN_DEADLINE_MS, MAX_DEADLINE_MS);
   const deadlineAt = Date.now() + deadlineMs;
@@ -786,7 +820,7 @@ export async function processReservationEmailOutboxEntries(input: {
     else skipped += 1;
   }
 
-  return { scanned, sent, failed, deadLetter, skipped, unsafe, deadlineReached };
+  return { paused: false as const, dispatchExecuted: true, scanned, sent, failed, deadLetter, skipped, unsafe, deadlineReached };
 }
 
 export async function processReservationEmailOutbox(input: {
@@ -796,6 +830,7 @@ export async function processReservationEmailOutbox(input: {
   cursor?: string;
   deadlineMs?: number;
 }) {
+  if (isReservationEmailLegacySenderPaused()) return pausedDispatchSummary();
   const now = new Date();
   const batchSize = clampInteger(
     input.batchSize ?? input.limit,
@@ -890,6 +925,8 @@ export async function processReservationEmailOutbox(input: {
   }
 
   const summary = {
+    paused: false as const,
+    dispatchExecuted: true,
     scanned: candidates.length,
     sent,
     failed,

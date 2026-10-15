@@ -110,6 +110,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: result.failed === 0 && result.deadLetter === 0,
       dryRun: false,
+      paused: "paused" in result && result.paused === true,
+      dispatchExecuted: !("paused" in result && result.paused === true),
       lane,
       requestedLimit: limit,
       scanned: result.scanned,

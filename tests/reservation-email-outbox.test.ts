@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   findMany: vi.fn(),
   count: vi.fn(),
+  legacyPaused: false,
   findFirst: vi.fn(),
   idempotencyFindFirst: vi.fn(),
   findUnique: vi.fn(),
@@ -41,6 +42,7 @@ vi.mock("@/lib/email", () => ({
 vi.mock("@/lib/env", () => ({
   env: {
     BASE_URL: "https://example.test",
+    get RESERVATION_EMAIL_LEGACY_SENDER_PAUSED() { return mocks.legacyPaused; },
   },
 }));
 
@@ -73,6 +75,8 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(now);
   vi.clearAllMocks();
+  mocks.legacyPaused = false;
+  mocks.count.mockResolvedValue(3);
   mocks.findMany.mockResolvedValue([{ id: "outbox-1" }]);
   mocks.count.mockResolvedValue(0);
   mocks.updateMany.mockResolvedValue({ count: 1 });
@@ -190,7 +194,8 @@ describe("reservation confirmation email outbox", () => {
     expect(mocks.updateMany).toHaveBeenCalledWith({
       where: {
         id: "outbox-1",
-        status: { not: "PROCESSING" },
+        status: { notIn: ["PROCESSING", "DISPATCH_CLAIMED", "RETRY_NOT_SENT", "SENDING", "OUTCOME_UNKNOWN", "RECONCILE_REQUIRED"] },
+        dispatchUnknownAt: null,
       },
       data: expect.objectContaining({
         status: "PENDING",
@@ -261,6 +266,8 @@ describe("reservation confirmation email outbox", () => {
     });
 
     expect(summary).toEqual({
+      paused: false,
+      dispatchExecuted: true,
       scanned: 1,
       sent: 1,
       failed: 0,
@@ -273,6 +280,7 @@ describe("reservation confirmation email outbox", () => {
     expect(mocks.updateMany).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
+        where: expect.objectContaining({ dispatchUnknownAt: null }),
         data: expect.objectContaining({
           status: "PROCESSING",
           attempts: { increment: 1 },
@@ -641,4 +649,52 @@ describe("reservation confirmation email outbox", () => {
     expect(summary.nextCursor).toEqual(expect.any(String));
     expect(mocks.sendReservationEmail).toHaveBeenCalledTimes(1);
   });
+});
+
+
+describe("legacy sender cutover", () => {
+  it("pauses both processors without claiming or sending and preserves real backlog", async () => {
+    mocks.legacyPaused = true;
+    mocks.count.mockResolvedValue(3);
+    mocks.findFirst.mockResolvedValue({ createdAt: now });
+    const { processReservationEmailOutbox, processReservationEmailOutboxEntries } = await import("@/lib/reservation-email-outbox");
+    for (const result of [await processReservationEmailOutbox({ requestId: "paused" }), await processReservationEmailOutboxEntries({ requestId: "paused-immediate", ids: ["row"] })]) {
+      expect(result).toMatchObject({ paused: true, dispatchExecuted: false, scanned: 0, sent: 0, backlog: 3, oldestBacklogAt: now });
+    }
+    expect(mocks.findMany).not.toHaveBeenCalled();
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expect(mocks.sendReservationEmail).not.toHaveBeenCalled();
+    expect(mocks.sendCustomerReservationEmail).not.toHaveBeenCalled();
+    expect(mocks.sendCustomerReservationStatusEmail).not.toHaveBeenCalled();
+  });
+  it.each(["DISPATCH_CLAIMED", "RETRY_NOT_SENT", "SENDING", "OUTCOME_UNKNOWN", "RECONCILE_REQUIRED"])("does not reset Worker-owned %s", async (status) => {
+    mocks.findUnique.mockResolvedValue({ id: "row", status });
+    const { enqueueReservationCustomerEmail } = await import("@/lib/reservation-email-outbox");
+    const tx = { reservationEmailOutbox: { findUnique: mocks.findUnique, updateMany: mocks.updateMany } };
+    await expect(enqueueReservationCustomerEmail(tx as never, "reservation", { reset: true })).rejects.toMatchObject({ code: "RESERVATION_EMAIL_SEND_IN_PROGRESS" });
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+
+it("does not reset an uncertain dispatch timestamp even if status appears terminal", async () => {
+  mocks.findUnique.mockResolvedValue({ id: "row", status: "SENT", dispatchUnknownAt: now });
+  const { enqueueReservationCustomerEmail } = await import("@/lib/reservation-email-outbox");
+  const tx = { reservationEmailOutbox: { findUnique: mocks.findUnique, updateMany: mocks.updateMany } };
+  await expect(enqueueReservationCustomerEmail(tx as never, "reservation", { reset: true })).rejects.toMatchObject({ code: "RESERVATION_EMAIL_SEND_IN_PROGRESS" });
+  expect(mocks.updateMany).not.toHaveBeenCalled();
+});
+
+
+it("includes a SENT row with an unknown dispatch marker in backlog count and oldest", async () => {
+  const oldestMarker = new Date("2026-07-01T00:00:00Z");
+  // Synthetic unresolved row: SENT with a surviving dispatchUnknownAt marker.
+  mocks.count.mockResolvedValue(1);
+  mocks.findFirst.mockResolvedValue({ createdAt: oldestMarker });
+  const { getReservationEmailOutboxBacklog } = await import("@/lib/reservation-email-outbox");
+  await expect(getReservationEmailOutboxBacklog()).resolves.toEqual({ backlog: 1, oldestBacklogAt: oldestMarker });
+  const markerInclusiveWhere = expect.objectContaining({ OR: expect.arrayContaining([{ dispatchUnknownAt: { not: null } }]) });
+  expect(mocks.count).toHaveBeenCalledWith({ where: markerInclusiveWhere });
+  expect(mocks.findFirst).toHaveBeenCalledWith({ where: markerInclusiveWhere, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { createdAt: true } });
+  expect(mocks.count.mock.calls[0][0].where).toEqual(mocks.findFirst.mock.calls[0][0].where);
 });

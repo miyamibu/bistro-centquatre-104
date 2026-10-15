@@ -40,6 +40,7 @@ const envSchema = z
     BASE_URL: optionalUrl,
     NEXT_PUBLIC_APP_URL: optionalUrl,
     STORE_NOTIFY_EMAIL: optionalEmail,
+    RESERVATION_EMAIL_LEGACY_SENDER_PAUSED: strictOptionalBoolean.default(false),
     EMAIL_PROVIDER: z.enum(["resend", "sendgrid"]).optional(),
     EMAIL_API_KEY: optionalString,
     EMAIL_FROM: optionalEmail,

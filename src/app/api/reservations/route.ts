@@ -677,6 +677,7 @@ export async function POST(request: NextRequest) {
               requestId: `${requestId}:immediate`,
               deadlineMs: 8_000,
             });
+            if (immediate.paused) return;
             const backlog = await getReservationEmailOutboxBacklog();
             const success =
               immediate.failed === 0 &&

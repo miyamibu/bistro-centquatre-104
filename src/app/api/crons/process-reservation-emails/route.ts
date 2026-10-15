@@ -6,6 +6,7 @@ import { getRequestId, logError } from "@/lib/logger";
 import {
   getReservationEmailOutboxBacklog,
   processReservationEmailOutbox,
+  isReservationEmailLegacySenderPaused,
 } from "@/lib/reservation-email-outbox";
 import {
   markSchedulerFailed,
@@ -39,6 +40,17 @@ async function execute(request: NextRequest) {
 
   const scheduler = readSchedulerContext(request);
   try {
+    if (isReservationEmailLegacySenderPaused()) {
+      const backlog = await getReservationEmailOutboxBacklog();
+      return NextResponse.json({
+        ok: true, paused: true, dispatchExecuted: false,
+        reason: "LEGACY_SENDER_PAUSED",
+        scanned: 0, sent: 0, failed: 0, deadLetter: 0, skipped: 0, unsafe: 0,
+        backlog: backlog.backlog,
+        oldestBacklogAt: backlog.oldestBacklogAt?.toISOString() ?? null,
+        requestId,
+      });
+    }
     await markSchedulerStarted("RESERVATION_EMAIL", scheduler);
     const params = request.nextUrl.searchParams;
     const batchSize = parsePositiveInteger(params.get("batchSize"));
