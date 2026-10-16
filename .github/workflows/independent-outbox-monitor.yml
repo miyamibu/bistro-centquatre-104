@@ -1,0 +1,66 @@
+name: Independent outbox monitor
+on:
+  schedule:
+    - cron: "4-59/5 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: independent-outbox-monitor
+  cancel-in-progress: false
+jobs:
+  monitor:
+    if: ${{ vars.OUTBOX_MONITOR_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    env:
+      PRODUCTION_BASE_URL: ${{ secrets.PRODUCTION_BASE_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+    steps:
+      - name: Evaluate independently and record sanitized observation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json, os, urllib.error, urllib.parse, urllib.request
+          allowed = {'FIRST_HEARTBEAT_MISSING', 'HEARTBEAT_MISSING', 'HEARTBEAT_STALE', 'WORKER_UNHEALTHY', 'LANE_STORAGE_FAILED', 'OUTCOME_UNKNOWN', 'RECONCILE_REQUIRED', 'DEAD_LETTER', 'BACKLOG_OVERDUE', 'UNSAFE_TRANSITION'}
+          base = os.environ.get('PRODUCTION_BASE_URL', '').rstrip('/')
+          target = urllib.parse.urlsplit(base)
+          secret = os.environ.get('CRON_SECRET', '')
+          if base != 'https://bistro-centquatre-104.netlify.app' or target.hostname != 'bistro-centquatre-104.netlify.app' or target.port is not None or target.scheme != 'https' or not target.hostname or target.username or target.password or target.query or target.fragment or target.path or not 32 <= len(secret) <= 512:
+              raise SystemExit('MONITOR_CONFIGURATION_INVALID')
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *args, **kwargs):
+                  return None
+          request = urllib.request.Request(base + '/api/internal/outbox-monitor/evaluate', method='POST', data=b'', headers={'Authorization': 'Bearer ' + secret})
+          try:
+              with urllib.request.build_opener(NoRedirect).open(request, timeout=25) as response:
+                  body = response.read(8193)
+                  if len(body) > 8192:
+                      raise ValueError('oversize')
+                  result = json.loads(body)
+              reasons = result.get('reasons')
+              pending = result.get('pendingOwnerAcknowledgements')
+              sequence = result.get('sequence')
+              events = result.get('pendingEvents')
+              received = result.get('heartbeatReceived')
+              healthy = result.get('healthy')
+              readiness = result.get('readiness')
+              if result.get('ok') is not True or (healthy is not None and type(healthy) is not bool) or not isinstance(reasons, list) or len(reasons) > len(allowed) or any(type(r) is not str or r not in allowed for r in reasons) or len(set(reasons)) != len(reasons) or type(pending) is not int or not 0 <= pending <= 64 or type(sequence) is not int or not 0 <= sequence <= 1000000000 or result.get('notificationDelivery') != 'UNVERIFIED' or type(received) is not bool or healthy != (None if not received and not reasons else len(reasons) == 0) or readiness != ('WAITING_FOR_FIRST_HEARTBEAT' if healthy is None else 'HEALTHY' if healthy else 'UNHEALTHY'):
+                  raise ValueError('invalid')
+              if not isinstance(events, list) or len(events) != pending or any(not isinstance(e, dict) or set(e) != {'sequence', 'reason', 'kind'} or type(e['sequence']) is not int or not 1 <= e['sequence'] <= sequence or e['reason'] not in allowed or e['kind'] not in ('alert', 'recovery') for e in events) or len({e['sequence'] for e in events}) != len(events):
+                  raise ValueError('events invalid')
+              summary = 'readiness=' + readiness + '; heartbeatReceived=' + str(received) + '; healthy=' + str(result['healthy']) + '; reasons=' + ','.join(reasons) + '; pendingOwnerAcknowledgements=' + str(pending) + '; sequence=' + str(sequence) + '; delivery=UNVERIFIED' + ''.join('\n- event=' + str(e['sequence']) + '; reason=' + e['reason'] + '; kind=' + e['kind'] for e in events)
+          except Exception:
+              summary = 'MONITOR_UNREACHABLE_OR_INVALID; delivery=UNVERIFIED'
+              with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
+                  output.write(summary + '\n')
+              raise SystemExit(summary)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
+              output.write(summary + '\n')
+          print(summary)
+          # A successful grace-period run is WAITING, not proof of any accepted heartbeat.
+          # GitHub status is not email/owner receipt.
+          if result['healthy'] is False or pending:
+              raise SystemExit(1)
+          PY

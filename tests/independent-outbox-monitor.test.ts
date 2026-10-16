@@ -1,0 +1,144 @@
+import { test } from 'vitest';
+import assert from 'node:assert/strict';
+import { createMonitorHandler, evaluate, validateHeartbeat, validateState, type MonitorState, type MonitorStore } from '../src/lib/independent-outbox-monitor';
+const now = Date.parse('2026-10-16T10:00:00.000Z');
+const iso = (offset = 0) => new Date(now + offset).toISOString();
+const initial = (): MonitorState => ({ version: 1, enabled: true, instanceId: 'reservation-worker', activatedAt: iso(-1_000), expectedLanes: ['reservation'], heartbeat: null, receivedAt: null, activeReasons: [], sequence: 0, events: [], lastEvaluatedAt: null });
+const heartbeat = () => ({ instanceId: 'reservation-worker', completedAt: iso(), healthy: true, reasons: [], claimed: 0, accepted: 0, retryNotSent: 0, unknown: 0, unsafe: 0, lanes: [{ lane: 'reservation' as const, ok: true, pending: 0, due: 0, inflight: 0, unknown: 0, reconcile: 0, terminal: 0, oldestPendingSeconds: 0 }] });
+const ingest = 'i'.repeat(32), cron = 'c'.repeat(32);
+function fixture(options: { failCommit?: boolean; disabled?: boolean; activationAgeMs?: number } = {}) {
+  let value = initial(); value.enabled = !options.disabled;
+  if (options.activationAgeMs !== undefined) value.activatedAt = iso(-options.activationAgeMs);
+  let saves = 0;
+  let queue = Promise.resolve();
+  const store: MonitorStore = { transaction(operation) {
+    const result = queue.then(async () => {
+      let draft = structuredClone(value);
+      const result = await operation(draft, async next => { draft = next; saves++; });
+      if (options.failCommit) throw new Error('private database error');
+      value = draft;
+      return result;
+    });
+    queue = result.then(() => {}, () => {});
+    return result;
+  } };
+  const handler = createMonitorHandler({ store, clock: () => now, secrets: () => ({ ingest, evaluate: cron }) });
+  const request = (action = 'heartbeat', body: unknown = heartbeat(), token = action === 'heartbeat' ? ingest : cron) => new Request('https://example.test/api/' + action, { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: action === 'heartbeat' ? JSON.stringify(body) : undefined });
+  return { handler, request, state: () => value, saves: () => saves };
+}
+
+test('first heartbeat grace is bounded; evaluates without any Worker input', () => {
+  const state = initial(); state.activatedAt = iso(-900_001);
+  assert.deepEqual(evaluate(state, now).reasons, ['FIRST_HEARTBEAT_MISSING']);
+  state.activatedAt = iso(-900_000); assert.deepEqual(evaluate(state, now).reasons, []);
+});
+test('strict envelope rejects extra keys, PII, wrong instance, type and unbounded counters', () => {
+  for (const change of [{ email: 'forbidden' }, { instanceId: 'other' }, { claimed: 1e10 }, { accepted: -1 }, { unknown: 0.5 }, { healthy: 'true' }, { reasons: ['arbitrary customer text'] }]) {
+    assert.throws(() => validateHeartbeat({ ...heartbeat(), ...change }, initial(), now));
+  }
+});
+test('lane topology and nested fields are fixed', () => {
+  for (const lanes of [[], [heartbeat().lanes[0], heartbeat().lanes[0]], [{ ...heartbeat().lanes[0], recipient: 'forbidden' }], [{ ...heartbeat().lanes[0], ok: 1 }], [{ ...heartbeat().lanes[0], pending: null }]]) {
+    assert.throws(() => validateHeartbeat({ ...heartbeat(), lanes }, initial(), now));
+  }
+});
+test('stale/future/preactivation/replay rejected with exact time bounds', () => {
+  const state = initial(); state.activatedAt = iso(-2_000_000);
+  for (const offset of [-900_001, 30_001]) assert.throws(() => validateHeartbeat({ ...heartbeat(), completedAt: iso(offset) }, state, now));
+  validateHeartbeat({ ...heartbeat(), completedAt: iso(-900_000) }, state, now);
+  validateHeartbeat({ ...heartbeat(), completedAt: iso(30_000) }, state, now);
+  assert.throws(() => validateHeartbeat({ ...heartbeat(), completedAt: iso(-1_001) }, initial(), now));
+  state.heartbeat = heartbeat(); assert.throws(() => validateHeartbeat(heartbeat(), state, now), /HEARTBEAT_REPLAY/);
+});
+test('independent next heartbeat and completedAt aging detected', () => {
+  const state = initial(); state.heartbeat = heartbeat(); state.receivedAt = iso();
+  const result = evaluate(state, now + 900_001);
+  assert.deepEqual(result.reasons, ['HEARTBEAT_MISSING', 'HEARTBEAT_STALE']);
+});
+test('detects unhealthy storage/unknown/reconcile/dead-letter/backlog/unsafe counters', () => {
+  const state = initial(); state.heartbeat = heartbeat(); state.receivedAt = iso();
+  Object.assign(state.heartbeat, { healthy: false, unknown: 1, unsafe: 1 });
+  Object.assign(state.heartbeat.lanes[0], { ok: false, reconcile: 1, terminal: 1, oldestPendingSeconds: 901 });
+  assert.deepEqual(evaluate(state, now).reasons, ['BACKLOG_OVERDUE', 'DEAD_LETTER', 'LANE_STORAGE_FAILED', 'OUTCOME_UNKNOWN', 'RECONCILE_REQUIRED', 'UNSAFE_TRANSITION', 'WORKER_UNHEALTHY']);
+});
+test('per-reason alert dedup, durable recovery, recurrence; delivery remains unacknowledged', () => {
+  const state = initial(); state.activatedAt = iso(-900_001);
+  const alert = evaluate(state, now); const same = evaluate(alert.state, now + 1);
+  assert.equal(same.state.sequence, 1); assert.equal(same.pending, 1);
+  same.state.heartbeat = heartbeat(); same.state.receivedAt = iso();
+  const recovery = evaluate(same.state, now);
+  assert.equal(recovery.pending, 2); assert.equal(recovery.state.events[1].kind, 'recovery');
+  assert.ok(recovery.state.events.every(e => e.ownerAcknowledgedAt === null));
+  const recurring = evaluate(recovery.state, now + 900_001);
+  assert.equal(recurring.state.sequence, 4);
+});
+test('queue capacity fails closed and never discards unacknowledged evidence', () => {
+  const state = initial(); state.activatedAt = iso(-900_001); state.sequence = 64;
+  state.events = Array.from({ length: 64 }, (_, i) => ({ sequence: i + 1, reason: 'FIRST_HEARTBEAT_MISSING', kind: 'alert', at: iso(), ownerAcknowledgedAt: null }));
+  assert.throws(() => evaluate(state, now), /MONITOR_EVENT_CAPACITY/); assert.equal(state.events.length, 64);
+});
+test('malformed persistent state fails closed; receipt cannot be forged into future', () => {
+  assert.throws(() => validateState(null, now));
+  const state = initial(); state.heartbeat = heartbeat(); state.receivedAt = iso(1);
+  assert.throws(() => validateState(state, now), /MONITOR_STATE_INVALID/);
+});
+test('ingress durable receipt assigned by server and success only after commit', async () => {
+  const f = fixture(); const response = await f.handler(f.request(), 'heartbeat');
+  assert.equal(response.status, 200); assert.equal(f.state().receivedAt, iso()); assert.equal(f.saves(), 1);
+  assert.deepEqual(await response.json(), { ok: true, durable: true });
+  const evaluated = await f.handler(f.request('evaluate'), 'evaluate');
+  const ready = await evaluated.json();
+  assert.equal(ready.healthy, true); assert.equal(ready.heartbeatReceived, true); assert.equal(ready.readiness, 'HEALTHY');
+  const broken = fixture({ failCommit: true });
+  assert.equal((await broken.handler(broken.request(), 'heartbeat')).status, 503);
+  assert.equal(broken.state().heartbeat, null);
+});
+test('auth distinguishes dedicated Worker and GitHub secrets; unauthorized has zero writes', async () => {
+  const f = fixture();
+  assert.equal((await f.handler(f.request('heartbeat', heartbeat(), cron), 'heartbeat')).status, 401);
+  assert.equal((await f.handler(f.request('evaluate', undefined, ingest), 'evaluate')).status, 401);
+  assert.equal(f.saves(), 0);
+  const handler = createMonitorHandler({ store: { transaction: async () => { throw new Error('must not access'); } }, secrets: () => ({ ingest, evaluate: ingest }) });
+  assert.equal((await handler(f.request(), 'heartbeat')).status, 503);
+  for (const evaluator of ['x'.repeat(31), 'x'.repeat(513)]) {
+    const invalid = createMonitorHandler({ store: { transaction: async () => { throw new Error('must not access'); } }, secrets: () => ({ ingest, evaluate: evaluator }) });
+    assert.equal((await invalid(f.request(), 'heartbeat')).status, 503);
+  }
+});
+test('disabled default does not save or accept heartbeats', async () => {
+  const f = fixture({ disabled: true });
+  assert.equal((await f.handler(f.request(), 'heartbeat')).status, 503); assert.equal(f.saves(), 0);
+});
+test('body size/content type/invalid JSON rejects; server never echoes raw payload/error', async () => {
+  const f = fixture();
+  for (const [body, content, status] of [['x'.repeat(8193), 'application/json', 413], ['{', 'application/json', 400], ['{}', 'text/plain', 415]] as const) {
+    const request = new Request('https://example.test', { method: 'POST', headers: { authorization: 'Bearer ' + ingest, 'content-type': content }, body });
+    const response = await f.handler(request, 'heartbeat'); assert.equal(response.status, status); assert.deepEqual(Object.keys(await response.json()).sort(), ['code', 'ok']);
+  }
+  assert.equal(f.saves(), 0);
+});
+test('concurrent identical ingests serialize into one commit and one replay rejection', async () => {
+  const f = fixture(); const responses = await Promise.all([f.handler(f.request(), 'heartbeat'), f.handler(f.request(), 'heartbeat')]);
+  assert.deepEqual(responses.map(r => r.status), [200, 409]); assert.equal(f.saves(), 1);
+});
+test('evaluator response is bounded sanitized metadata and explicitly unverified delivery', async () => {
+  const f = fixture(); const response = await f.handler(f.request('evaluate'), 'evaluate');
+  assert.equal(response.status, 200); assert.deepEqual(await response.json(), { ok: true, healthy: null, heartbeatReceived: false, readiness: 'WAITING_FOR_FIRST_HEARTBEAT', reasons: [], pendingOwnerAcknowledgements: 0, sequence: 0, pendingEvents: [], notificationDelivery: 'UNVERIFIED' });
+  const late = fixture({ activationAgeMs: 900_001 });
+  const missing = await (await late.handler(late.request('evaluate'), 'evaluate')).json();
+  assert.equal(missing.healthy, false); assert.equal(missing.heartbeatReceived, false); assert.equal(missing.readiness, 'UNHEALTHY');
+  assert.deepEqual(missing.reasons, ['FIRST_HEARTBEAT_MISSING']);
+});
+
+test('actual reporter fractional backlog age is accepted and unhealthy ingestion records event before next evaluation', async () => {
+  const f = fixture(); const payload = heartbeat();
+  payload.lanes[0].oldestPendingSeconds = 900.125;
+  const response = await f.handler(f.request('heartbeat', payload), 'heartbeat');
+  assert.equal(response.status, 200);
+  assert.deepEqual(f.state().activeReasons, ['BACKLOG_OVERDUE']);
+  assert.equal(f.state().events[0].reason, 'BACKLOG_OVERDUE');
+  const evaluated = await f.handler(f.request('evaluate'), 'evaluate');
+  const result = await evaluated.json();
+  assert.equal(result.heartbeatReceived, true); assert.equal(result.readiness, 'UNHEALTHY');
+  assert.deepEqual(result.pendingEvents, [{ sequence: 1, reason: 'BACKLOG_OVERDUE', kind: 'alert' }]);
+});

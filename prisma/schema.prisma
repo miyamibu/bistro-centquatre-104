@@ -390,6 +390,8 @@ model SchedulerHeartbeat {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
+  monitorState       Json?
+
   @@unique([schedulerKind, lane])
   @@index([lane, updatedAt])
 }
