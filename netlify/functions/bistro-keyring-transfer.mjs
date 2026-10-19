@@ -784,7 +784,7 @@ var getStore = (input, options) => {
   );
 };
 
-// outputs/keyring-b-encrypted-relay-20261019/source/source.mjs
+// outputs/keyring-b-encrypted-relay-20261019/public-retry-v2/source.mjs
 import { createHash as createHash2, randomBytes, webcrypto } from "node:crypto";
 
 // outputs/keyring-b-implementation/ledger/ledger.mjs
@@ -1025,7 +1025,7 @@ var VERSION = "bistro-keyring-capsule-v2";
 var SITE = "65a8739e-607f-4a2a-a0f0-618731a921d3";
 var DEST = "1af5e701fec4bbef3fd3b81379e6cc73/bistro-independent-outbox-candidate";
 var LANES2 = Object.freeze({
-  "public-synthetic": ["bistro-b-0c4e53521a504f6382b4dd07eb5b5a12", "public-synthetic-v1"],
+  "public-synthetic": ["bistro-b-9fd8be56694a45edbde9534bd3d6871b", "public-synthetic-native-retry-v2"],
   "existing-keyring": ["bistro-b-8c541600447a4167b70f5149fe6548de", "netlify-6ad1bda7446a63df744c9a30-frozen"]
 });
 var CONTEXT = [
@@ -1248,7 +1248,7 @@ async function sealKeyring(input, options) {
   });
 }
 
-// outputs/keyring-b-encrypted-relay-20261019/source/source.mjs
+// outputs/keyring-b-encrypted-relay-20261019/public-retry-v2/source.mjs
 var FUNCTION_NAME = "bistro-keyring-transfer";
 var SITE_ID = "65a8739e-607f-4a2a-a0f0-618731a921d3";
 var CF_ACCOUNT_ID = "1af5e701fec4bbef3fd3b81379e6cc73";
@@ -1265,8 +1265,8 @@ var SOURCE_READ_WINDOW_MS = 9e5;
 var MAX_STORED_RECORD_BYTES = 6e4;
 var FIXED_LANES = Object.freeze({
   "public-synthetic": Object.freeze({
-    operationID: "bistro-b-0c4e53521a504f6382b4dd07eb5b5a12",
-    sourceGeneration: "public-synthetic-v1"
+    operationID: "bistro-b-9fd8be56694a45edbde9534bd3d6871b",
+    sourceGeneration: "public-synthetic-native-retry-v2"
   }),
   "existing-keyring": Object.freeze({
     operationID: "bistro-b-8c541600447a4167b70f5149fe6548de",
@@ -2000,9 +2000,9 @@ function createSourceStoreFactory({
 }
 
 // pins:public-pins
-var PUBLIC_PINS = { "operatorPublicKey": "BJgVhOnL1AtH1G0Ts5FhtdClElR4gDviNNNoxLXreCLpZW-yF_0ViUQd1ICmjzW51rhkDRQvDlcXVnjGzZAMLFc", "recipientPublicKey": "BB_INGECIjHYh0YEmiCIoQEd9096v5AldPDT-k04N6nJ8TDtvU6mmX0LRfj4osow7udpyY6L-K2hcd0NuudKJmY", "sourceArtifactSHA256": "2e94b85537bff2e02740114a4bf74b00cd4a6a84cf1bfb00248c34ff725092fe", "sourcePolicyFamilySHA256": "0170f1b5e42869d02e774809bf32d2bfaf5fbe1ef9dd34bcbf100bc121e8b6b5", "sourceMetadataVersion": "bistro-encrypted-source-v2-20261019", "edgeUncachedOrigin": "https://edge-uncached.netlifyblobs.com" };
+var PUBLIC_PINS = { "operatorPublicKey": "BJgVhOnL1AtH1G0Ts5FhtdClElR4gDviNNNoxLXreCLpZW-yF_0ViUQd1ICmjzW51rhkDRQvDlcXVnjGzZAMLFc", "recipientPublicKey": "BB_INGECIjHYh0YEmiCIoQEd9096v5AldPDT-k04N6nJ8TDtvU6mmX0LRfj4osow7udpyY6L-K2hcd0NuudKJmY", "sourceArtifactSHA256": "9ac4fae133bda84ca3993b2c8462786de3a03c67dd38eb66cb095fff15554e1f", "sourcePolicyFamilySHA256": "140b3a09a2859c01c76dc20fca3df1c28230ef47939ec9581f7e00f7b21b350b", "sourceMetadataVersion": "bistro-encrypted-source-v2-20261019", "edgeUncachedOrigin": "https://edge-uncached.netlifyblobs.com" };
 
-// outputs/keyring-b-encrypted-relay-20261019/deployment/entry-template.mjs
+// outputs/keyring-b-encrypted-relay-20261019/public-retry-v2/entry-template.mjs
 var config = { schedule: "0 0 1 1 *" };
 var SITE2 = "65a8739e-607f-4a2a-a0f0-618731a921d3";
 var ACCOUNT = "6a8eabfcb2cd6a6a287993f7";

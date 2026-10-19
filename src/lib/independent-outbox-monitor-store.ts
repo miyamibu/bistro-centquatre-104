@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
-import { createMonitorHandler, MONITOR_KEY, type MonitorState, type MonitorStore } from "./independent-outbox-monitor";
+import { env } from "@/lib/env";
+import { createNotificationDispatcher } from "./independent-outbox-monitor-notifications";
+import { createMonitorHandler, validateState, MONITOR_KEY, type MonitorState, type MonitorStore } from "./independent-outbox-monitor";
 
 const store: MonitorStore = {
   async transaction(operation) {
@@ -28,5 +30,12 @@ const store: MonitorStore = {
     return result;
   },
 };
-export const handleIndependentOutboxMonitor = createMonitorHandler({ store,
-  secrets: () => ({ ingest: process.env.OUTBOX_MONITOR_TOKEN, evaluate: process.env.CRON_SECRET }) });
+// Same existing app provider-key and sender expressions; only owner destination is new.
+// No environment values are copied into monitor JSON, errors or responses.
+const notifications = createNotificationDispatcher({ store, validate: validateState,
+  getConfig: () => ({ provider: env.EMAIL_PROVIDER, apiKey: env.RESEND_API_KEY ?? env.EMAIL_API_KEY,
+    from: env.EMAIL_FROM ?? env.STORE_NOTIFY_EMAIL ?? "no-reply@example.com",
+    ownerEmail: process.env.OUTBOX_MONITOR_OWNER_EMAIL }) });
+// Dedicated evaluator credential only; no fallback to the shared cron credential.
+export const handleIndependentOutboxMonitor = createMonitorHandler({ store, notifications,
+  secrets: () => ({ ingest: process.env.OUTBOX_MONITOR_TOKEN, evaluate: process.env.OUTBOX_MONITOR_EVALUATE_TOKEN }) });

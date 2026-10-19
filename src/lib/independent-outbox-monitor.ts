@@ -1,8 +1,9 @@
 import { timingSafeEqual } from "node:crypto";
+import { validateNotificationMetadata, notificationAccepted, unavailableNotificationSummary, type NotificationMetadata, type NotificationSummary } from "./independent-outbox-monitor-notifications";
 
 export const MONITOR_KEY = { schedulerKind: "independent-outbox-monitor-v1", lane: "monitor" } as const;
 export const REASONS = ["FIRST_HEARTBEAT_MISSING", "HEARTBEAT_MISSING", "HEARTBEAT_STALE", "WORKER_UNHEALTHY", "LANE_STORAGE_FAILED", "OUTCOME_UNKNOWN", "RECONCILE_REQUIRED", "DEAD_LETTER", "BACKLOG_OVERDUE", "UNSAFE_TRANSITION"] as const;
-type Reason = typeof REASONS[number];
+export type Reason = typeof REASONS[number];
 const COUNTERS = ["claimed", "accepted", "retryNotSent", "unknown", "unsafe"] as const;
 const LANE_COUNTERS = ["pending", "due", "inflight", "unknown", "reconcile", "terminal", "oldestPendingSeconds"] as const;
 type LaneName = "reservation" | "order";
@@ -13,6 +14,7 @@ export type MonitorState = {
   version: 1; enabled: boolean; instanceId: string; activatedAt: string; expectedLanes: LaneName[];
   heartbeat: Heartbeat | null; receivedAt: string | null; activeReasons: Reason[];
   sequence: number; events: Event[]; lastEvaluatedAt: string | null;
+  notificationDelivery?: NotificationMetadata;
 };
 export class MonitorError extends Error {
   constructor(public code: string, public status: number) { super(code); }
@@ -39,7 +41,7 @@ export function validateHeartbeat(v: unknown, state: MonitorState, now: number):
 }
 
 export function validateState(v: unknown, now: number): MonitorState {
-  if (!object(v) || !exact(v, ["version", "enabled", "instanceId", "activatedAt", "expectedLanes", "heartbeat", "receivedAt", "activeReasons", "sequence", "events", "lastEvaluatedAt"]) || v.version !== 1 || typeof v.enabled !== "boolean" || typeof v.instanceId !== "string" ||
+  if (!object(v) || !exact(v, ["version", "enabled", "instanceId", "activatedAt", "expectedLanes", "heartbeat", "receivedAt", "activeReasons", "sequence", "events", "lastEvaluatedAt", ...(Object.hasOwn(v, "notificationDelivery") ? ["notificationDelivery"] : [])]) || v.version !== 1 || typeof v.enabled !== "boolean" || typeof v.instanceId !== "string" ||
       !/^[A-Za-z0-9_-]{1,80}$/.test(v.instanceId) || !instant(v.activatedAt) || !names(v.expectedLanes) ||
       !reasonList(v.activeReasons) || !count(v.sequence) || !Array.isArray(v.events) || v.events.length > 64 ||
       !(v.lastEvaluatedAt === null || instant(v.lastEvaluatedAt)) || !(v.receivedAt === null || instant(v.receivedAt)) ||
@@ -56,6 +58,9 @@ export function validateState(v: unknown, now: number): MonitorState {
   if (state.events.some(e => !object(e) || !exact(e, ["sequence", "reason", "kind", "at", "ownerAcknowledgedAt"]) || !count(e.sequence) || e.sequence < 1 || e.sequence > state.sequence || !REASONS.includes(e.reason) ||
       !["alert", "recovery"].includes(e.kind) || !instant(e.at) || !(e.ownerAcknowledgedAt === null || instant(e.ownerAcknowledgedAt))) ||
       new Set(state.events.map(e => e.sequence)).size !== state.events.length) reject("MONITOR_STATE_INVALID", 503);
+  if (state.notificationDelivery !== undefined) {
+    try { validateNotificationMetadata(state.notificationDelivery, state, now, REASONS); } catch { reject("MONITOR_STATE_INVALID", 503); }
+  }
   return state;
 }
 
@@ -80,7 +85,7 @@ export function evaluate(state: MonitorState, now: number): { state: MonitorStat
     }
   }
   const activeReasons = [...reasons].sort();
-  const events = state.events.filter(e => e.ownerAcknowledgedAt === null); // acknowledged history stays in backup/owner evidence
+  const events = state.events.filter(e => e.ownerAcknowledgedAt === null || !notificationAccepted(state.notificationDelivery, e.sequence)); // Retire only after BOTH human ack and a durable provider receipt.
   let sequence = state.sequence;
   for (const reason of REASONS) {
     const was = state.activeReasons.includes(reason), is = reasons.has(reason);
@@ -88,7 +93,7 @@ export function evaluate(state: MonitorState, now: number): { state: MonitorStat
   }
   if (events.length > 64 || sequence > 1_000_000_000) reject("MONITOR_EVENT_CAPACITY", 503);
   const updated = { ...state, sequence, events, activeReasons, lastEvaluatedAt: new Date(now).toISOString() };
-  return { state: updated, reasons: activeReasons, pending: events.length };
+  return { state: updated, reasons: activeReasons, pending: events.filter(e => e.ownerAcknowledgedAt === null).length };
 }
 
 export type MonitorStore = { transaction<T>(operation: (value: unknown, save: (value: MonitorState) => Promise<void>) => Promise<T>): Promise<T> };
@@ -110,7 +115,7 @@ async function boundedBody(request: Request): Promise<unknown> {
     return JSON.parse(Buffer.concat(chunks).toString("utf8"));
   } catch (error) { if (error instanceof MonitorError) throw error; return reject("JSON_INVALID"); }
 }
-export function createMonitorHandler({ store, clock = Date.now, secrets }: { store: MonitorStore; clock?: () => number; secrets: () => { ingest?: string; evaluate?: string } }) {
+export function createMonitorHandler({ store, clock = Date.now, secrets, notifications }: { store: MonitorStore; clock?: () => number; notifications?: () => Promise<NotificationSummary>; secrets: () => { ingest?: string; evaluate?: string } }) {
   return async (request: Request, action: "heartbeat" | "evaluate"): Promise<Response> => {
     try {
       if (request.method !== "POST") reject("METHOD_NOT_ALLOWED", 405);
@@ -134,8 +139,10 @@ export function createMonitorHandler({ store, clock = Date.now, secrets }: { sto
         const healthy = !heartbeatReceived && evaluation.reasons.length === 0 ? null : evaluation.reasons.length === 0;
         const readiness = healthy === null ? "WAITING_FOR_FIRST_HEARTBEAT" : healthy ? "HEALTHY" : "UNHEALTHY";
         return { ok: true, healthy, heartbeatReceived, readiness, reasons: evaluation.reasons, pendingOwnerAcknowledgements: evaluation.pending,
-          sequence: evaluation.state.sequence, pendingEvents: evaluation.state.events.map(({ sequence, reason, kind }) => ({ sequence, reason, kind })), notificationDelivery: "UNVERIFIED" };
+          sequence: evaluation.state.sequence, pendingEvents: evaluation.state.events.filter(e => e.ownerAcknowledgedAt === null).map(({ sequence, reason, kind }) => ({ sequence, reason, kind })), notificationDelivery: unavailableNotificationSummary(evaluation.state) };
       }); // the store resolves only after transaction COMMIT; no 2xx on failed commit
+      // Provider IO is evaluate-only and starts after durable state COMMIT/readback.
+      if (action === "evaluate" && notifications && "notificationDelivery" in result) result.notificationDelivery = await notifications();
       return Response.json(result, { headers: { "Cache-Control": "no-store" } });
     } catch (error) {
       const known = error instanceof MonitorError;
