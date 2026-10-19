@@ -127,7 +127,8 @@ export function createNotificationDispatcher({ store, validate, getConfig, clock
       const claimed = await store.transaction(async (value, save) => {
         const now = clock(); let s = validate(value, now); last = s;
         if (!s.enabled || !c) { await save(s); return { result: summary(s, s.enabled ? "CONFIGURATION_INVALID" : "MONITOR_DISABLED", s.enabled ? "NOT_CONFIGURED" : "UNRESOLVED") }; }
-        let m = metadata(s), batch = m.batches.find(b => b.state !== "ACCEPTED");
+        const m = metadata(s);
+        let batch = m.batches.find(b => b.state !== "ACCEPTED");
         if (batch) {
           if (batch.state === "UNRESOLVED") { await save(s); return { result: summary(s) }; }
           if (hash(body(batch, c)) !== batch.requestSHA256) {

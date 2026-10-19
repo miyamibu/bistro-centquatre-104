@@ -121,9 +121,9 @@ test('concurrent identical ingests serialize into one commit and one replay reje
   const f = fixture(); const responses = await Promise.all([f.handler(f.request(), 'heartbeat'), f.handler(f.request(), 'heartbeat')]);
   assert.deepEqual(responses.map(r => r.status), [200, 409]); assert.equal(f.saves(), 1);
 });
-test('evaluator response is bounded sanitized metadata and explicitly unverified delivery', async () => {
+test('bounded evaluator reports missing notification configuration without claiming delivery', async () => {
   const f = fixture(); const response = await f.handler(f.request('evaluate'), 'evaluate');
-  assert.equal(response.status, 200); assert.deepEqual(await response.json(), { ok: true, healthy: null, heartbeatReceived: false, readiness: 'WAITING_FOR_FIRST_HEARTBEAT', reasons: [], pendingOwnerAcknowledgements: 0, sequence: 0, pendingEvents: [], notificationDelivery: 'UNVERIFIED' });
+  assert.equal(response.status, 200); assert.deepEqual(await response.json(), { ok: true, healthy: null, heartbeatReceived: false, readiness: 'WAITING_FOR_FIRST_HEARTBEAT', reasons: [], pendingOwnerAcknowledgements: 0, sequence: 0, pendingEvents: [], notificationDelivery: { status: 'NOT_CONFIGURED', throughSequence: 0, pendingCount: 0, batchId: null, providerAcceptedAt: null, code: 'CONFIGURATION_INVALID', inboxReceipt: 'UNVERIFIED', ownerAcknowledgement: 'SEPARATE' } });
   const late = fixture({ activationAgeMs: 900_001 });
   const missing = await (await late.handler(late.request('evaluate'), 'evaluate')).json();
   assert.equal(missing.healthy, false); assert.equal(missing.heartbeatReceived, false); assert.equal(missing.readiness, 'UNHEALTHY');
