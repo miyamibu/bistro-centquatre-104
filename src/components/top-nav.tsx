@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Instagram, Menu, ShoppingCart, X } from "lucide-react";
-import { Playfair_Display } from "next/font/google";
+import localFont from "next/font/local";
+import "./fonts/playfair-display-fallback.css";
 import { shouldShowStoreCartIcon } from "@/lib/store-payment-state";
 const links = [
   { href: "/", label: "ホーム" },
@@ -17,9 +18,14 @@ const links = [
   { href: "/contact", label: "お問い合わせ" },
   { href: "/on-line-store", label: "オンラインストア" },
 ] as const;
-const logoFont = Playfair_Display({
-  subsets: ["latin"],
-  weight: ["400", "600", "700"],
+const logoFont = localFont({
+  src: "./fonts/playfair-display-latin.woff2",
+  weight: "400 700",
+  style: "normal",
+  display: "swap",
+  fallback: ["Playfair Display Fallback"],
+  adjustFontFallback: false,
+  declarations: [{ prop: "font-family", value: "Playfair Display" }],
 });
 export function TopNav() {
   const logoPos = { x: 0 }; // ロゴの左右微調整(px)

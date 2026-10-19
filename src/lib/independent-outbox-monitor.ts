@@ -68,6 +68,10 @@ export function evaluate(state: MonitorState, now: number): { state: MonitorStat
   const reasons = new Set<Reason>();
   const heartbeat = state.heartbeat;
   if (!heartbeat || !state.receivedAt) {
+    // Actor cutover clears the old receipt; absence cannot prove queue recovery.
+    for (const reason of state.activeReasons) {
+      if (reason !== "FIRST_HEARTBEAT_MISSING" && reason !== "HEARTBEAT_MISSING" && reason !== "HEARTBEAT_STALE") reasons.add(reason);
+    }
     if (now - Date.parse(state.activatedAt) > 900_000) reasons.add("FIRST_HEARTBEAT_MISSING");
   } else {
     if (now - Date.parse(state.receivedAt) > 900_000) reasons.add("HEARTBEAT_MISSING");

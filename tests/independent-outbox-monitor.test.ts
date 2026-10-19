@@ -142,3 +142,60 @@ test('actual reporter fractional backlog age is accepted and unhealthy ingestion
   assert.equal(result.heartbeatReceived, true); assert.equal(result.readiness, 'UNHEALTHY');
   assert.deepEqual(result.pendingEvents, [{ sequence: 1, reason: 'BACKLOG_OVERDUE', kind: 'alert' }]);
 });
+
+test('actor cutover retains operational alerts until genuine new actor measurements', async () => {
+  const { createHash } = await import('node:crypto');
+  const before = initial(); before.instanceId = 'synthetic-canary'; before.activatedAt = iso(-1_800_000);
+  before.heartbeat = { ...heartbeat(), instanceId: before.instanceId, completedAt: iso(-1_000_000), healthy: false };
+  Object.assign(before.heartbeat.lanes[0], { terminal: 63, oldestPendingSeconds: 901 });
+  before.receivedAt = iso(-1_000_000);
+  before.activeReasons = ['BACKLOG_OVERDUE', 'DEAD_LETTER', 'WORKER_UNHEALTHY', 'HEARTBEAT_MISSING', 'HEARTBEAT_STALE'];
+  before.sequence = before.activeReasons.length;
+  before.events = before.activeReasons.map((reason, index) => ({ sequence: index + 1, reason, kind: 'alert', at: iso(-20_000), ownerAcknowledgedAt: index === 0 ? iso(-17_000) : null }));
+  const event = before.events[1];
+  const tuples = [{ sequence: event.sequence, reason: event.reason, kind: event.kind, at: event.at }];
+  const batchId = createHash('sha256').update(JSON.stringify({ version: 1, instanceId: before.instanceId, events: tuples })).digest('hex');
+  before.notificationDelivery = { version: 1, throughSequence: event.sequence, batches: [{
+    batchId, instanceId: before.instanceId, events: tuples, idempotencyKey: 'outbox-monitor/v1/' + batchId,
+    requestSHA256: 'a'.repeat(64), firstAttemptAt: iso(-19_000), lastAttemptAt: iso(-19_000), attempt: 1,
+    state: 'ACCEPTED', leaseUntil: null, providerId: 'synthetic-provider-receipt', acceptedAt: iso(-18_000), code: null,
+  }] };
+  validateState(before, now);
+  const original = structuredClone(before);
+  // The operator's entire state patch is these three fields, after private archive.
+  const cutover: MonitorState = { ...before, instanceId: 'synthetic-normal', heartbeat: null, receivedAt: null };
+  assert.deepEqual(Object.keys(cutover).filter(key => JSON.stringify(cutover[key as keyof MonitorState]) !== JSON.stringify(before[key as keyof MonitorState])).sort(), ['heartbeat', 'instanceId', 'receivedAt']);
+  const without = evaluate(validateState(cutover, now), now);
+  assert.deepEqual(without.reasons, ['BACKLOG_OVERDUE', 'DEAD_LETTER', 'FIRST_HEARTBEAT_MISSING', 'WORKER_UNHEALTHY']);
+  assert.deepEqual(without.state.events.slice(before.events.length).map(e => [e.reason, e.kind]), [
+    ['FIRST_HEARTBEAT_MISSING', 'alert'], ['HEARTBEAT_MISSING', 'recovery'], ['HEARTBEAT_STALE', 'recovery'],
+  ]);
+  const repeated = evaluate(without.state, now + 1);
+  assert.equal(repeated.state.sequence, without.state.sequence);
+  // Independent initial grace boundary: retain operational reasons, recompute missing.
+  const grace: MonitorState = { ...cutover, activatedAt: iso(-900_000), activeReasons: [...cutover.activeReasons, 'FIRST_HEARTBEAT_MISSING'] };
+  assert.deepEqual(evaluate(grace, now).reasons, ['BACKLOG_OVERDUE', 'DEAD_LETTER', 'WORKER_UNHEALTHY']);
+  assert.ok(evaluate(grace, now + 1).reasons.includes('FIRST_HEARTBEAT_MISSING'));
+  const fresh63 = { ...heartbeat(), instanceId: cutover.instanceId, healthy: false };
+  Object.assign(fresh63.lanes[0], { terminal: 63, oldestPendingSeconds: 901 });
+  const measured63 = evaluate({ ...repeated.state, heartbeat: validateHeartbeat(fresh63, repeated.state, now), receivedAt: iso() }, now);
+  assert.deepEqual(measured63.reasons, ['BACKLOG_OVERDUE', 'DEAD_LETTER', 'WORKER_UNHEALTHY']);
+  assert.ok(measured63.state.events.every(e => e.kind !== 'recovery' || !['BACKLOG_OVERDUE', 'DEAD_LETTER'].includes(e.reason)));
+  const fresh0 = { ...heartbeat(), instanceId: cutover.instanceId, completedAt: iso(1_000) };
+  const measured0 = evaluate({ ...measured63.state, heartbeat: validateHeartbeat(fresh0, measured63.state, now + 1_000), receivedAt: iso(1_000) }, now + 1_000);
+  assert.deepEqual(measured0.reasons, []);
+  assert.deepEqual(measured0.state.events.slice(measured63.state.events.length).map(e => [e.reason, e.kind]), [
+    ['WORKER_UNHEALTHY', 'recovery'], ['DEAD_LETTER', 'recovery'], ['BACKLOG_OVERDUE', 'recovery'],
+  ]);
+  for (const result of [without, repeated, measured63, measured0]) {
+    assert.equal(result.state.activatedAt, original.activatedAt);
+    assert.equal(result.state.instanceId, cutover.instanceId);
+    assert.deepEqual(result.state.events.slice(0, original.events.length), original.events);
+    assert.deepEqual(result.state.notificationDelivery, original.notificationDelivery);
+    assert.equal(result.state.notificationDelivery!.batches[0].instanceId, original.instanceId);
+    assert.ok(result.state.sequence >= original.sequence);
+    assert.ok(result.state.events.slice(original.events.length).every(e => e.ownerAcknowledgedAt === null));
+    validateState(result.state, now + 1_000);
+  }
+  assert.deepEqual(before, original);
+});
