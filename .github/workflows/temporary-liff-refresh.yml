@@ -1,0 +1,71 @@
+name: Temporary LIFF-only dependency update
+on:
+  push:
+    branches:
+      - security/liff-sdk-2.31.2-20261109
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-liff-lockfile:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Use project's npm version
+        run: npm install --global npm@11.11.0
+      - name: Regenerate LIFF dependency only, fail if unrelated packages change
+        shell: bash
+        run: |
+          cp package-lock.json /tmp/bistro-package-lock-before.json
+          cp package.json /tmp/bistro-package-before.json
+          npm install @line/liff@2.31.2 --save-exact --package-lock-only --ignore-scripts --no-audit --no-fund
+          node --input-type=module - <<'NODE'
+          import fs from 'node:fs';
+          const load = (p) => JSON.parse(fs.readFileSync(p, 'utf8'));
+          const beforeManifest = load('/tmp/bistro-package-before.json');
+          const afterManifest = load('package.json');
+          const oldSpec = beforeManifest.dependencies['@line/liff'];
+          const newSpec = afterManifest.dependencies['@line/liff'];
+          delete beforeManifest.dependencies['@line/liff'];
+          delete afterManifest.dependencies['@line/liff'];
+          if (JSON.stringify(beforeManifest) !== JSON.stringify(afterManifest)) throw Error('Unexpected package.json change');
+          if (oldSpec !== '^2.28.0' || newSpec !== '2.31.2') throw Error('Unexpected LIFF manifest version');
+          const oldLock = load('/tmp/bistro-package-lock-before.json');
+          const newLock = load('package-lock.json');
+          const oldTop = {...oldLock}; delete oldTop.packages;
+          const newTop = {...newLock}; delete newTop.packages;
+          if (JSON.stringify(oldTop) !== JSON.stringify(newTop)) throw Error('Unexpected top-level lockfile change');
+          const beforePaths = oldLock.packages || {};
+          const afterPaths = newLock.packages || {};
+          for (const path of new Set([...Object.keys(beforePaths), ...Object.keys(afterPaths)])) {
+            if (path === '') {
+              const a = JSON.parse(JSON.stringify(beforePaths[path]));
+              const b = JSON.parse(JSON.stringify(afterPaths[path]));
+              delete a.dependencies['@line/liff'];
+              delete b.dependencies['@line/liff'];
+              if (JSON.stringify(a) !== JSON.stringify(b)) throw Error('Unexpected root dependency change');
+            } else if (JSON.stringify(beforePaths[path]) !== JSON.stringify(afterPaths[path])) {
+              if (!/^node_modules\/(?:@line\/liff(?:\/|$)|@liff\/)/.test(path)) {
+                throw Error('Unrelated dependency changed: ' + path);
+              }
+            }
+          }
+          if (afterPaths['node_modules/@line/liff']?.version !== '2.31.2') throw Error('Unexpected installed LIFF version');
+          console.log('PASS: LIFF 2.31.2, no unrelated manifest or lockfile changes');
+          NODE
+      - name: Commit LIFF-only update to this security branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- package.json package-lock.json
+          if ! git diff --cached --quiet; then
+            git commit -m "fix(security): upgrade LIFF SDK to 2.31.2"
+            git push origin HEAD:security/liff-sdk-2.31.2-20261109
+          fi
